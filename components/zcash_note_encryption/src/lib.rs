@@ -47,8 +47,17 @@ pub const COMPACT_NOTE_SIZE: usize = 1 + // version
     11 + // diversifier
     8  + // value
     32; // rseed (or rcm prior to ZIP 212)
+/// The size of the encoding of a ZSA asset type.
+pub const ZSA_TYPE_SIZE: usize = 32;
+/// The size of the ZSA variant of COMPACT_NOTE_SIZE.
+pub const COMPACT_ZSA_NOTE_SIZE: usize = COMPACT_NOTE_SIZE + ZSA_TYPE_SIZE;
+/// The size of the memo.
+pub const MEMO_SIZE: usize = 512;
 /// The size of [`NotePlaintextBytes`].
-pub const NOTE_PLAINTEXT_SIZE: usize = COMPACT_NOTE_SIZE + 512;
+pub const NOTE_PLAINTEXT_SIZE: usize = COMPACT_NOTE_SIZE + MEMO_SIZE;
+/// The size of the ZSA-variant of the memo.
+pub const ZSA_MEMO_SIZE: usize = NOTE_PLAINTEXT_SIZE - COMPACT_ZSA_NOTE_SIZE;
+
 /// The size of [`OutPlaintextBytes`].
 pub const OUT_PLAINTEXT_SIZE: usize = 32 + // pk_d
     32; // esk
@@ -320,7 +329,7 @@ pub trait BatchDomain: Domain {
 ///
 /// Implementations of this trait are required to define the length of their ciphertext
 /// field. In order to use the trial decryption APIs in this crate, the length must be
-/// either [`ENC_CIPHERTEXT_SIZE`] or [`COMPACT_NOTE_SIZE`].
+/// either [`ENC_CIPHERTEXT_SIZE`] or [`COMPACT_ZSA_NOTE_SIZE`].
 pub trait ShieldedOutput<D: Domain, const CIPHERTEXT_SIZE: usize> {
     /// Exposes the `ephemeral_key` field of the output.
     fn ephemeral_key(&self) -> EphemeralKeyBytes;
@@ -606,7 +615,7 @@ fn check_note_validity<D: Domain>(
 /// Implements the procedure specified in [`ZIP 307`].
 ///
 /// [`ZIP 307`]: https://zips.z.cash/zip-0307
-pub fn try_compact_note_decryption<D: Domain, Output: ShieldedOutput<D, COMPACT_NOTE_SIZE>>(
+pub fn try_compact_note_decryption<D: Domain, Output: ShieldedOutput<D, COMPACT_ZSA_NOTE_SIZE>>(
     domain: &D,
     ivk: &D::IncomingViewingKey,
     output: &Output,
@@ -620,7 +629,7 @@ pub fn try_compact_note_decryption<D: Domain, Output: ShieldedOutput<D, COMPACT_
     try_compact_note_decryption_inner(domain, ivk, &ephemeral_key, output, key)
 }
 
-fn try_compact_note_decryption_inner<D: Domain, Output: ShieldedOutput<D, COMPACT_NOTE_SIZE>>(
+fn try_compact_note_decryption_inner<D: Domain, Output: ShieldedOutput<D, COMPACT_ZSA_NOTE_SIZE>>(
     domain: &D,
     ivk: &D::IncomingViewingKey,
     ephemeral_key: &EphemeralKeyBytes,
@@ -628,7 +637,7 @@ fn try_compact_note_decryption_inner<D: Domain, Output: ShieldedOutput<D, COMPAC
     key: D::SymmetricKey,
 ) -> Option<(D::Note, D::Recipient)> {
     // Start from block 1 to skip over Poly1305 keying output
-    let mut plaintext = [0; COMPACT_NOTE_SIZE];
+    let mut plaintext = [0; COMPACT_ZSA_NOTE_SIZE]; // TODO: support ZSA notes.
     plaintext.copy_from_slice(output.enc_ciphertext());
     let mut keystream = ChaCha20::new(key.as_ref().into(), [0u8; 12][..].into());
     keystream.seek(64);
