@@ -5,7 +5,7 @@ use core::iter;
 
 use crate::{
     try_compact_note_decryption_inner, try_note_decryption_inner, BatchDomain, EphemeralKeyBytes,
-    ShieldedOutput, COMPACT_ZSA_NOTE_SIZE, ENC_CIPHERTEXT_SIZE,
+    ShieldedOutput, COMPACT_NOTE_SIZE, ENC_CIPHERTEXT_SIZE,
 };
 
 /// Trial decryption of a batch of notes with a set of recipients.
@@ -22,7 +22,7 @@ pub fn try_note_decryption<D: BatchDomain, Output: ShieldedOutput<D, ENC_CIPHERT
 /// Trial decryption of a batch of notes for light clients with a set of recipients.
 ///
 /// This is the batched version of [`crate::try_compact_note_decryption`].
-pub fn try_compact_note_decryption<D: BatchDomain, Output: ShieldedOutput<D, COMPACT_ZSA_NOTE_SIZE>>(
+pub fn try_compact_note_decryption<D: BatchDomain, Output: ShieldedOutput<D, COMPACT_NOTE_SIZE>>(
     ivks: &[D::IncomingViewingKey],
     outputs: &[(D, Output)],
 ) -> Vec<Option<(D::Note, D::Recipient)>> {

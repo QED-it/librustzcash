@@ -615,7 +615,7 @@ fn check_note_validity<D: Domain>(
 /// Implements the procedure specified in [`ZIP 307`].
 ///
 /// [`ZIP 307`]: https://zips.z.cash/zip-0307
-pub fn try_compact_note_decryption<D: Domain, Output: ShieldedOutput<D, COMPACT_ZSA_NOTE_SIZE>>(
+pub fn try_compact_note_decryption<D: Domain, Output: ShieldedOutput<D, COMPACT_NOTE_SIZE>>(
     domain: &D,
     ivk: &D::IncomingViewingKey,
     output: &Output,
@@ -629,7 +629,7 @@ pub fn try_compact_note_decryption<D: Domain, Output: ShieldedOutput<D, COMPACT_
     try_compact_note_decryption_inner(domain, ivk, &ephemeral_key, output, key)
 }
 
-fn try_compact_note_decryption_inner<D: Domain, Output: ShieldedOutput<D, COMPACT_ZSA_NOTE_SIZE>>(
+fn try_compact_note_decryption_inner<D: Domain, Output: ShieldedOutput<D, COMPACT_NOTE_SIZE>>(
     domain: &D,
     ivk: &D::IncomingViewingKey,
     ephemeral_key: &EphemeralKeyBytes,
@@ -637,7 +637,7 @@ fn try_compact_note_decryption_inner<D: Domain, Output: ShieldedOutput<D, COMPAC
     key: D::SymmetricKey,
 ) -> Option<(D::Note, D::Recipient)> {
     // Start from block 1 to skip over Poly1305 keying output
-    let mut plaintext = [0; COMPACT_ZSA_NOTE_SIZE]; // TODO: support ZSA notes.
+    let mut plaintext = [0; COMPACT_NOTE_SIZE]; // TODO: support ZSA notes.
     plaintext.copy_from_slice(output.enc_ciphertext());
     let mut keystream = ChaCha20::new(key.as_ref().into(), [0u8; 12][..].into());
     keystream.seek(64);
