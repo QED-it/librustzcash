@@ -17,7 +17,9 @@ use crate::{
 /// provided, along with the index in the `ivks` slice associated with
 /// the IVK that successfully decrypted the output.
 #[allow(clippy::type_complexity)]
-pub fn try_note_decryption<D: BatchDomain, Output: ShieldedOutput<D>>(
+pub fn try_note_decryption<D: BatchDomain<{ NP_SIZE }, { NC_SIZE }, { COMPACT_SIZE }>,
+    Output: ShieldedOutput<D, { NP_SIZE }, { NC_SIZE }, { COMPACT_SIZE }>,
+    const NP_SIZE: usize, const NC_SIZE: usize, const COMPACT_SIZE: usize>(
     ivks: &[D::IncomingViewingKey],
     outputs: &[(D, Output)],
 ) -> Vec<Option<((D::Note, D::Recipient, D::Memo), usize)>> {
@@ -33,14 +35,18 @@ pub fn try_note_decryption<D: BatchDomain, Output: ShieldedOutput<D>>(
 /// provided, along with the index in the `ivks` slice associated with
 /// the IVK that successfully decrypted the output.
 #[allow(clippy::type_complexity)]
-pub fn try_compact_note_decryption<D: BatchDomain, Output: ShieldedOutput<D>>(
+pub fn try_compact_note_decryption<D: BatchDomain<{ NP_SIZE }, { NC_SIZE }, { COMPACT_SIZE }>,
+    Output: ShieldedOutput<D, { NP_SIZE }, { NC_SIZE }, { COMPACT_SIZE }>,
+    const NP_SIZE: usize, const NC_SIZE: usize, const COMPACT_SIZE: usize>(
     ivks: &[D::IncomingViewingKey],
     outputs: &[(D, Output)],
 ) -> Vec<Option<((D::Note, D::Recipient), usize)>> {
     batch_note_decryption(ivks, outputs, try_compact_note_decryption_inner)
 }
 
-fn batch_note_decryption<D: BatchDomain, Output: ShieldedOutput<D>, F, FR>(
+fn batch_note_decryption<D: BatchDomain<{ NP_SIZE }, { NC_SIZE }, { COMPACT_SIZE }>,
+    Output: ShieldedOutput<D, { NP_SIZE }, { NC_SIZE }, { COMPACT_SIZE }>,
+    F, FR, const NP_SIZE: usize, const NC_SIZE: usize, const COMPACT_SIZE: usize>(
     ivks: &[D::IncomingViewingKey],
     outputs: &[(D, Output)],
     decrypt_inner: F,

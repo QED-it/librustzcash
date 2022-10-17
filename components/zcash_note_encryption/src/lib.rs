@@ -29,6 +29,14 @@ use chacha20poly1305::{
     ChaCha20Poly1305,
 };
 
+use chacha20::ChaCha20;
+
+use chacha20::cipher::{
+    NewCipher,
+    StreamCipher,
+    StreamCipherSeek,
+};
+
 use rand_core::RngCore;
 use subtle::{Choice, ConstantTimeEq};
 
@@ -48,7 +56,7 @@ pub const NOTE_PLAINTEXT_SIZE: usize = COMPACT_NOTE_SIZE + MEMO_SIZE;
 /// The size of [`OutPlaintextBytes`].
 pub const OUT_PLAINTEXT_SIZE: usize = 32 + // pk_d
     32; // esk
-const AEAD_TAG_SIZE: usize = 16;
+pub const AEAD_TAG_SIZE: usize = 16;
 /// The size of an encrypted note plaintext.
 pub const ENC_CIPHERTEXT_SIZE: usize = NOTE_PLAINTEXT_SIZE + AEAD_TAG_SIZE;
 /// The size of an encrypted outgoing plaintext.
@@ -93,6 +101,9 @@ impl ConstantTimeEq for EphemeralKeyBytes {
     }
 }
 
+/// Newtype representing the byte encoding of a note plaintext.
+pub struct NotePlaintextBytes<const N: usize>(pub [u8; N]);
+
 /// Newtype representing the byte encoding of a outgoing plaintext.
 pub struct OutPlaintextBytes(pub [u8; OUT_PLAINTEXT_SIZE]);
 
@@ -105,26 +116,26 @@ enum NoteValidity {
 /// Enum for the note ciphertext.
 /// The variants represent whether the encrypted note is a full note or a compact note.
 #[derive(Copy, Clone, PartialEq, Eq)]
-pub enum NoteCiphertext<D: Domain> {
-    Full(D::EncNoteCiphertextBytes),
-    Compact(D::CompactEncNoteCiphertextBytes),
+pub enum NoteCiphertext<const NC_SIZE: usize, const COMPACT_SIZE: usize> {
+    Full([u8; NC_SIZE]),
+    Compact([u8; COMPACT_SIZE]),
 }
 
 /// Trait that encapsulates protocol-specific note encryption types and logic.
 ///
 /// This trait enables most of the note encryption logic to be shared between Sapling and
 /// Orchard, as well as between different implementations of those protocols.
-pub trait Domain {
+pub trait Domain <const NP_SIZE: usize, const NC_SIZE: usize, const COMPACT_SIZE: usize>{
     type EphemeralSecretKey: ConstantTimeEq;
     type EphemeralPublicKey;
     type PreparedEphemeralPublicKey;
     type SharedSecret;
     type SymmetricKey: AsRef<[u8]>;
     type Note;
-    type NotePlaintextBytes;
-    type EncNoteCiphertextBytes;
-    type CompactNotePlaintextBytes;
-    type CompactEncNoteCiphertextBytes;
+    // type NotePlaintextBytes;
+    // type EncNoteCiphertextBytes;
+    // type CompactNotePlaintextBytes;
+    // type CompactEncNoteCiphertextBytes;
     type Recipient;
     type DiversifiedTransmissionKey;
     type IncomingViewingKey;
@@ -194,7 +205,7 @@ pub trait Domain {
         note: &Self::Note,
         recipient: &Self::Recipient,
         memo: &Self::Memo,
-    ) -> Self::NotePlaintextBytes;
+    ) -> NotePlaintextBytes<NP_SIZE>;
 
     /// Derives the [`OutgoingCipherKey`] for an encrypted note, given the note-specific
     /// public data and an `OutgoingViewingKey`.
@@ -235,13 +246,10 @@ pub trait Domain {
     /// such as rules like [ZIP 212] that become active at a specific block height.
     ///
     /// [ZIP 212]: https://zips.z.cash/zip-0212
-    ///
-    /// This function only takes in plaintext bytes with the memo removed, as in compact notes.
-    /// If working with full notes, first convert to compact note using `convert_to_compact_plaintext`.
     fn parse_note_plaintext_without_memo_ivk(
         &self,
         ivk: &Self::IncomingViewingKey,
-        plaintext: &Self::CompactNotePlaintextBytes,
+        plaintext: &[u8],
     ) -> Option<(Self::Note, Self::Recipient)>;
 
     /// Parses the given note plaintext from the sender's perspective.
@@ -258,15 +266,12 @@ pub trait Domain {
     /// such as rules like [ZIP 212] that become active at a specific block height.
     ///
     /// [ZIP 212]: https://zips.z.cash/zip-0212
-    ///
-    /// This function only takes in plaintext bytes with the memo removed, as in compact notes.
-    /// If working with full notes, first convert to compact note using `convert_to_compact_plaintext`.
     fn parse_note_plaintext_without_memo_ovk(
         &self,
         pk_d: &Self::DiversifiedTransmissionKey,
         esk: &Self::EphemeralSecretKey,
         ephemeral_key: &EphemeralKeyBytes,
-        plaintext: &Self::CompactNotePlaintextBytes,
+        plaintext: &NotePlaintextBytes<NP_SIZE>,
     ) -> Option<(Self::Note, Self::Recipient)>;
 
     /// Extracts the memo field from the given note plaintext.
@@ -275,7 +280,7 @@ pub trait Domain {
     ///
     /// `&self` is passed here in anticipation of future changes to memo handling, where
     /// the memos may no longer be part of the note plaintext.
-    fn extract_memo(&self, plaintext: &Self::NotePlaintextBytes) -> Self::Memo;
+    fn extract_memo(&self, plaintext: &NotePlaintextBytes<NP_SIZE>) -> Self::Memo;
 
     /// Parses the `DiversifiedTransmissionKey` field of the outgoing plaintext.
     ///
@@ -289,28 +294,6 @@ pub trait Domain {
     /// `EphemeralSecretKey`.
     fn extract_esk(out_plaintext: &OutPlaintextBytes) -> Option<Self::EphemeralSecretKey>;
 
-    /// Performs the inner encryption logic given the key and the note plaintext, and returns
-    /// the encrypted note ciphertext.
-    fn encrypt_with_key(
-        key: Self::SymmetricKey,
-        input: Self::NotePlaintextBytes,
-    ) -> Self::EncNoteCiphertextBytes;
-
-    /// Performs the inner decryption logic given the key and the encrypted note ciphertext,
-    /// and returns the note plaintext.
-    fn decrypt_with_key(
-        key: &Self::SymmetricKey,
-        enc_ciphertext: Self::EncNoteCiphertextBytes,
-    ) -> Self::NotePlaintextBytes;
-
-    /// Performs the inner decryption logic for compct notes given the key and the
-    /// compact encrypted note ciphertext, and returns the compact note plaintext.
-    fn decrypt_compact_with_key(
-        key: &Self::SymmetricKey,
-        enc_ciphertext: Self::CompactEncNoteCiphertextBytes,
-    ) -> Self::CompactNotePlaintextBytes;
-
-    fn convert_to_compact_plaintext(full_note: &Self::NotePlaintextBytes) -> Self::CompactNotePlaintextBytes;
 }
 
 /// Trait that encapsulates protocol-specific batch trial decryption logic.
@@ -320,7 +303,7 @@ pub trait Domain {
 /// batched logic.
 #[cfg(feature = "alloc")]
 #[cfg_attr(docsrs, doc(cfg(feature = "alloc")))]
-pub trait BatchDomain: Domain {
+pub trait BatchDomain<const NP_SIZE: usize, const NC_SIZE: usize, const COMPACT_SIZE: usize>: Domain<{ NP_SIZE }, { NC_SIZE }, { COMPACT_SIZE }> {
     /// Computes `Self::kdf` on a batch of items.
     ///
     /// For each item in the batch, if the shared secret is `None`, this returns `None` at
@@ -357,7 +340,7 @@ pub trait BatchDomain: Domain {
 }
 
 /// Trait that provides access to the components of an encrypted transaction output.
-pub trait ShieldedOutput<D: Domain> {
+pub trait ShieldedOutput<D: Domain<{ NP_SIZE }, { NC_SIZE }, { COMPACT_SIZE }>, const NP_SIZE: usize, const NC_SIZE: usize, const COMPACT_SIZE: usize> {
     /// Exposes the `ephemeral_key` field of the output.
     fn ephemeral_key(&self) -> EphemeralKeyBytes;
 
@@ -365,7 +348,7 @@ pub trait ShieldedOutput<D: Domain> {
     fn cmstar_bytes(&self) -> D::ExtractedCommitmentBytes;
 
     /// Exposes the note ciphertext of the output.
-    fn enc_ciphertext(&self) -> NoteCiphertext<D>;
+    fn enc_ciphertext(&self) -> NoteCiphertext<NC_SIZE, COMPACT_SIZE>;
 }
 
 /// A struct containing context required for encrypting Sapling and Orchard notes.
@@ -420,7 +403,7 @@ pub trait ShieldedOutput<D: Domain> {
 /// let encCiphertext = enc.encrypt_note_plaintext();
 /// let outCiphertext = enc.encrypt_outgoing_plaintext(&cv.commitment().into(), &cmu, &mut rng);
 /// ```
-pub struct NoteEncryption<D: Domain> {
+pub struct NoteEncryption<D: Domain<NP_SIZE, NC_SIZE, COMPACT_SIZE>, const NP_SIZE: usize, const NC_SIZE: usize, const COMPACT_SIZE: usize> {
     epk: D::EphemeralPublicKey,
     esk: D::EphemeralSecretKey,
     note: D::Note,
@@ -430,7 +413,10 @@ pub struct NoteEncryption<D: Domain> {
     ovk: Option<D::OutgoingViewingKey>,
 }
 
-impl<D: Domain> NoteEncryption<D> {
+impl<D: Domain<{ NP_SIZE }, { NC_SIZE }, { COMPACT_SIZE }>,
+    const NP_SIZE: usize,
+    const NC_SIZE: usize,
+    const COMPACT_SIZE: usize> NoteEncryption<D, NP_SIZE, NC_SIZE, COMPACT_SIZE> {
     /// Construct a new note encryption context for the specified note,
     /// recipient, and memo.
     pub fn new(
@@ -483,13 +469,24 @@ impl<D: Domain> NoteEncryption<D> {
     }
 
     /// Generates `encCiphertext` for this note.
-    pub fn encrypt_note_plaintext(&self) -> D::EncNoteCiphertextBytes {
+    pub fn encrypt_note_plaintext(&self) -> [u8; NC_SIZE] {
         let pk_d = D::get_pk_d(&self.note);
         let shared_secret = D::ka_agree_enc(&self.esk, &pk_d);
         let key = D::kdf(shared_secret, &D::epk_bytes(&self.epk));
         let input = D::note_plaintext_bytes(&self.note, &self.to, &self.memo);
 
-        D::encrypt_with_key(key, input)
+        let mut output = [0u8; NC_SIZE];
+        output[..NP_SIZE].copy_from_slice(&input.0);
+        let tag = ChaCha20Poly1305::new(key.as_ref().into())
+            .encrypt_in_place_detached(
+                [0u8; 12][..].into(),
+                &[],
+                &mut output[..NP_SIZE],
+            )
+            .unwrap();
+        output[NP_SIZE..].copy_from_slice(&tag);
+
+        output
     }
 
     /// Generates `outCiphertext` for this note.
@@ -539,7 +536,9 @@ impl<D: Domain> NoteEncryption<D> {
 /// If the note is a compact note, then this function returns `None`.
 ///
 /// For compact notes, use 'try_compact_note_decryption` and `try_compact_note_decryption_inner`.
-pub fn try_note_decryption<D: Domain, Output: ShieldedOutput<D>>(
+pub fn try_note_decryption<D: Domain<{ NP_SIZE }, { NC_SIZE }, { COMPACT_SIZE }>,
+    Output: ShieldedOutput<D, { NP_SIZE }, { NC_SIZE }, { COMPACT_SIZE }>,
+    const NP_SIZE: usize, const NC_SIZE: usize, const COMPACT_SIZE: usize>(
     domain: &D,
     ivk: &D::IncomingViewingKey,
     output: &Output,
@@ -557,7 +556,9 @@ pub fn try_note_decryption<D: Domain, Output: ShieldedOutput<D>>(
 /// If the note is a compact note, then this function returns `None`.
 ///
 /// For compact notes, use 'try_compact_note_decryption` and `try_compact_note_decryption_inner`.
-fn try_note_decryption_inner<D: Domain, Output: ShieldedOutput<D>>(
+fn try_note_decryption_inner<D: Domain<{ NP_SIZE }, { NC_SIZE }, { COMPACT_SIZE }>,
+    Output: ShieldedOutput<D, { NP_SIZE }, { NC_SIZE }, { COMPACT_SIZE }>,
+    const NP_SIZE: usize, const NC_SIZE: usize, const COMPACT_SIZE: usize>(
     domain: &D,
     ivk: &D::IncomingViewingKey,
     ephemeral_key: &EphemeralKeyBytes,
@@ -565,46 +566,55 @@ fn try_note_decryption_inner<D: Domain, Output: ShieldedOutput<D>>(
     key: &D::SymmetricKey,
 ) -> Option<(D::Note, D::Recipient, D::Memo)> {
 
-    let enc_ciphertext: D::EncNoteCiphertextBytes;
+    let enc_ciphertext: [u8; NC_SIZE];
     match output.enc_ciphertext() {
         NoteCiphertext::Full(x) => enc_ciphertext = x,
         NoteCiphertext::Compact(_) => return None,
     }
 
-    let plaintext = D::decrypt_with_key(key, enc_ciphertext);
-    let compact_plaintext = D::convert_to_compact_plaintext(&plaintext);
+    let mut plaintext =
+        NotePlaintextBytes::<{ NP_SIZE }>(enc_ciphertext[..NP_SIZE].try_into().unwrap());
+
+    ChaCha20Poly1305::new(key.as_ref().into())
+        .decrypt_in_place_detached(
+            [0u8; 12][..].into(),
+            &[],
+            &mut plaintext.0,
+            enc_ciphertext[NP_SIZE..].into(),
+        )
+        .ok()?;
 
     let (note, to) = parse_note_plaintext_without_memo_ivk(
         domain,
         ivk,
         ephemeral_key,
         &output.cmstar_bytes(),
-        &compact_plaintext,
+        &plaintext.0,
     )?;
     let memo = domain.extract_memo(&plaintext);
 
     Some((note, to, memo))
 }
 
-/// This function only takes in plaintext bytes with the memo removed, as in compact notes.
-/// If working with full notes, first convert to compact note using `convert_to_compact_plaintext`.
-fn parse_note_plaintext_without_memo_ivk<D: Domain>(
+fn parse_note_plaintext_without_memo_ivk<D: Domain<{ NP_SIZE }, { NC_SIZE }, { COMPACT_SIZE }>,
+    const NP_SIZE: usize, const NC_SIZE: usize, const COMPACT_SIZE: usize>(
     domain: &D,
     ivk: &D::IncomingViewingKey,
     ephemeral_key: &EphemeralKeyBytes,
     cmstar_bytes: &D::ExtractedCommitmentBytes,
-    plaintext: &D::CompactNotePlaintextBytes,
+    plaintext: &[u8],
 ) -> Option<(D::Note, D::Recipient)> {
     let (note, to) = domain.parse_note_plaintext_without_memo_ivk(ivk, plaintext)?;
 
-    if let NoteValidity::Valid = check_note_validity::<D>(&note, ephemeral_key, cmstar_bytes) {
+    if let NoteValidity::Valid = check_note_validity::<D, NP_SIZE, NC_SIZE, COMPACT_SIZE>(&note, ephemeral_key, cmstar_bytes) {
         Some((note, to))
     } else {
         None
     }
 }
 
-fn check_note_validity<D: Domain>(
+fn check_note_validity<D: Domain<{ NP_SIZE }, { NC_SIZE }, { COMPACT_SIZE }>,
+    const NP_SIZE: usize, const NC_SIZE: usize, const COMPACT_SIZE: usize>(
     note: &D::Note,
     ephemeral_key: &EphemeralKeyBytes,
     cmstar_bytes: &D::ExtractedCommitmentBytes,
@@ -643,7 +653,9 @@ fn check_note_validity<D: Domain>(
 /// If the note is a full note, then this function returns `None`.
 ///
 /// For full notes, use 'try_note_decryption` and `try_note_decryption_inner`.
-pub fn try_compact_note_decryption<D: Domain, Output: ShieldedOutput<D>>(
+pub fn try_compact_note_decryption<D: Domain<{ NP_SIZE }, { NC_SIZE }, { COMPACT_SIZE }>,
+    Output: ShieldedOutput<D, { NP_SIZE }, { NC_SIZE }, { COMPACT_SIZE }>,
+    const NP_SIZE: usize, const NC_SIZE: usize, const COMPACT_SIZE: usize>(
     domain: &D,
     ivk: &D::IncomingViewingKey,
     output: &Output,
@@ -661,7 +673,9 @@ pub fn try_compact_note_decryption<D: Domain, Output: ShieldedOutput<D>>(
 /// If the note is a full note, then this function returns `None`.
 ///
 /// For full notes, use 'try_note_decryption` and `try_note_decryption_inner`.
-fn try_compact_note_decryption_inner<D: Domain, Output: ShieldedOutput<D>>(
+fn try_compact_note_decryption_inner<D: Domain<{ NP_SIZE }, { NC_SIZE }, { COMPACT_SIZE }>,
+    Output: ShieldedOutput<D, { NP_SIZE }, { NC_SIZE }, { COMPACT_SIZE }>,
+    const NP_SIZE: usize, const NC_SIZE: usize, const COMPACT_SIZE: usize>(
     domain: &D,
     ivk: &D::IncomingViewingKey,
     ephemeral_key: &EphemeralKeyBytes,
@@ -669,13 +683,18 @@ fn try_compact_note_decryption_inner<D: Domain, Output: ShieldedOutput<D>>(
     key: &D::SymmetricKey,
 ) -> Option<(D::Note, D::Recipient)> {
 
-    let enc_ciphertext: D::CompactEncNoteCiphertextBytes;
+    let enc_ciphertext: [u8; COMPACT_SIZE];
     match output.enc_ciphertext() {
-        NoteCiphertext::<D>::Compact(x) => enc_ciphertext = x,
-        NoteCiphertext::<D>::Full(_) => return None,
+        NoteCiphertext::<NC_SIZE, COMPACT_SIZE>::Compact(x) => enc_ciphertext = x,
+        NoteCiphertext::<NC_SIZE, COMPACT_SIZE>::Full(_) => return None,
     }
 
-    let plaintext = D::decrypt_compact_with_key(key, enc_ciphertext);
+    // Start from block 1 to skip over Poly1305 keying output
+    let mut plaintext = [0; COMPACT_SIZE];
+    plaintext.copy_from_slice(&enc_ciphertext);
+    let mut keystream = ChaCha20::new(key.as_ref().into(), [0u8; 12][..].into());
+    keystream.seek(64);
+    keystream.apply_keystream(&mut plaintext);
 
     parse_note_plaintext_without_memo_ivk(
         domain,
@@ -698,7 +717,9 @@ fn try_compact_note_decryption_inner<D: Domain, Output: ShieldedOutput<D>>(
 ///
 /// This function is only meant to be used with full notes, not compact notes.
 /// If the note is a compact note, then this function returns `None`.
-pub fn try_output_recovery_with_ovk<D: Domain, Output: ShieldedOutput<D>>(
+pub fn try_output_recovery_with_ovk<D: Domain<{ NP_SIZE }, { NC_SIZE }, { COMPACT_SIZE }>,
+    Output: ShieldedOutput<D, { NP_SIZE }, { NC_SIZE }, { COMPACT_SIZE }>,
+    const NP_SIZE: usize, const NC_SIZE: usize, const COMPACT_SIZE: usize>(
     domain: &D,
     ovk: &D::OutgoingViewingKey,
     output: &Output,
@@ -721,17 +742,19 @@ pub fn try_output_recovery_with_ovk<D: Domain, Output: ShieldedOutput<D>>(
 ///
 /// This function is only meant to be used with full notes, not compact notes.
 /// If the note is a compact note, then this function returns `None`.
-pub fn try_output_recovery_with_ock<D: Domain, Output: ShieldedOutput<D>>(
+pub fn try_output_recovery_with_ock<D: Domain<{ NP_SIZE }, { NC_SIZE }, { COMPACT_SIZE }>,
+    Output: ShieldedOutput<D, { NP_SIZE }, { NC_SIZE }, { COMPACT_SIZE }>,
+    const NP_SIZE: usize, const NC_SIZE: usize, const COMPACT_SIZE: usize>(
     domain: &D,
     ock: &OutgoingCipherKey,
     output: &Output,
     out_ciphertext: &[u8; OUT_CIPHERTEXT_SIZE],
 ) -> Option<(D::Note, D::Recipient, D::Memo)> {
 
-    let enc_ciphertext: D::EncNoteCiphertextBytes;
+    let enc_ciphertext: [u8; NC_SIZE];
     match output.enc_ciphertext() {
-        NoteCiphertext::<D>::Full(x) => enc_ciphertext = x,
-        NoteCiphertext::<D>::Compact(_) => return None,
+        NoteCiphertext::<NC_SIZE, COMPACT_SIZE>::Full(x) => enc_ciphertext = x,
+        NoteCiphertext::<NC_SIZE, COMPACT_SIZE>::Compact(_) => return None,
     }
 
     let mut op = OutPlaintextBytes([0; OUT_PLAINTEXT_SIZE]);
@@ -756,11 +779,22 @@ pub fn try_output_recovery_with_ock<D: Domain, Output: ShieldedOutput<D>>(
     // be okay.
     let key = D::kdf(shared_secret, &ephemeral_key);
 
-    let plaintext = D::decrypt_with_key(&key, enc_ciphertext);
-    let compact_plaintext = D::convert_to_compact_plaintext(&plaintext);
+    let mut plaintext = NotePlaintextBytes([0; NP_SIZE]);
+    plaintext
+        .0
+        .copy_from_slice(&enc_ciphertext[..NP_SIZE]);
+
+    ChaCha20Poly1305::new(key.as_ref().into())
+        .decrypt_in_place_detached(
+            [0u8; 12][..].into(),
+            &[],
+            &mut plaintext.0,
+            enc_ciphertext[NP_SIZE..].into(),
+        )
+        .ok()?;
 
     let (note, to) =
-        domain.parse_note_plaintext_without_memo_ovk(&pk_d, &esk, &ephemeral_key, &compact_plaintext)?;
+        domain.parse_note_plaintext_without_memo_ovk(&pk_d, &esk, &ephemeral_key, &plaintext)?;
     let memo = domain.extract_memo(&plaintext);
 
     // ZIP 212: Check that the esk provided to this function is consistent with the esk we
@@ -772,7 +806,7 @@ pub fn try_output_recovery_with_ock<D: Domain, Output: ShieldedOutput<D>>(
     }
 
     if let NoteValidity::Valid =
-        check_note_validity::<D>(&note, &ephemeral_key, &output.cmstar_bytes())
+        check_note_validity::<D, NP_SIZE, NC_SIZE, COMPACT_SIZE>(&note, &ephemeral_key, &output.cmstar_bytes())
     {
         Some((note, to, memo))
     } else {
