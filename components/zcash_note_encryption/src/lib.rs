@@ -340,7 +340,9 @@ pub trait BatchDomain<const NP_SIZE: usize, const NC_SIZE: usize, const COMPACT_
 }
 
 /// Trait that provides access to the components of an encrypted transaction output.
-pub trait ShieldedOutput<D: Domain<{ NP_SIZE }, { NC_SIZE }, { COMPACT_SIZE }>, const NP_SIZE: usize, const NC_SIZE: usize, const COMPACT_SIZE: usize> {
+pub trait ShieldedOutput<D: Domain<{ NP_SIZE }, { NC_SIZE }, { COMPACT_SIZE }>,
+    const NP_SIZE: usize, const NC_SIZE: usize, const COMPACT_SIZE: usize,
+    const CIPHERTEXT_SIZE: usize> {
     /// Exposes the `ephemeral_key` field of the output.
     fn ephemeral_key(&self) -> EphemeralKeyBytes;
 
@@ -348,7 +350,7 @@ pub trait ShieldedOutput<D: Domain<{ NP_SIZE }, { NC_SIZE }, { COMPACT_SIZE }>, 
     fn cmstar_bytes(&self) -> D::ExtractedCommitmentBytes;
 
     /// Exposes the note ciphertext of the output.
-    fn enc_ciphertext(&self) -> NoteCiphertext<NC_SIZE, COMPACT_SIZE>;
+    fn enc_ciphertext(&self) -> &[u8; CIPHERTEXT_SIZE];
 }
 
 /// A struct containing context required for encrypting Sapling and Orchard notes.
@@ -537,7 +539,7 @@ impl<D: Domain<{ NP_SIZE }, { NC_SIZE }, { COMPACT_SIZE }>,
 ///
 /// For compact notes, use 'try_compact_note_decryption` and `try_compact_note_decryption_inner`.
 pub fn try_note_decryption<D: Domain<{ NP_SIZE }, { NC_SIZE }, { COMPACT_SIZE }>,
-    Output: ShieldedOutput<D, { NP_SIZE }, { NC_SIZE }, { COMPACT_SIZE }>,
+    Output: ShieldedOutput<D, { NP_SIZE }, { NC_SIZE }, { COMPACT_SIZE }, { NC_SIZE }>,
     const NP_SIZE: usize, const NC_SIZE: usize, const COMPACT_SIZE: usize>(
     domain: &D,
     ivk: &D::IncomingViewingKey,
@@ -557,7 +559,7 @@ pub fn try_note_decryption<D: Domain<{ NP_SIZE }, { NC_SIZE }, { COMPACT_SIZE }>
 ///
 /// For compact notes, use 'try_compact_note_decryption` and `try_compact_note_decryption_inner`.
 fn try_note_decryption_inner<D: Domain<{ NP_SIZE }, { NC_SIZE }, { COMPACT_SIZE }>,
-    Output: ShieldedOutput<D, { NP_SIZE }, { NC_SIZE }, { COMPACT_SIZE }>,
+    Output: ShieldedOutput<D, { NP_SIZE }, { NC_SIZE }, { COMPACT_SIZE }, { NC_SIZE }>,
     const NP_SIZE: usize, const NC_SIZE: usize, const COMPACT_SIZE: usize>(
     domain: &D,
     ivk: &D::IncomingViewingKey,
@@ -566,11 +568,7 @@ fn try_note_decryption_inner<D: Domain<{ NP_SIZE }, { NC_SIZE }, { COMPACT_SIZE 
     key: &D::SymmetricKey,
 ) -> Option<(D::Note, D::Recipient, D::Memo)> {
 
-    let enc_ciphertext: [u8; NC_SIZE];
-    match output.enc_ciphertext() {
-        NoteCiphertext::Full(x) => enc_ciphertext = x,
-        NoteCiphertext::Compact(_) => return None,
-    }
+    let enc_ciphertext = output.enc_ciphertext();
 
     let mut plaintext =
         NotePlaintextBytes::<{ NP_SIZE }>(enc_ciphertext[..NP_SIZE].try_into().unwrap());
@@ -654,7 +652,7 @@ fn check_note_validity<D: Domain<{ NP_SIZE }, { NC_SIZE }, { COMPACT_SIZE }>,
 ///
 /// For full notes, use 'try_note_decryption` and `try_note_decryption_inner`.
 pub fn try_compact_note_decryption<D: Domain<{ NP_SIZE }, { NC_SIZE }, { COMPACT_SIZE }>,
-    Output: ShieldedOutput<D, { NP_SIZE }, { NC_SIZE }, { COMPACT_SIZE }>,
+    Output: ShieldedOutput<D, { NP_SIZE }, { NC_SIZE }, { COMPACT_SIZE }, { COMPACT_SIZE }>,
     const NP_SIZE: usize, const NC_SIZE: usize, const COMPACT_SIZE: usize>(
     domain: &D,
     ivk: &D::IncomingViewingKey,
@@ -674,7 +672,7 @@ pub fn try_compact_note_decryption<D: Domain<{ NP_SIZE }, { NC_SIZE }, { COMPACT
 ///
 /// For full notes, use 'try_note_decryption` and `try_note_decryption_inner`.
 fn try_compact_note_decryption_inner<D: Domain<{ NP_SIZE }, { NC_SIZE }, { COMPACT_SIZE }>,
-    Output: ShieldedOutput<D, { NP_SIZE }, { NC_SIZE }, { COMPACT_SIZE }>,
+    Output: ShieldedOutput<D, { NP_SIZE }, { NC_SIZE }, { COMPACT_SIZE }, { COMPACT_SIZE }>,
     const NP_SIZE: usize, const NC_SIZE: usize, const COMPACT_SIZE: usize>(
     domain: &D,
     ivk: &D::IncomingViewingKey,
@@ -683,15 +681,11 @@ fn try_compact_note_decryption_inner<D: Domain<{ NP_SIZE }, { NC_SIZE }, { COMPA
     key: &D::SymmetricKey,
 ) -> Option<(D::Note, D::Recipient)> {
 
-    let enc_ciphertext: [u8; COMPACT_SIZE];
-    match output.enc_ciphertext() {
-        NoteCiphertext::<NC_SIZE, COMPACT_SIZE>::Compact(x) => enc_ciphertext = x,
-        NoteCiphertext::<NC_SIZE, COMPACT_SIZE>::Full(_) => return None,
-    }
+    let enc_ciphertext = output.enc_ciphertext();
 
     // Start from block 1 to skip over Poly1305 keying output
     let mut plaintext = [0; COMPACT_SIZE];
-    plaintext.copy_from_slice(&enc_ciphertext);
+    plaintext.copy_from_slice(enc_ciphertext);
     let mut keystream = ChaCha20::new(key.as_ref().into(), [0u8; 12][..].into());
     keystream.seek(64);
     keystream.apply_keystream(&mut plaintext);
@@ -718,7 +712,7 @@ fn try_compact_note_decryption_inner<D: Domain<{ NP_SIZE }, { NC_SIZE }, { COMPA
 /// This function is only meant to be used with full notes, not compact notes.
 /// If the note is a compact note, then this function returns `None`.
 pub fn try_output_recovery_with_ovk<D: Domain<{ NP_SIZE }, { NC_SIZE }, { COMPACT_SIZE }>,
-    Output: ShieldedOutput<D, { NP_SIZE }, { NC_SIZE }, { COMPACT_SIZE }>,
+    Output: ShieldedOutput<D, { NP_SIZE }, { NC_SIZE }, { COMPACT_SIZE }, { NC_SIZE }>,
     const NP_SIZE: usize, const NC_SIZE: usize, const COMPACT_SIZE: usize>(
     domain: &D,
     ovk: &D::OutgoingViewingKey,
@@ -743,7 +737,7 @@ pub fn try_output_recovery_with_ovk<D: Domain<{ NP_SIZE }, { NC_SIZE }, { COMPAC
 /// This function is only meant to be used with full notes, not compact notes.
 /// If the note is a compact note, then this function returns `None`.
 pub fn try_output_recovery_with_ock<D: Domain<{ NP_SIZE }, { NC_SIZE }, { COMPACT_SIZE }>,
-    Output: ShieldedOutput<D, { NP_SIZE }, { NC_SIZE }, { COMPACT_SIZE }>,
+    Output: ShieldedOutput<D, { NP_SIZE }, { NC_SIZE }, { COMPACT_SIZE }, { NC_SIZE }>,
     const NP_SIZE: usize, const NC_SIZE: usize, const COMPACT_SIZE: usize>(
     domain: &D,
     ock: &OutgoingCipherKey,
@@ -751,11 +745,7 @@ pub fn try_output_recovery_with_ock<D: Domain<{ NP_SIZE }, { NC_SIZE }, { COMPAC
     out_ciphertext: &[u8; OUT_CIPHERTEXT_SIZE],
 ) -> Option<(D::Note, D::Recipient, D::Memo)> {
 
-    let enc_ciphertext: [u8; NC_SIZE];
-    match output.enc_ciphertext() {
-        NoteCiphertext::<NC_SIZE, COMPACT_SIZE>::Full(x) => enc_ciphertext = x,
-        NoteCiphertext::<NC_SIZE, COMPACT_SIZE>::Compact(_) => return None,
-    }
+    let enc_ciphertext = output.enc_ciphertext();
 
     let mut op = OutPlaintextBytes([0; OUT_PLAINTEXT_SIZE]);
     op.0.copy_from_slice(&out_ciphertext[..OUT_PLAINTEXT_SIZE]);
