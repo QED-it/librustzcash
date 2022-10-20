@@ -131,7 +131,7 @@ pub trait Domain {
     type SymmetricKey: AsRef<[u8]>;
     type Note;
     type NotePlaintextBytes: AsMut<[u8]>;
-    type EncNoteCiphertextBytes;
+    type EncNoteCiphertextBytes: From<(Self::NotePlaintextBytes, [u8; AEAD_TAG_SIZE])>;
     type CompactNotePlaintextBytes: From<Self::NotePlaintextBytes> + AsMut<[u8]>;
     type CompactEncNoteCiphertextBytes;
     type Recipient;
@@ -296,8 +296,6 @@ pub trait Domain {
     /// `EphemeralSecretKey`.
     fn extract_esk(out_plaintext: &OutPlaintextBytes) -> Option<Self::EphemeralSecretKey>;
 
-    fn ciphertext_from_enc_plaintext_and_tag(enc_plaintext: Self::NotePlaintextBytes, tag: &[u8]) -> Self::EncNoteCiphertextBytes;
-
     fn separate_tag_from_ciphertext(enc_ciphertext: Self::EncNoteCiphertextBytes) -> (Self::NotePlaintextBytes, [u8; AEAD_TAG_SIZE]);
 
     fn convert_to_compact_plaintext_type(enc_ciphertext: Self::CompactEncNoteCiphertextBytes) -> Self::CompactNotePlaintextBytes;
@@ -442,7 +440,7 @@ impl<D: Domain> NoteEncryption<D> {
                 input.as_mut(),
             )
             .unwrap();
-        D::ciphertext_from_enc_plaintext_and_tag(input, &tag)
+        D::EncNoteCiphertextBytes::from((input, tag.into()))
     }
 
     /// Generates `outCiphertext` for this note.
