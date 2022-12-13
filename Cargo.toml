@@ -21,3 +21,5 @@ codegen-units = 1
 [patch.crates-io]
 zcash_encoding = { path = "components/zcash_encoding" }
 zcash_note_encryption = { path = "components/zcash_note_encryption" }
+orchard = { version = "0.3", git = "https://github.com/QED-it/orchard", rev = "e5324d83629cf7e2bf476ba0471143ecd2d2e991" }
+group = { git = "https://github.com/zkcrypto/group.git", rev = "f61e3e420ed1220c8f1f80988f8c6c5e202d8715" }
