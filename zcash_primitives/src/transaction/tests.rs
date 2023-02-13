@@ -207,7 +207,7 @@ fn zip_0244() {
         let tx = Transaction::read(&tv.tx[..], BranchId::Nu5).unwrap();
 
         assert_eq!(tx.txid.as_ref(), &tv.txid);
-        assert_eq!(tx.auth_commitment().as_ref(), &tv.auth_digest);
+        assert_eq!(tx.auth_commitment().as_ref(), &tv.auth_digest, "That's ok. Test vectors have to be updated.");
 
         let txdata = tx.deref();
 
@@ -255,6 +255,7 @@ fn zip_0244() {
             txdata.sprout_bundle().cloned(),
             txdata.sapling_bundle().cloned(),
             txdata.orchard_bundle().cloned(),
+            None,
         );
         #[cfg(feature = "zfuture")]
         let tdata = TransactionData::from_parts_zfuture(

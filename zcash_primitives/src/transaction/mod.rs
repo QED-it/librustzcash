@@ -20,6 +20,7 @@ use std::fmt;
 use std::fmt::Debug;
 use std::io::{self, Read, Write};
 use std::ops::Deref;
+use orchard::issuance::{IssueBundle, Signed};
 use zcash_encoding::{Array, CompactSize, Vector};
 
 use crate::{
@@ -31,6 +32,7 @@ use self::{
     components::{
         amount::{Amount, BalanceError},
         orchard as orchard_serialization,
+        zsa as zsa_serialization,
         sapling::{
             self, OutputDescription, OutputDescriptionV5, SpendDescription, SpendDescriptionV5,
         },
@@ -308,6 +310,7 @@ pub struct TransactionData<A: Authorization> {
     sprout_bundle: Option<sprout::Bundle>,
     sapling_bundle: Option<sapling::Bundle<A::SaplingAuth>>,
     orchard_bundle: Option<orchard::bundle::Bundle<A::OrchardAuth, Amount>>,
+    zsa_bundle: Option<IssueBundle<Signed>>,
     #[cfg(feature = "zfuture")]
     tze_bundle: Option<tze::Bundle<A::TzeAuth>>,
 }
@@ -323,6 +326,7 @@ impl<A: Authorization> TransactionData<A> {
         sprout_bundle: Option<sprout::Bundle>,
         sapling_bundle: Option<sapling::Bundle<A::SaplingAuth>>,
         orchard_bundle: Option<orchard::Bundle<A::OrchardAuth, Amount>>,
+        zsa_bundle: Option<IssueBundle<Signed>>,
     ) -> Self {
         TransactionData {
             version,
@@ -333,6 +337,7 @@ impl<A: Authorization> TransactionData<A> {
             sprout_bundle,
             sapling_bundle,
             orchard_bundle,
+            zsa_bundle,
             #[cfg(feature = "zfuture")]
             tze_bundle: None,
         }
@@ -360,6 +365,7 @@ impl<A: Authorization> TransactionData<A> {
             sprout_bundle,
             sapling_bundle,
             orchard_bundle,
+            zsa_bundle: None,
             tze_bundle,
         }
     }
@@ -394,6 +400,10 @@ impl<A: Authorization> TransactionData<A> {
 
     pub fn orchard_bundle(&self) -> Option<&orchard::Bundle<A::OrchardAuth, Amount>> {
         self.orchard_bundle.as_ref()
+    }
+
+    pub fn zsa_bundle(&self) -> Option<&IssueBundle<Signed>> {
+        self.zsa_bundle.as_ref()
     }
 
     #[cfg(feature = "zfuture")]
@@ -442,6 +452,7 @@ impl<A: Authorization> TransactionData<A> {
             digester.digest_transparent(self.transparent_bundle.as_ref()),
             digester.digest_sapling(self.sapling_bundle.as_ref()),
             digester.digest_orchard(self.orchard_bundle.as_ref()),
+            digester.digest_zsa(self.zsa_bundle.as_ref()),
             #[cfg(feature = "zfuture")]
             digester.digest_tze(self.tze_bundle.as_ref()),
         )
@@ -475,6 +486,7 @@ impl<A: Authorization> TransactionData<A> {
             sprout_bundle: self.sprout_bundle,
             sapling_bundle: f_sapling(self.sapling_bundle),
             orchard_bundle: f_orchard(self.orchard_bundle),
+            zsa_bundle: self.zsa_bundle,
             #[cfg(feature = "zfuture")]
             tze_bundle: f_tze(self.tze_bundle),
         }
@@ -504,6 +516,7 @@ impl<A: Authorization> TransactionData<A> {
                     |f, a| f.map_authorization(a),
                 )
             }),
+            zsa_bundle: self.zsa_bundle,
             #[cfg(feature = "zfuture")]
             tze_bundle: self.tze_bundle.map(|b| b.map_authorization(f_tze)),
         }
@@ -658,6 +671,7 @@ impl Transaction {
                     )
                 }),
                 orchard_bundle: None,
+                zsa_bundle: None,
                 #[cfg(feature = "zfuture")]
                 tze_bundle: None,
             },
@@ -693,6 +707,7 @@ impl Transaction {
         let transparent_bundle = Self::read_transparent(&mut reader)?;
         let sapling_bundle = Self::read_v5_sapling(&mut reader)?;
         let orchard_bundle = orchard_serialization::read_v5_bundle(&mut reader)?;
+        let zsa_bundle = zsa_serialization::read_v5_bundle(&mut reader)?;
 
         #[cfg(feature = "zfuture")]
         let tze_bundle = if version.has_tze() {
@@ -710,6 +725,7 @@ impl Transaction {
             sprout_bundle: None,
             sapling_bundle,
             orchard_bundle,
+            zsa_bundle,
             #[cfg(feature = "zfuture")]
             tze_bundle,
         };
@@ -912,6 +928,7 @@ impl Transaction {
         self.write_transparent(&mut writer)?;
         self.write_v5_sapling(&mut writer)?;
         orchard_serialization::write_v5_bundle(self.orchard_bundle.as_ref(), &mut writer)?;
+        zsa_serialization::write_v5_bundle(self.zsa_bundle.as_ref(), &mut writer)?;
         #[cfg(feature = "zfuture")]
         self.write_tze(&mut writer)?;
         Ok(())
@@ -1024,6 +1041,7 @@ pub struct TxDigests<A> {
     pub transparent_digests: Option<TransparentDigests<A>>,
     pub sapling_digest: Option<A>,
     pub orchard_digest: Option<A>,
+    pub zsa_digest: Option<A>,
     #[cfg(feature = "zfuture")]
     pub tze_digests: Option<TzeDigests<A>>,
 }
@@ -1033,6 +1051,7 @@ pub trait TransactionDigest<A: Authorization> {
     type TransparentDigest;
     type SaplingDigest;
     type OrchardDigest;
+    type ZsaDigest;
 
     #[cfg(feature = "zfuture")]
     type TzeDigest;
@@ -1062,6 +1081,11 @@ pub trait TransactionDigest<A: Authorization> {
         orchard_bundle: Option<&orchard::Bundle<A::OrchardAuth, Amount>>,
     ) -> Self::OrchardDigest;
 
+    fn digest_zsa(
+        &self,
+        zsa_bundle: Option<&IssueBundle<Signed>>,
+    ) -> Self::ZsaDigest;
+
     #[cfg(feature = "zfuture")]
     fn digest_tze(&self, tze_bundle: Option<&tze::Bundle<A::TzeAuth>>) -> Self::TzeDigest;
 
@@ -1071,6 +1095,7 @@ pub trait TransactionDigest<A: Authorization> {
         transparent_digest: Self::TransparentDigest,
         sapling_digest: Self::SaplingDigest,
         orchard_digest: Self::OrchardDigest,
+        zsa_digest: Self::ZsaDigest,
         #[cfg(feature = "zfuture")] tze_digest: Self::TzeDigest,
     ) -> Self::Digest;
 }
@@ -1134,7 +1159,8 @@ pub mod testing {
                 transparent_bundle,
                 sprout_bundle: None,
                 sapling_bundle,
-                orchard_bundle
+                orchard_bundle,
+                zsa_bundle: None
             }
         }
     }
@@ -1161,6 +1187,7 @@ pub mod testing {
                 sprout_bundle: None,
                 sapling_bundle,
                 orchard_bundle,
+                zsa_bundle: None,
                 tze_bundle
             }
         }
