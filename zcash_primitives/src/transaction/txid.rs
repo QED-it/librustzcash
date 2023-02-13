@@ -6,7 +6,8 @@ use blake2b_simd::{Hash as Blake2bHash, Params, State};
 use byteorder::{LittleEndian, WriteBytesExt};
 use ff::PrimeField;
 use group::GroupEncoding;
-use orchard::bundle::{self as orchard};
+use orchard::issuance::{IssueBundle, Signed};
+use orchard::bundle::{self as orchardbundle};
 
 use crate::consensus::{BlockHeight, BranchId};
 
@@ -297,6 +298,7 @@ impl<A: Authorization> TransactionDigest<A> for TxIdDigester {
     type TransparentDigest = Option<TransparentDigests<Blake2bHash>>;
     type SaplingDigest = Option<Blake2bHash>;
     type OrchardDigest = Option<Blake2bHash>;
+    type ZsaDigest = Option<Blake2bHash>;
 
     #[cfg(feature = "zfuture")]
     type TzeDigest = Option<TzeDigests<Blake2bHash>>;
@@ -329,9 +331,16 @@ impl<A: Authorization> TransactionDigest<A> for TxIdDigester {
 
     fn digest_orchard(
         &self,
-        orchard_bundle: Option<&orchard::Bundle<A::OrchardAuth, Amount>>,
+        orchard_bundle: Option<&orchardbundle::Bundle<A::OrchardAuth, Amount>>,
     ) -> Self::OrchardDigest {
         orchard_bundle.map(|b| b.commitment().0)
+    }
+
+    fn digest_zsa(
+        &self,
+        zsa_bundle: Option<&IssueBundle<Signed>>,
+    ) -> Self::ZsaDigest {
+        zsa_bundle.map(|b| b.commitment().0)
     }
 
     #[cfg(feature = "zfuture")]
@@ -345,6 +354,7 @@ impl<A: Authorization> TransactionDigest<A> for TxIdDigester {
         transparent_digests: Self::TransparentDigest,
         sapling_digest: Self::SaplingDigest,
         orchard_digest: Self::OrchardDigest,
+        zsa_digest: Self::ZsaDigest,
         #[cfg(feature = "zfuture")] tze_digests: Self::TzeDigest,
     ) -> Self::Digest {
         TxDigests {
@@ -352,6 +362,7 @@ impl<A: Authorization> TransactionDigest<A> for TxIdDigester {
             transparent_digests,
             sapling_digest,
             orchard_digest,
+            zsa_digest,
             #[cfg(feature = "zfuture")]
             tze_digests,
         }
@@ -384,7 +395,7 @@ pub(crate) fn to_hash(
     .unwrap();
     h.write_all(
         orchard_digest
-            .unwrap_or_else(orchard::commitments::hash_bundle_txid_empty)
+            .unwrap_or_else(orchardbundle::commitments::hash_bundle_txid_empty)
             .as_bytes(),
     )
     .unwrap();
@@ -430,6 +441,7 @@ impl TransactionDigest<Authorized> for BlockTxCommitmentDigester {
     type TransparentDigest = Blake2bHash;
     type SaplingDigest = Blake2bHash;
     type OrchardDigest = Blake2bHash;
+    type ZsaDigest = Blake2bHash;
 
     #[cfg(feature = "zfuture")]
     type TzeDigest = Blake2bHash;
@@ -484,12 +496,21 @@ impl TransactionDigest<Authorized> for BlockTxCommitmentDigester {
 
     fn digest_orchard(
         &self,
-        orchard_bundle: Option<&orchard::Bundle<orchard::Authorized, Amount>>,
+        orchard_bundle: Option<&orchardbundle::Bundle<orchardbundle::Authorized, Amount>>,
     ) -> Self::OrchardDigest {
-        orchard_bundle.map_or_else(orchard::commitments::hash_bundle_auth_empty, |b| {
+        orchard_bundle.map_or_else(orchardbundle::commitments::hash_bundle_auth_empty, |b| {
             b.authorizing_commitment().0
         })
     }
+    fn digest_zsa(
+        &self,
+        zsa_bundle: Option<&IssueBundle<Signed>>,
+    ) -> Self::OrchardDigest {
+        zsa_bundle.map_or_else(orchardbundle::commitments::hash_bundle_auth_empty, |b| {
+            b.authorizing_commitment().0
+        })
+    }
+
 
     #[cfg(feature = "zfuture")]
     fn digest_tze(&self, tze_bundle: Option<&tze::Bundle<tze::Authorized>>) -> Blake2bHash {
@@ -508,9 +529,10 @@ impl TransactionDigest<Authorized> for BlockTxCommitmentDigester {
         transparent_digest: Self::TransparentDigest,
         sapling_digest: Self::SaplingDigest,
         orchard_digest: Self::OrchardDigest,
+        zsa_digest: Self::ZsaDigest,
         #[cfg(feature = "zfuture")] tze_digest: Self::TzeDigest,
     ) -> Self::Digest {
-        let digests = [transparent_digest, sapling_digest, orchard_digest];
+        let digests = [transparent_digest, sapling_digest, orchard_digest, zsa_digest];
 
         let mut personal = [0; 16];
         personal[..12].copy_from_slice(ZCASH_AUTH_PERSONALIZATION_PREFIX);
