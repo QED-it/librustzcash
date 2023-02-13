@@ -6,6 +6,8 @@ pub mod sapling;
 pub mod sprout;
 pub mod transparent;
 pub mod tze;
+pub mod zsa;
+
 pub use self::{
     amount::Amount,
     sapling::{OutputDescription, SpendDescription},
