@@ -17,14 +17,19 @@ use crate::transaction::components::orchard::{read_nullifier, read_signature};
 pub fn read_v5_bundle<R: Read>(
     mut reader: R,
 ) -> io::Result<Option<IssueBundle<Signed>>> {
-    let ik = read_ik(&mut reader);
-    let authorization = read_authorization(&mut reader);
     let actions = Vector::read(&mut reader, |r| read_action(r))?;
-    Ok(Some(IssueBundle::from_parts(
-        ik?,
-        actions,
-        authorization?,
-    )))
+    if actions.is_empty() {
+        Ok(None)
+    } else {
+        let ik = read_ik(&mut reader);
+        let authorization = read_authorization(&mut reader);
+
+        Ok(Some(IssueBundle::from_parts(
+            ik?,
+            actions,
+            authorization?,
+        )))
+    }
 }
 
 fn read_ik<R: Read>(mut reader: R) -> io::Result<IssuanceValidatingKey>  {
@@ -91,15 +96,15 @@ pub fn write_v5_bundle<W: Write>(
     mut writer: W,
 ) -> io::Result<()> {
     if let Some(bundle) = &bundle {
-        writer.write_all(&bundle.ik().to_bytes())?;
-        writer.write_all(&<[u8; 64]>::from(
-            bundle.authorization().signature(),
-        ))?;
         Array::write(
             &mut writer,
             bundle.actions(),
             |w, action| write_issue_action(action, w),
         )?;
+        writer.write_all(&bundle.ik().to_bytes())?;
+        writer.write_all(&<[u8; 64]>::from(
+            bundle.authorization().signature(),
+        ))?;
 
     } else {
         CompactSize::write(&mut writer, 0)?;
