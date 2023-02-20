@@ -378,7 +378,7 @@ impl<'a, P: consensus::Parameters, R: RngCore> Builder<'a, P, R> {
             sprout_bundle: None,
             sapling_bundle,
             orchard_bundle: None,
-            zsa_bundle: None,
+            issue_bundle: None,
             #[cfg(feature = "zfuture")]
             tze_bundle,
         };
@@ -432,7 +432,7 @@ impl<'a, P: consensus::Parameters, R: RngCore> Builder<'a, P, R> {
             sprout_bundle: unauthed_tx.sprout_bundle,
             sapling_bundle,
             orchard_bundle: None,
-            zsa_bundle: None,
+            issue_bundle: None,
             #[cfg(feature = "zfuture")]
             tze_bundle,
         };
