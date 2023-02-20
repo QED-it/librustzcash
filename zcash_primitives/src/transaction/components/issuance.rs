@@ -1,5 +1,5 @@
+/// Functions for parsing & serialization of the issuance bundle components.
 use std::io;
-/// Functions for parsing & serialization of ZSA issuance bundle components.
 use std::io::{Read, Write};
 use bitvec::macros::internal::funty::Fundamental;
 use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};

@@ -6,7 +6,7 @@ pub mod sapling;
 pub mod sprout;
 pub mod transparent;
 pub mod tze;
-pub mod zsa;
+pub mod issuance;
 
 pub use self::{
     amount::Amount,
