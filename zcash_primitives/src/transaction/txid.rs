@@ -296,7 +296,7 @@ impl<A: Authorization> TransactionDigest<A> for TxIdDigester {
     type TransparentDigest = Option<TransparentDigests<Blake2bHash>>;
     type SaplingDigest = Option<Blake2bHash>;
     type OrchardDigest = Option<Blake2bHash>;
-    type ZsaDigest = Option<Blake2bHash>;
+    type IssueDigest = Option<Blake2bHash>;
 
     #[cfg(feature = "zfuture")]
     type TzeDigest = Option<TzeDigests<Blake2bHash>>;
@@ -334,11 +334,11 @@ impl<A: Authorization> TransactionDigest<A> for TxIdDigester {
         orchard_bundle.map(|b| b.commitment().0)
     }
 
-    fn digest_zsa(
+    fn digest_issue(
         &self,
-        zsa_bundle: Option<&IssueBundle<Signed>>,
-    ) -> Self::ZsaDigest {
-        zsa_bundle.map(|b| b.commitment().0)
+        issue_bundle: Option<&IssueBundle<Signed>>,
+    ) -> Self::IssueDigest {
+        issue_bundle.map(|b| b.commitment().0)
     }
 
     #[cfg(feature = "zfuture")]
@@ -352,7 +352,7 @@ impl<A: Authorization> TransactionDigest<A> for TxIdDigester {
         transparent_digests: Self::TransparentDigest,
         sapling_digest: Self::SaplingDigest,
         orchard_digest: Self::OrchardDigest,
-        zsa_digest: Self::ZsaDigest,
+        issue_digest: Self::IssueDigest,
         #[cfg(feature = "zfuture")] tze_digests: Self::TzeDigest,
     ) -> Self::Digest {
         TxDigests {
@@ -360,7 +360,7 @@ impl<A: Authorization> TransactionDigest<A> for TxIdDigester {
             transparent_digests,
             sapling_digest,
             orchard_digest,
-            zsa_digest,
+            issue_digest,
             #[cfg(feature = "zfuture")]
             tze_digests,
         }
@@ -439,7 +439,7 @@ impl TransactionDigest<Authorized> for BlockTxCommitmentDigester {
     type TransparentDigest = Blake2bHash;
     type SaplingDigest = Blake2bHash;
     type OrchardDigest = Blake2bHash;
-    type ZsaDigest = Blake2bHash;
+    type IssueDigest = Blake2bHash;
 
     #[cfg(feature = "zfuture")]
     type TzeDigest = Blake2bHash;
@@ -500,11 +500,11 @@ impl TransactionDigest<Authorized> for BlockTxCommitmentDigester {
             b.authorizing_commitment().0
         })
     }
-    fn digest_zsa(
+    fn digest_issue(
         &self,
-        zsa_bundle: Option<&IssueBundle<Signed>>,
+        issue_bundle: Option<&IssueBundle<Signed>>,
     ) -> Self::OrchardDigest {
-        zsa_bundle.map_or_else(orchardbundle::commitments::hash_bundle_auth_empty, |b| {
+        issue_bundle.map_or_else(orchardbundle::commitments::hash_bundle_auth_empty, |b| {
             b.authorizing_commitment().0
         })
     }
@@ -527,10 +527,10 @@ impl TransactionDigest<Authorized> for BlockTxCommitmentDigester {
         transparent_digest: Self::TransparentDigest,
         sapling_digest: Self::SaplingDigest,
         orchard_digest: Self::OrchardDigest,
-        zsa_digest: Self::ZsaDigest,
+        issue_digest: Self::IssueDigest,
         #[cfg(feature = "zfuture")] tze_digest: Self::TzeDigest,
     ) -> Self::Digest {
-        let digests = [transparent_digest, sapling_digest, orchard_digest, zsa_digest];
+        let digests = [transparent_digest, sapling_digest, orchard_digest, issue_digest];
 
         let mut personal = [0; 16];
         personal[..12].copy_from_slice(ZCASH_AUTH_PERSONALIZATION_PREFIX);
