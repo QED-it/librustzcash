@@ -1084,6 +1084,7 @@ pub mod testing {
 
     use super::{
         components::{
+            issuance::testing::{self as issuance},
             orchard::testing::{self as orchard},
             sapling::testing::{self as sapling},
             transparent::testing::{self as transparent},
@@ -1147,6 +1148,7 @@ pub mod testing {
             transparent_bundle in transparent::arb_bundle(),
             sapling_bundle in sapling::arb_bundle_for_version(version),
             orchard_bundle in orchard::arb_bundle_for_version(version),
+            issue_bundle in issuance::arb_bundle_for_version(version),
             tze_bundle in tze::arb_bundle(consensus_branch_id),
             version in Just(version)
         ) -> TransactionData<Authorized> {
@@ -1159,7 +1161,7 @@ pub mod testing {
                 sprout_bundle: None,
                 sapling_bundle,
                 orchard_bundle,
-                issue_bundle: None,
+                issue_bundle,
                 tze_bundle
             }
         }
