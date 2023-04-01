@@ -131,3 +131,32 @@ fn write_note<W: Write>(note: &Note, writer: &mut W) -> io::Result<()> {
     writer.write_all(note.rseed().as_bytes())?;
     Ok(())
 }
+
+#[cfg(any(test, feature = "test-dependencies"))]
+pub mod testing {
+    use proptest::prelude::*;
+
+    use orchard::issuance::{IssueBundle, Signed, testing::{self as t_issue}};
+
+    use crate::transaction::{
+        TxVersion,
+    };
+
+    prop_compose! {
+        pub fn arb_issue_bundle(n_actions: usize)(
+            bundle in t_issue::arb_signed_issue_bundle(n_actions)
+        ) -> IssueBundle<Signed> {
+            bundle
+        }
+    }
+
+    pub fn arb_bundle_for_version(
+        v: TxVersion,
+    ) -> impl Strategy<Value = Option<IssueBundle<Signed>>> {
+        if v.has_orchard() {
+            Strategy::boxed((1usize..100).prop_flat_map(|n| prop::option::of(arb_issue_bundle(n))))
+        } else {
+            Strategy::boxed(Just(None))
+        }
+    }
+}
