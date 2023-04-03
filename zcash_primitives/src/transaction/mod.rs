@@ -352,6 +352,7 @@ impl<A: Authorization> TransactionData<A> {
         sprout_bundle: Option<sprout::Bundle>,
         sapling_bundle: Option<sapling::Bundle<A::SaplingAuth>>,
         orchard_bundle: Option<orchard::Bundle<A::OrchardAuth, Amount>>,
+        issue_bundle: Option<IssueBundle<Signed>>,
         tze_bundle: Option<tze::Bundle<A::TzeAuth>>,
     ) -> Self {
         TransactionData {
@@ -363,7 +364,7 @@ impl<A: Authorization> TransactionData<A> {
             sprout_bundle,
             sapling_bundle,
             orchard_bundle,
-            issue_bundle: None,
+            issue_bundle,
             tze_bundle,
         }
     }
@@ -1122,6 +1123,7 @@ pub mod testing {
             transparent_bundle in transparent::arb_bundle(),
             sapling_bundle in sapling::arb_bundle_for_version(version),
             orchard_bundle in orchard::arb_bundle_for_version(version),
+            issue_bundle in issuance::arb_bundle_for_version(version),
             version in Just(version)
         ) -> TransactionData<Authorized> {
             TransactionData {
@@ -1133,7 +1135,7 @@ pub mod testing {
                 sprout_bundle: None,
                 sapling_bundle,
                 orchard_bundle,
-                issue_bundle: None
+                issue_bundle,
             }
         }
     }
