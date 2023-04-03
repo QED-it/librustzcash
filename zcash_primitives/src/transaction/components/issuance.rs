@@ -81,7 +81,7 @@ fn read_recipient<R: Read>(mut reader: R) -> io::Result<Address> {
 fn read_asset<R: Read>(mut reader: R) -> io::Result<AssetId> {
     let mut bytes = [0u8; 32];
     reader.read_exact(&mut bytes)?;
-    Ok(Option::from(AssetId::from_bytes(&bytes)).unwrap())
+    Ok(Option::from(AssetId::native()/*AssetId::from_bytes(&bytes)*/).unwrap())
 }
 
 fn read_rseed<R: Read>(mut reader: R, nullifier: &Nullifier) -> io::Result<RandomSeed> {
