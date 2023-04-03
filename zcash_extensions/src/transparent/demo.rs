@@ -694,6 +694,7 @@ mod tests {
             None,
             None,
             None,
+            None,
             Some(Bundle {
                 vin: vec![],
                 vout: vec![out_a],
@@ -725,6 +726,7 @@ mod tests {
             None,
             None,
             None,
+            None,
             Some(Bundle {
                 vin: vec![in_b],
                 vout: vec![out_b],
@@ -748,6 +750,7 @@ mod tests {
             BranchId::ZFuture,
             0,
             0u32.into(),
+            None,
             None,
             None,
             None,
