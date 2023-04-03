@@ -55,6 +55,13 @@ fn check_roundtrip(tx: Transaction) -> Result<(), TestCaseError> {
         tx.orchard_bundle.as_ref().map(|v| *v.value_balance()),
         txo.orchard_bundle.as_ref().map(|v| *v.value_balance())
     );
+
+    if tx.issue_bundle.is_some() {
+        prop_assert_eq!(
+            tx.issue_bundle.as_ref().unwrap().commitment().0,
+            txo.issue_bundle.as_ref().unwrap().commitment().0
+        );
+    }
     Ok(())
 }
 

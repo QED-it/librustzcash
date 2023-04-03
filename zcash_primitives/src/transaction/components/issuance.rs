@@ -9,7 +9,7 @@ use orchard::{Address, Note};
 use orchard::keys::IssuanceValidatingKey;
 use orchard::note::{AssetId, Nullifier, RandomSeed};
 use orchard::value::NoteValue;
-use zcash_encoding::{Array, CompactSize, Vector};
+use zcash_encoding::{CompactSize, Vector};
 use crate::transaction::components::orchard::{read_nullifier, read_signature};
 
 
@@ -47,9 +47,8 @@ fn read_authorization<R: Read>(mut reader: R) -> io::Result<Signed>  {
 fn read_action<R: Read>(mut reader: R) -> io::Result<IssueAction> {
     let finalize = reader.read_u8()?.as_bool();
     let notes = Vector::read(&mut reader, |r| read_note(r))?;
-    let mut asset_descr: String = String::new();
-    reader.read_to_string(&mut asset_descr)?;
-
+    let asset_descr_bytes = Vector::read(&mut reader, |r| r.read_u8())?;
+    let asset_descr: String = String::from_utf8(asset_descr_bytes).unwrap();
     Ok(IssueAction::from_parts(
         asset_descr.to_owned(),
         NonEmpty::from_vec(notes).unwrap(),
@@ -96,30 +95,31 @@ pub fn write_v5_bundle<W: Write>(
     mut writer: W,
 ) -> io::Result<()> {
     if let Some(bundle) = &bundle {
-        Array::write(
+        Vector::write(
             &mut writer,
             bundle.actions(),
-            |w, action| write_issue_action(action, w),
+            |w, action| write_action(action, w),
         )?;
         writer.write_all(&bundle.ik().to_bytes())?;
         writer.write_all(&<[u8; 64]>::from(
             bundle.authorization().signature(),
         ))?;
-
     } else {
         CompactSize::write(&mut writer, 0)?;
     }
     Ok(())
 }
 
-fn write_issue_action<W: Write>(action: &IssueAction, mut writer: W) -> io::Result<()> {
+fn write_action<W: Write>(action: &IssueAction, mut writer: W) -> io::Result<()> {
     writer.write_u8(action.is_finalized().as_u8())?;
-
     Vector::write_nonempty(&mut writer, action.notes(), |w, note| {
         write_note(note, w)
     })?;
-
-    writer.write_all(action.asset_desc().as_bytes())?;
+    Vector::write(
+        &mut writer,
+        action.asset_desc().as_bytes(),
+        |w, b| w.write_u8(*b),
+    )?;
     Ok(())
 }
 
