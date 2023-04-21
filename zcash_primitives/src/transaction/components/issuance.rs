@@ -9,7 +9,7 @@ use orchard::{Address, Note};
 use orchard::keys::IssuanceValidatingKey;
 use orchard::note::{AssetId, Nullifier, RandomSeed};
 use orchard::value::NoteValue;
-use zcash_encoding::{CompactSize, Vector};
+use zcash_encoding::Vector;
 use crate::transaction::components::orchard::{read_nullifier, read_signature};
 
 
