@@ -22,11 +22,7 @@ pub fn read_v5_bundle<R: Read>(
     let actions = match actions_res {
         Ok(actions) => actions,
         Err(e) => {
-            return if e.kind() == io::ErrorKind::UnexpectedEof {
-                Ok(None)
-            } else {
-                Err(e)
-            }
+            Ok(None)
         }
     };
 
