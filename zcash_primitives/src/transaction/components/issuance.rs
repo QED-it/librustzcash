@@ -22,7 +22,7 @@ pub fn read_v5_bundle<R: Read>(
     let actions = match actions_res {
         Ok(actions) => actions,
         Err(e) => {
-            Ok(None)
+            return Ok(None)
         }
     };
 
