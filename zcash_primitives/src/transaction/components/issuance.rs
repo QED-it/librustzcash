@@ -17,7 +17,19 @@ use crate::transaction::components::orchard::{read_nullifier, read_signature};
 pub fn read_v5_bundle<R: Read>(
     mut reader: R,
 ) -> io::Result<Option<IssueBundle<Signed>>> {
-    let actions = Vector::read(&mut reader, |r| read_action(r))?;
+    let actions_res = Vector::read(&mut reader, |r| read_action(r));
+
+    let actions = match actions_res {
+        Ok(actions) => actions,
+        Err(e) => {
+            return if e.kind() == io::ErrorKind::UnexpectedEof {
+                Ok(None)
+            } else {
+                Err(e)
+            }
+        }
+    };
+
     if actions.is_empty() {
         Ok(None)
     } else {
@@ -104,8 +116,6 @@ pub fn write_v5_bundle<W: Write>(
         writer.write_all(&<[u8; 64]>::from(
             bundle.authorization().signature(),
         ))?;
-    } else {
-        CompactSize::write(&mut writer, 0)?;
     }
     Ok(())
 }
