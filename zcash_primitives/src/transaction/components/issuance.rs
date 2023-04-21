@@ -17,7 +17,15 @@ use crate::transaction::components::orchard::{read_nullifier, read_signature};
 pub fn read_v5_bundle<R: Read>(
     mut reader: R,
 ) -> io::Result<Option<IssueBundle<Signed>>> {
-    let actions = Vector::read(&mut reader, |r| read_action(r))?;
+    let actions_res = Vector::read(&mut reader, |r| read_action(r));
+
+    let actions = match actions_res {
+        Ok(actions) => actions,
+        Err(e) => {
+            Ok(None)
+        }
+    };
+
     if actions.is_empty() {
         Ok(None)
     } else {
