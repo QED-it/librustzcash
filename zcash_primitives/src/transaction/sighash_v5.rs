@@ -195,6 +195,7 @@ pub fn v5_signature_hash<
         ),
         txid_parts.sapling_digest,
         txid_parts.orchard_digest,
+        txid_parts.issue_digest,
         #[cfg(feature = "zfuture")]
         tx.tze_bundle
             .as_ref()

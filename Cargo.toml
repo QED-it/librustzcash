@@ -23,4 +23,4 @@ zcash_encoding = { path = "components/zcash_encoding" }
 zcash_note_encryption = { path = "components/zcash_note_encryption" }
 schemer = { git = "https://github.com/aschampion/schemer.git", rev = "6726b60f43f72c6e24a18d31be0ec7d42829e5e1" }
 schemer-rusqlite = { git = "https://github.com/aschampion/schemer.git", rev = "6726b60f43f72c6e24a18d31be0ec7d42829e5e1" }
-orchard = { version = "0.3", git = "https://github.com/QED-it/orchard", rev = "7cb04b31be6a313590334361c6f81788653e77ef" }
+orchard = { version = "0.3", git = "https://github.com/QED-it/orchard", rev = "4606032107dfc02edae212a2b51e2b719bce2296" } # branch 'ivk-to-bytes-visibility'

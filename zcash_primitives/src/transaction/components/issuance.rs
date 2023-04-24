@@ -1,29 +1,24 @@
-/// Functions for parsing & serialization of the issuance bundle components.
-use std::io;
-use std::io::{Read, Write};
+use crate::transaction::components::orchard::{read_nullifier, read_signature};
 use bitvec::macros::internal::funty::Fundamental;
 use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
 use nonempty::NonEmpty;
 use orchard::issuance::{IssueAction, IssueBundle, Signed};
-use orchard::{Address, Note};
 use orchard::keys::IssuanceValidatingKey;
-use orchard::note::{AssetId, Nullifier, RandomSeed};
+use orchard::note::{AssetBase, Nullifier, RandomSeed};
 use orchard::value::NoteValue;
+use orchard::{Address, Note};
+/// Functions for parsing & serialization of the issuance bundle components.
+use std::io;
+use std::io::{Read, Write};
 use zcash_encoding::Vector;
-use crate::transaction::components::orchard::{read_nullifier, read_signature};
-
 
 /// Reads an [`orchard::Bundle`] from a v5 transaction format.
-pub fn read_v5_bundle<R: Read>(
-    mut reader: R,
-) -> io::Result<Option<IssueBundle<Signed>>> {
+pub fn read_v5_bundle<R: Read>(mut reader: R) -> io::Result<Option<IssueBundle<Signed>>> {
     let actions_res = Vector::read(&mut reader, |r| read_action(r));
 
     let actions = match actions_res {
         Ok(actions) => actions,
-        Err(e) => {
-            return Ok(None)
-        }
+        Err(_e) => return Ok(None),
     };
 
     if actions.is_empty() {
@@ -32,25 +27,20 @@ pub fn read_v5_bundle<R: Read>(
         let ik = read_ik(&mut reader);
         let authorization = read_authorization(&mut reader);
 
-        Ok(Some(IssueBundle::from_parts(
-            ik?,
-            actions,
-            authorization?,
-        )))
+        Ok(Some(IssueBundle::from_parts(ik?, actions, authorization?)))
     }
 }
 
-fn read_ik<R: Read>(mut reader: R) -> io::Result<IssuanceValidatingKey>  {
+fn read_ik<R: Read>(mut reader: R) -> io::Result<IssuanceValidatingKey> {
     let mut bytes = [0u8; 32];
     reader.read_exact(&mut bytes)?;
     Ok(IssuanceValidatingKey::from_bytes(&bytes).unwrap())
 }
 
-fn read_authorization<R: Read>(mut reader: R) -> io::Result<Signed>  {
+fn read_authorization<R: Read>(mut reader: R) -> io::Result<Signed> {
     let signature = read_signature(&mut reader).unwrap();
     Ok(Signed::from_parts(signature))
 }
-
 
 fn read_action<R: Read>(mut reader: R) -> io::Result<IssueAction> {
     let finalize = reader.read_u8()?.as_bool();
@@ -60,7 +50,7 @@ fn read_action<R: Read>(mut reader: R) -> io::Result<IssueAction> {
     Ok(IssueAction::from_parts(
         asset_descr.to_owned(),
         NonEmpty::from_vec(notes).unwrap(),
-        finalize
+        finalize,
     ))
 }
 
@@ -76,7 +66,8 @@ fn read_note<R: Read>(mut reader: R) -> io::Result<Note> {
         asset,
         rho,
         rseed,
-    )).unwrap())
+    ))
+    .unwrap())
 }
 
 fn read_recipient<R: Read>(mut reader: R) -> io::Result<Address> {
@@ -85,10 +76,10 @@ fn read_recipient<R: Read>(mut reader: R) -> io::Result<Address> {
     Ok(Option::from(Address::from_raw_address_bytes(&bytes)).unwrap())
 }
 
-fn read_asset<R: Read>(mut reader: R) -> io::Result<AssetId> {
+fn read_asset<R: Read>(mut reader: R) -> io::Result<AssetBase> {
     let mut bytes = [0u8; 32];
     reader.read_exact(&mut bytes)?;
-    Ok(Option::from(AssetId::from_bytes(&bytes)).unwrap())
+    Ok(Option::from(AssetBase::from_bytes(&bytes)).unwrap())
 }
 
 fn read_rseed<R: Read>(mut reader: R, nullifier: &Nullifier) -> io::Result<RandomSeed> {
@@ -103,29 +94,21 @@ pub fn write_v5_bundle<W: Write>(
     mut writer: W,
 ) -> io::Result<()> {
     if let Some(bundle) = &bundle {
-        Vector::write(
-            &mut writer,
-            bundle.actions(),
-            |w, action| write_action(action, w),
-        )?;
+        Vector::write(&mut writer, bundle.actions(), |w, action| {
+            write_action(action, w)
+        })?;
         writer.write_all(&bundle.ik().to_bytes())?;
-        writer.write_all(&<[u8; 64]>::from(
-            bundle.authorization().signature(),
-        ))?;
+        writer.write_all(&<[u8; 64]>::from(bundle.authorization().signature()))?;
     }
     Ok(())
 }
 
 fn write_action<W: Write>(action: &IssueAction, mut writer: W) -> io::Result<()> {
     writer.write_u8(action.is_finalized().as_u8())?;
-    Vector::write_nonempty(&mut writer, action.notes(), |w, note| {
-        write_note(note, w)
+    Vector::write_nonempty(&mut writer, action.notes(), |w, note| write_note(note, w))?;
+    Vector::write(&mut writer, action.asset_desc().as_bytes(), |w, b| {
+        w.write_u8(*b)
     })?;
-    Vector::write(
-        &mut writer,
-        action.asset_desc().as_bytes(),
-        |w, b| w.write_u8(*b),
-    )?;
     Ok(())
 }
 
@@ -142,11 +125,12 @@ fn write_note<W: Write>(note: &Note, writer: &mut W) -> io::Result<()> {
 pub mod testing {
     use proptest::prelude::*;
 
-    use orchard::issuance::{IssueBundle, Signed, testing::{self as t_issue}};
-
-    use crate::transaction::{
-        TxVersion,
+    use orchard::issuance::{
+        testing::{self as t_issue},
+        IssueBundle, Signed,
     };
+
+    use crate::transaction::TxVersion;
 
     prop_compose! {
         pub fn arb_issue_bundle(n_actions: usize)(

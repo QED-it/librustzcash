@@ -6,8 +6,8 @@ use blake2b_simd::{Hash as Blake2bHash, Params, State};
 use byteorder::{LittleEndian, WriteBytesExt};
 use ff::PrimeField;
 use group::GroupEncoding;
-use orchard::issuance::{IssueBundle, Signed};
 use orchard::bundle::{self as orchardbundle};
+use orchard::issuance::{IssueBundle, Signed};
 
 use crate::consensus::{BlockHeight, BranchId};
 
@@ -336,10 +336,7 @@ impl<A: Authorization> TransactionDigest<A> for TxIdDigester {
         orchard_bundle.map(|b| b.commitment().0)
     }
 
-    fn digest_issue(
-        &self,
-        issue_bundle: Option<&IssueBundle<Signed>>,
-    ) -> Self::IssueDigest {
+    fn digest_issue(&self, issue_bundle: Option<&IssueBundle<Signed>>) -> Self::IssueDigest {
         issue_bundle.map(|b| b.commitment().0)
     }
 
@@ -376,6 +373,7 @@ pub(crate) fn to_hash(
     transparent_digest: Blake2bHash,
     sapling_digest: Option<Blake2bHash>,
     orchard_digest: Option<Blake2bHash>,
+    issue_digest: Option<Blake2bHash>,
     #[cfg(feature = "zfuture")] tze_digests: Option<&TzeDigests<Blake2bHash>>,
 ) -> Blake2bHash {
     let mut personal = [0; 16];
@@ -396,6 +394,13 @@ pub(crate) fn to_hash(
     h.write_all(
         orchard_digest
             .unwrap_or_else(orchardbundle::commitments::hash_bundle_txid_empty)
+            .as_bytes(),
+    )
+    .unwrap();
+
+    h.write_all(
+        issue_digest
+            .unwrap_or_else(orchardbundle::commitments::hash_issue_bundle_txid_empty)
             .as_bytes(),
     )
     .unwrap();
@@ -421,6 +426,7 @@ pub fn to_txid(
         hash_transparent_txid_data(digests.transparent_digests.as_ref()),
         digests.sapling_digest,
         digests.orchard_digest,
+        digests.issue_digest,
         #[cfg(feature = "zfuture")]
         digests.tze_digests.as_ref(),
     );
@@ -502,15 +508,12 @@ impl TransactionDigest<Authorized> for BlockTxCommitmentDigester {
             b.authorizing_commitment().0
         })
     }
-    fn digest_issue(
-        &self,
-        issue_bundle: Option<&IssueBundle<Signed>>,
-    ) -> Self::OrchardDigest {
-        issue_bundle.map_or_else(orchardbundle::commitments::hash_bundle_auth_empty, |b| {
-            b.authorizing_commitment().0
-        })
+    fn digest_issue(&self, issue_bundle: Option<&IssueBundle<Signed>>) -> Self::OrchardDigest {
+        issue_bundle.map_or_else(
+            orchardbundle::commitments::hash_issue_bundle_auth_empty,
+            |b| b.authorizing_commitment().0,
+        )
     }
-
 
     #[cfg(feature = "zfuture")]
     fn digest_tze(&self, tze_bundle: Option<&tze::Bundle<tze::Authorized>>) -> Blake2bHash {
@@ -532,7 +535,12 @@ impl TransactionDigest<Authorized> for BlockTxCommitmentDigester {
         issue_digest: Self::IssueDigest,
         #[cfg(feature = "zfuture")] tze_digest: Self::TzeDigest,
     ) -> Self::Digest {
-        let digests = [transparent_digest, sapling_digest, orchard_digest, issue_digest];
+        let digests = [
+            transparent_digest,
+            sapling_digest,
+            orchard_digest,
+            issue_digest,
+        ];
 
         let mut personal = [0; 16];
         personal[..12].copy_from_slice(ZCASH_AUTH_PERSONALIZATION_PREFIX);
