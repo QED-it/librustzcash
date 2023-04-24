@@ -15,12 +15,12 @@ use blake2b_simd::Hash as Blake2bHash;
 use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
 use ff::PrimeField;
 use memuse::DynamicUsage;
+use orchard::issuance::{IssueBundle, Signed};
 use std::convert::TryFrom;
 use std::fmt;
 use std::fmt::Debug;
 use std::io::{self, Read, Write};
 use std::ops::Deref;
-use orchard::issuance::{IssueBundle, Signed};
 use zcash_encoding::{Array, CompactSize, Vector};
 
 use crate::{
@@ -31,8 +31,7 @@ use crate::{
 use self::{
     components::{
         amount::{Amount, BalanceError},
-        orchard as orchard_serialization,
-        issuance as issue_serialization,
+        issuance as issue_serialization, orchard as orchard_serialization,
         sapling::{
             self, OutputDescription, OutputDescriptionV5, SpendDescription, SpendDescriptionV5,
         },
@@ -1081,10 +1080,7 @@ pub trait TransactionDigest<A: Authorization> {
         orchard_bundle: Option<&orchard::Bundle<A::OrchardAuth, Amount>>,
     ) -> Self::OrchardDigest;
 
-    fn digest_issue(
-        &self,
-        issue_bundle: Option<&IssueBundle<Signed>>,
-    ) -> Self::IssueDigest;
+    fn digest_issue(&self, issue_bundle: Option<&IssueBundle<Signed>>) -> Self::IssueDigest;
 
     #[cfg(feature = "zfuture")]
     fn digest_tze(&self, tze_bundle: Option<&tze::Bundle<A::TzeAuth>>) -> Self::TzeDigest;
