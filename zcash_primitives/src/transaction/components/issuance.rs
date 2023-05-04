@@ -14,12 +14,7 @@ use zcash_encoding::{CompactSize, Vector};
 
 /// Reads an [`orchard::Bundle`] from a v5 transaction format.
 pub fn read_v5_bundle<R: Read>(mut reader: R) -> io::Result<Option<IssueBundle<Signed>>> {
-    let actions_res = Vector::read(&mut reader, |r| read_action(r));
-
-    let actions = match actions_res {
-        Ok(actions) => actions,
-        Err(_e) => return Ok(None),
-    };
+    let actions = Vector::read(&mut reader, |r| read_action(r))?;
 
     if actions.is_empty() {
         Ok(None)
