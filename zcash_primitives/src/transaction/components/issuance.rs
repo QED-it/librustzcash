@@ -10,7 +10,7 @@ use orchard::{Address, Note};
 /// Functions for parsing & serialization of the issuance bundle components.
 use std::io;
 use std::io::{Read, Write};
-use zcash_encoding::Vector;
+use zcash_encoding::{CompactSize, Vector};
 
 /// Reads an [`orchard::Bundle`] from a v5 transaction format.
 pub fn read_v5_bundle<R: Read>(mut reader: R) -> io::Result<Option<IssueBundle<Signed>>> {
