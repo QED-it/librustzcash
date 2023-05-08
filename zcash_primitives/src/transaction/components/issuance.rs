@@ -43,7 +43,7 @@ fn read_action<R: Read>(mut reader: R) -> io::Result<IssueAction> {
     let asset_descr_bytes = Vector::read(&mut reader, |r| r.read_u8())?;
     let asset_descr: String = String::from_utf8(asset_descr_bytes).unwrap();
     Ok(IssueAction::from_parts(
-        asset_descr.to_owned(),
+        asset_descr,
         NonEmpty::from_vec(notes).unwrap(),
         finalize,
     ))
@@ -83,7 +83,7 @@ fn read_rseed<R: Read>(mut reader: R, nullifier: &Nullifier) -> io::Result<Rando
     Ok(Option::from(RandomSeed::from_bytes(bytes, nullifier)).unwrap())
 }
 
-/// Writes an [`orchard::issuance::IssueBundle`] in the v5 transaction format.
+/// Writes an [`IssueBundle`] in the v5 transaction format.
 pub fn write_v5_bundle<W: Write>(
     bundle: Option<&IssueBundle<Signed>>,
     mut writer: W,
@@ -93,9 +93,7 @@ pub fn write_v5_bundle<W: Write>(
             write_action(action, w)
         })?;
         writer.write_all(&bundle.ik().to_bytes())?;
-        writer.write_all(&<[u8; 64]>::from(
-            bundle.authorization().signature(),
-        ))?;
+        writer.write_all(&<[u8; 64]>::from(bundle.authorization().signature()))?;
     } else {
         CompactSize::write(&mut writer, 0)?;
     }
