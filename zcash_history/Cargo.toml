@@ -14,6 +14,10 @@ assert_matches = "1.3.0"
 quickcheck = "0.9"
 
 [dependencies]
+# FIXME: Although winnow isn't used directly, it's deeply needed in the dependency tree. The latest version of winnow
+# causes a build issue because it enforces the use of Rust v1.64.0, while this crate is tied to v1.61.0.
+# Therefore, as a temporary fix, winnow has been added here to pin it to an older version that doesn't require Rust v1.64.0
+winnow = "=0.4.1"  
 primitive-types = "0.11"
 byteorder = "1"
 blake2 = { package = "blake2b_simd", version = "1" }
