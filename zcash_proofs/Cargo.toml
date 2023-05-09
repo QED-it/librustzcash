@@ -37,6 +37,11 @@ criterion = "0.3"
 rand_xorshift = "0.3"
 
 [target.'cfg(unix)'.dev-dependencies]
+# FIXME: The `inferno` crate isn't a direct dependency, but is deeply nested in the dependency tree.
+# The latest version (0.11.15) of `inferno` causes a compilation error. Therefore, as a temporary fix,
+# `inferno` is added here to pin it to the previous version (0.11.14), which doesn't cause the compilation
+# error.
+inferno = "=0.11.14"
 pprof = { version = "0.9", features = ["criterion", "flamegraph"] } # MSRV 1.56
 
 [features]
