@@ -364,6 +364,7 @@ impl<A: Authorization> TransactionDigest<A> for TxIdDigester {
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn to_hash(
     _txversion: TxVersion,
     consensus_branch_id: BranchId,
