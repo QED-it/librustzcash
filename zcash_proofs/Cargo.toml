@@ -37,6 +37,8 @@ criterion = "0.3"
 rand_xorshift = "0.3"
 
 [target.'cfg(unix)'.dev-dependencies]
+# TODO: Pined until inferno 0.11.15 is fixed from compilation errors
+inferno = "=0.11.14"
 pprof = { version = "0.9", features = ["criterion", "flamegraph"] } # MSRV 1.56
 
 [features]
