@@ -43,7 +43,7 @@ pub fn validate_bundle_burn(bundle_burn: &Vec<(AssetBase, Amount)>) -> Result<()
     let mut asset_set = std::collections::HashSet::<AssetBase>::new();
 
     for (asset, amount) in bundle_burn {
-        if !asset_set.insert(asset.clone()) {
+        if !asset_set.insert(*asset) {
             return Err(BurnError::DuplicateAsset);
         }
         if asset.is_native().into() {
