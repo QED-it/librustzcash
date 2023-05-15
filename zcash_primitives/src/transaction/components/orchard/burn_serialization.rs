@@ -51,7 +51,7 @@ fn write_asset_burn<W: Write>(
 
 pub fn write_bundle_burn<W: Write>(
     mut writer: W,
-    bundle_burn: &Vec<(AssetBase, Amount)>,
+    bundle_burn: &[(AssetBase, Amount)],
 ) -> io::Result<()> {
     Vector::write(&mut writer, bundle_burn, |w, b| write_asset_burn(w, b))
 }
