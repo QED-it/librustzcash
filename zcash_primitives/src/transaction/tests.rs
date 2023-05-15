@@ -23,6 +23,18 @@ use super::{
 #[cfg(feature = "zfuture")]
 use super::components::tze;
 
+pub fn create_test_asset(asset_desc: &str) -> orchard::note::AssetBase {
+    use orchard::{
+        keys::{IssuanceAuthorizingKey, IssuanceValidatingKey, SpendingKey},
+        note::AssetBase,
+    };
+
+    let sk = SpendingKey::from_bytes([0u8; 32]).unwrap();
+    let isk: IssuanceAuthorizingKey = (&sk).into();
+
+    AssetBase::derive(&IssuanceValidatingKey::from(&isk), asset_desc)
+}
+
 #[test]
 fn tx_read_write() {
     let data = &self::data::tx_read_write::TX_READ_WRITE;
