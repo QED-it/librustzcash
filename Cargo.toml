@@ -23,4 +23,4 @@ zcash_encoding = { path = "components/zcash_encoding" }
 zcash_note_encryption = { path = "components/zcash_note_encryption" }
 schemer = { git = "https://github.com/aschampion/schemer.git", rev = "6726b60f43f72c6e24a18d31be0ec7d42829e5e1" }
 schemer-rusqlite = { git = "https://github.com/aschampion/schemer.git", rev = "6726b60f43f72c6e24a18d31be0ec7d42829e5e1" }
-orchard = { version = "0.3", git = "https://github.com/QED-it/orchard", rev = "9a35108155bbad1f73c0e8bc7d79f81d8bfe3273" }
+orchard = { version = "0.3", git = "https://github.com/QED-it/orchard", rev = "65c9f1817c55e05319dc8e0e118f647f29ffd178" }
