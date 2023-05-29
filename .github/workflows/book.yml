@@ -10,12 +10,16 @@ jobs:
     runs-on: ubuntu-18.04
     steps:
       - uses: actions/checkout@v3
-      - uses: dtolnay/rust-toolchain@nightly
-        id: toolchain
-      - run: rustup override set ${{steps.toolchain.outputs.name}}
+      - uses: actions-rs/toolchain@v1
+        with:
+          toolchain: nightly
+          override: true
 
       - name: Build latest rustdocs
-        run: cargo doc --no-deps --workspace --all-features
+        uses: actions-rs/cargo@v1
+        with:
+          command: doc
+          args: --no-deps --workspace --all-features
         env:
           RUSTDOCFLAGS: -Z unstable-options --enable-index-page --cfg docsrs
 
