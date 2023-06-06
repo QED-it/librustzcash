@@ -40,19 +40,9 @@ pub mod batch;
 
 /// The size of the memo.
 pub const MEMO_SIZE: usize = 512;
-/// The size of a compact note.
-pub const COMPACT_NOTE_SIZE: usize = 1 + // version
-    11 + // diversifier
-    8  + // value
-    32; // rseed (or rcm prior to ZIP 212)
-/// The size of [`NotePlaintextBytes`].
-pub const NOTE_PLAINTEXT_SIZE: usize = COMPACT_NOTE_SIZE + MEMO_SIZE;
-/// The size of [`OutPlaintextBytes`].
 pub const OUT_PLAINTEXT_SIZE: usize = 32 + // pk_d
     32; // esk
 pub const AEAD_TAG_SIZE: usize = 16;
-/// The size of an encrypted note plaintext.
-pub const ENC_CIPHERTEXT_SIZE: usize = NOTE_PLAINTEXT_SIZE + AEAD_TAG_SIZE;
 /// The size of an encrypted outgoing plaintext.
 pub const OUT_CIPHERTEXT_SIZE: usize = OUT_PLAINTEXT_SIZE + AEAD_TAG_SIZE;
 
@@ -390,48 +380,6 @@ impl<D: Domain> NoteEncryption<D> {
 
     /// Generates `encCiphertext` for this note.
     pub fn encrypt_note_plaintext(&self) -> D::NoteCiphertextBytes {
-        /*
-        Merged version:
-        let pk_d = D::get_pk_d(&self.note);
-        let shared_secret = D::ka_agree_enc(&self.esk, &pk_d);
-        let key = D::kdf(shared_secret, &D::epk_bytes(&self.epk));
-        let mut input = D::note_plaintext_bytes(&self.note, &self.memo);
-
-        let mut output = [0u8; ENC_CIPHERTEXT_SIZE];
-        output[..NOTE_PLAINTEXT_SIZE].copy_from_slice(input.as_mut());
-        let tag = ChaCha20Poly1305::new(key.as_ref().into())
-            .encrypt_in_place_detached([0u8; 12][..].into(), &[], &mut output)
-            .unwrap();
-        output[NOTE_PLAINTEXT_SIZE..].copy_from_slice(&tag);
-        D::NoteCiphertextBytes::from(&output)
-        */
-        /*
-        Zcash team version;
-        let (ock, input) = if let Some(ovk) = &self.ovk {
-            let ock = D::derive_ock(ovk, cv, &cmstar.into(), &D::epk_bytes(&self.epk));
-            let input = D::outgoing_plaintext_bytes(&self.note, &self.esk);
-
-            (ock, input)
-        } else {
-            // ovk = ⊥
-            let mut ock = OutgoingCipherKey([0; 32]);
-            let mut input = [0u8; OUT_PLAINTEXT_SIZE];
-
-            rng.fill_bytes(&mut ock.0);
-            rng.fill_bytes(&mut input);
-
-            (ock, OutPlaintextBytes(input))
-        };
-
-        let mut output = [0u8; OUT_CIPHERTEXT_SIZE];
-        output[..OUT_PLAINTEXT_SIZE].copy_from_slice(&input.0);
-        let tag = ChaCha20Poly1305::new(ock.as_ref().into())
-            .encrypt_in_place_detached([0u8; 12][..].into(), &[], &mut output[..OUT_PLAINTEXT_SIZE])
-            .unwrap();
-        output[OUT_PLAINTEXT_SIZE..].copy_from_slice(&tag);
-
-        output
-        */
         let pk_d = D::get_pk_d(&self.note);
         let shared_secret = D::ka_agree_enc(&self.esk, &pk_d);
         let key = D::kdf(shared_secret, &D::epk_bytes(&self.epk));

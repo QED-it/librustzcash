@@ -5,13 +5,15 @@ use memuse::DynamicUsage;
 
 use std::io::{self, Read, Write};
 
-use zcash_note_encryption::{EphemeralKeyBytes, ShieldedOutput, COMPACT_NOTE_SIZE};
+use zcash_note_encryption::{EphemeralKeyBytes, ShieldedOutput};
 
 use crate::{
     consensus,
     sapling::{
         note::ExtractedNoteCommitment,
-        note_encryption::{CompactNoteCiphertextBytes, NoteCiphertextBytes, SaplingDomain},
+        note_encryption::{
+            CompactNoteCiphertextBytes, NoteCiphertextBytes, SaplingDomain, COMPACT_NOTE_SIZE,
+        },
         redjubjub::{self, PublicKey, Signature},
         value::ValueCommitment,
         Nullifier,
