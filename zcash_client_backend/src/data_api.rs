@@ -1,7 +1,7 @@
 //! Interfaces for wallet data persistence & low-level wallet utilities.
 
 use std::cmp;
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::fmt::Debug;
 
 use secrecy::SecretVec;
@@ -10,22 +10,20 @@ use zcash_primitives::{
     consensus::BlockHeight,
     legacy::TransparentAddress,
     memo::{Memo, MemoBytes},
-    merkle_tree::{CommitmentTree, IncrementalWitness},
-    sapling::{Node, Nullifier, PaymentAddress},
-    transaction::{components::Amount, Transaction, TxId},
+    sapling::{self, Nullifier, PaymentAddress},
+    transaction::{
+        components::{amount::Amount, OutPoint},
+        Transaction, TxId,
+    },
     zip32::{AccountId, ExtendedFullViewingKey},
 };
 
 use crate::{
-    address::UnifiedAddress,
+    address::{AddressMetadata, UnifiedAddress},
     decrypt::DecryptedOutput,
     keys::{UnifiedFullViewingKey, UnifiedSpendingKey},
-    proto::compact_formats::CompactBlock,
     wallet::{SpendableNote, WalletTransparentOutput, WalletTx},
 };
-
-#[cfg(feature = "transparent-inputs")]
-use zcash_primitives::transaction::components::transparent::OutPoint;
 
 pub mod chain;
 pub mod error;
@@ -44,14 +42,14 @@ pub trait WalletRead {
     ///
     /// For example, this might be a database identifier type
     /// or a UUID.
-    type NoteRef: Copy + Debug;
+    type NoteRef: Copy + Debug + Eq + Ord;
 
     /// Backend-specific transaction identifier.
     ///
     /// For example, this might be a database identifier type
     /// or a TxId if the backend is able to support that type
     /// directly.
-    type TxRef: Copy + Debug;
+    type TxRef: Copy + Debug + Eq + Ord;
 
     /// Returns the minimum and maximum block heights for stored blocks.
     ///
@@ -83,6 +81,9 @@ pub trait WalletRead {
             })
         })
     }
+
+    /// Returns the minimum block height corresponding to an unspent note in the wallet.
+    fn get_min_unspent_height(&self) -> Result<Option<BlockHeight>, Self::Error>;
 
     /// Returns the block hash for the block at the given height, if the
     /// associated block data is available. Returns `Ok(None)` if the hash
@@ -154,8 +155,10 @@ pub trait WalletRead {
     /// Returns the memo for a note.
     ///
     /// Implementations of this method must return an error if the note identifier
-    /// does not appear in the backing data store.
-    fn get_memo(&self, id_note: Self::NoteRef) -> Result<Memo, Self::Error>;
+    /// does not appear in the backing data store. Returns `Ok(None)` if the note
+    /// is known to the wallet but memo data has not yet been populated for that
+    /// note.
+    fn get_memo(&self, id_note: Self::NoteRef) -> Result<Option<Memo>, Self::Error>;
 
     /// Returns a transaction.
     fn get_transaction(&self, id_tx: Self::TxRef) -> Result<Transaction, Self::Error>;
@@ -164,14 +167,14 @@ pub trait WalletRead {
     fn get_commitment_tree(
         &self,
         block_height: BlockHeight,
-    ) -> Result<Option<CommitmentTree<Node>>, Self::Error>;
+    ) -> Result<Option<sapling::CommitmentTree>, Self::Error>;
 
     /// Returns the incremental witnesses as of the specified block height.
     #[allow(clippy::type_complexity)]
     fn get_witnesses(
         &self,
         block_height: BlockHeight,
-    ) -> Result<Vec<(Self::NoteRef, IncrementalWitness<Node>)>, Self::Error>;
+    ) -> Result<Vec<(Self::NoteRef, sapling::IncrementalWitness)>, Self::Error>;
 
     /// Returns the nullifiers for notes that the wallet is tracking, along with their
     /// associated account IDs, that are either unspent or have not yet been confirmed as
@@ -188,7 +191,8 @@ pub trait WalletRead {
         &self,
         account: AccountId,
         anchor_height: BlockHeight,
-    ) -> Result<Vec<SpendableNote>, Self::Error>;
+        exclude: &[Self::NoteRef],
+    ) -> Result<Vec<SpendableNote<Self::NoteRef>>, Self::Error>;
 
     /// Returns a list of spendable Sapling notes sufficient to cover the specified
     /// target value, if possible.
@@ -197,7 +201,8 @@ pub trait WalletRead {
         account: AccountId,
         target_value: Amount,
         anchor_height: BlockHeight,
-    ) -> Result<Vec<SpendableNote>, Self::Error>;
+        exclude: &[Self::NoteRef],
+    ) -> Result<Vec<SpendableNote<Self::NoteRef>>, Self::Error>;
 
     /// Returns the set of all transparent receivers associated with the given account.
     ///
@@ -207,7 +212,7 @@ pub trait WalletRead {
     fn get_transparent_receivers(
         &self,
         account: AccountId,
-    ) -> Result<HashSet<TransparentAddress>, Self::Error>;
+    ) -> Result<HashMap<TransparentAddress, AddressMetadata>, Self::Error>;
 
     /// Returns a list of unspent transparent UTXOs that appear in the chain at heights up to and
     /// including `max_height`.
@@ -215,16 +220,27 @@ pub trait WalletRead {
         &self,
         address: &TransparentAddress,
         max_height: BlockHeight,
+        exclude: &[OutPoint],
     ) -> Result<Vec<WalletTransparentOutput>, Self::Error>;
+
+    /// Returns a mapping from transparent receiver to not-yet-shielded UTXO balance,
+    /// for each address associated with a nonzero balance.
+    fn get_transparent_balances(
+        &self,
+        account: AccountId,
+        max_height: BlockHeight,
+    ) -> Result<HashMap<TransparentAddress, Amount>, Self::Error>;
 }
 
 /// The subset of information that is relevant to this wallet that has been
-/// decrypted and extracted from a [CompactBlock].
+/// decrypted and extracted from a [`CompactBlock`].
+///
+/// [`CompactBlock`]: crate::proto::compact_formats::CompactBlock
 pub struct PrunedBlock<'a> {
     pub block_height: BlockHeight,
     pub block_hash: BlockHash,
     pub block_time: u32,
-    pub commitment_tree: &'a CommitmentTree<Node>,
+    pub commitment_tree: &'a sapling::CommitmentTree,
     pub transactions: &'a Vec<WalletTx<Nullifier>>,
 }
 
@@ -235,7 +251,7 @@ pub struct PrunedBlock<'a> {
 /// wallet database when transactions are successfully decrypted.
 pub struct DecryptedTransaction<'a> {
     pub tx: &'a Transaction,
-    pub sapling_outputs: &'a Vec<DecryptedOutput>,
+    pub sapling_outputs: &'a Vec<DecryptedOutput<sapling::Note>>,
 }
 
 /// A transaction that was constructed and sent by the wallet.
@@ -260,6 +276,7 @@ pub enum PoolType {
     Transparent,
     /// The Sapling value pool
     Sapling,
+    // TODO: Orchard
 }
 
 /// A type that represents the recipient of a transaction output; a recipient address (and, for
@@ -274,21 +291,58 @@ pub enum Recipient {
     InternalAccount(AccountId, PoolType),
 }
 
+/// A type that represents an output (either Sapling or transparent) that was sent by the wallet.
 pub struct SentTransactionOutput {
-    /// The index within the transaction that contains the recipient output.
+    output_index: usize,
+    recipient: Recipient,
+    value: Amount,
+    memo: Option<MemoBytes>,
+    sapling_change_to: Option<(AccountId, sapling::Note)>,
+}
+
+impl SentTransactionOutput {
+    pub fn from_parts(
+        output_index: usize,
+        recipient: Recipient,
+        value: Amount,
+        memo: Option<MemoBytes>,
+        sapling_change_to: Option<(AccountId, sapling::Note)>,
+    ) -> Self {
+        Self {
+            output_index,
+            recipient,
+            value,
+            memo,
+            sapling_change_to,
+        }
+    }
+    /// Returns the index within the transaction that contains the recipient output.
     ///
     /// - If `recipient_address` is a Sapling address, this is an index into the Sapling
     ///   outputs of the transaction.
     /// - If `recipient_address` is a transparent address, this is an index into the
     ///   transparent outputs of the transaction.
-    pub output_index: usize,
-    /// The recipient address of the transaction, or the account
-    /// id for wallet-internal transactions.
-    pub recipient: Recipient,
-    /// The value of the newly created output
-    pub value: Amount,
-    /// The memo that was attached to the output, if any
-    pub memo: Option<MemoBytes>,
+    pub fn output_index(&self) -> usize {
+        self.output_index
+    }
+    /// Returns the recipient address of the transaction, or the account id for wallet-internal
+    /// transactions.
+    pub fn recipient(&self) -> &Recipient {
+        &self.recipient
+    }
+    /// Returns the value of the newly created output.
+    pub fn value(&self) -> Amount {
+        self.value
+    }
+    /// Returns the memo that was attached to the output, if any.
+    pub fn memo(&self) -> Option<&MemoBytes> {
+        self.memo.as_ref()
+    }
+
+    /// Returns t decrypted note, if the sent output belongs to this wallet
+    pub fn sapling_change_to(&self) -> Option<&(AccountId, sapling::Note)> {
+        self.sapling_change_to.as_ref()
+    }
 }
 
 /// This trait encapsulates the write capabilities required to update stored
@@ -335,8 +389,8 @@ pub trait WalletWrite: WalletRead {
     fn advance_by_block(
         &mut self,
         block: &PrunedBlock,
-        updated_witnesses: &[(Self::NoteRef, IncrementalWitness<Node>)],
-    ) -> Result<Vec<(Self::NoteRef, IncrementalWitness<Node>)>, Self::Error>;
+        updated_witnesses: &[(Self::NoteRef, sapling::IncrementalWitness)],
+    ) -> Result<Vec<(Self::NoteRef, sapling::IncrementalWitness)>, Self::Error>;
 
     /// Caches a decrypted transaction in the persistent wallet store.
     fn store_decrypted_tx(
@@ -348,15 +402,7 @@ pub trait WalletWrite: WalletRead {
     /// persistent wallet store.
     fn store_sent_tx(&mut self, sent_tx: &SentTransaction) -> Result<Self::TxRef, Self::Error>;
 
-    /// Removes the specified unmined transaction from the persistent wallet store, if it
-    /// exists.
-    ///
-    /// Returns an error if the specified transaction has been mined. To remove a mined
-    /// transaction, first use [`WalletWrite::rewind_to_height`] to unmine it.
-    #[cfg(feature = "unstable")]
-    fn remove_unmined_tx(&mut self, txid: &TxId) -> Result<(), Self::Error>;
-
-    /// Rewinds the wallet database to the specified height.
+    /// Truncates the wallet database to the specified height.
     ///
     /// This method assumes that the state of the underlying data store is
     /// consistent up to a particular block height. Since it is possible that
@@ -368,8 +414,8 @@ pub trait WalletWrite: WalletRead {
     /// most recent block and all other operations will treat this block
     /// as the chain tip for balance determination purposes.
     ///
-    /// There may be restrictions on how far it is possible to rewind.
-    fn rewind_to_height(&mut self, block_height: BlockHeight) -> Result<(), Self::Error>;
+    /// There may be restrictions on heights to which it is possible to truncate.
+    fn truncate_to_height(&mut self, block_height: BlockHeight) -> Result<(), Self::Error>;
 
     /// Adds a transparent UTXO received by the wallet to the data store.
     fn put_received_transparent_utxo(
@@ -378,82 +424,46 @@ pub trait WalletWrite: WalletRead {
     ) -> Result<Self::UtxoRef, Self::Error>;
 }
 
-/// This trait provides sequential access to raw blockchain data via a callback-oriented
-/// API.
-pub trait BlockSource {
-    type Error;
-
-    /// Scan the specified `limit` number of blocks from the blockchain, starting at
-    /// `from_height`, applying the provided callback to each block.
-    fn with_blocks<F>(
-        &self,
-        from_height: BlockHeight,
-        limit: Option<u32>,
-        with_row: F,
-    ) -> Result<(), Self::Error>
-    where
-        F: FnMut(CompactBlock) -> Result<(), Self::Error>;
-}
-
 #[cfg(feature = "test-dependencies")]
 pub mod testing {
     use secrecy::{ExposeSecret, SecretVec};
     use std::collections::HashMap;
-
-    #[cfg(feature = "transparent-inputs")]
-    use std::collections::HashSet;
 
     use zcash_primitives::{
         block::BlockHash,
         consensus::{BlockHeight, Network},
         legacy::TransparentAddress,
         memo::Memo,
-        merkle_tree::{CommitmentTree, IncrementalWitness},
-        sapling::{Node, Nullifier},
-        transaction::{components::Amount, Transaction, TxId},
+        sapling::{self, Nullifier},
+        transaction::{
+            components::{Amount, OutPoint},
+            Transaction, TxId,
+        },
         zip32::{AccountId, ExtendedFullViewingKey},
     };
 
     use crate::{
-        address::UnifiedAddress,
+        address::{AddressMetadata, UnifiedAddress},
         keys::{UnifiedFullViewingKey, UnifiedSpendingKey},
-        proto::compact_formats::CompactBlock,
         wallet::{SpendableNote, WalletTransparentOutput},
     };
 
-    use super::{
-        error::Error, BlockSource, DecryptedTransaction, PrunedBlock, SentTransaction, WalletRead,
-        WalletWrite,
-    };
-
-    pub struct MockBlockSource {}
-
-    impl BlockSource for MockBlockSource {
-        type Error = Error<u32>;
-
-        fn with_blocks<F>(
-            &self,
-            _from_height: BlockHeight,
-            _limit: Option<u32>,
-            _with_row: F,
-        ) -> Result<(), Self::Error>
-        where
-            F: FnMut(CompactBlock) -> Result<(), Self::Error>,
-        {
-            Ok(())
-        }
-    }
+    use super::{DecryptedTransaction, PrunedBlock, SentTransaction, WalletRead, WalletWrite};
 
     pub struct MockWalletDb {
         pub network: Network,
     }
 
     impl WalletRead for MockWalletDb {
-        type Error = Error<u32>;
+        type Error = ();
         type NoteRef = u32;
         type TxRef = TxId;
 
         fn block_height_extrema(&self) -> Result<Option<(BlockHeight, BlockHeight)>, Self::Error> {
+            Ok(None)
+        }
+
+        fn get_min_unspent_height(&self) -> Result<Option<BlockHeight>, Self::Error> {
             Ok(None)
         }
 
@@ -504,18 +514,18 @@ pub mod testing {
             Ok(Amount::zero())
         }
 
-        fn get_memo(&self, _id_note: Self::NoteRef) -> Result<Memo, Self::Error> {
-            Ok(Memo::Empty)
+        fn get_memo(&self, _id_note: Self::NoteRef) -> Result<Option<Memo>, Self::Error> {
+            Ok(None)
         }
 
         fn get_transaction(&self, _id_tx: Self::TxRef) -> Result<Transaction, Self::Error> {
-            Err(Error::ScanRequired) // wrong error but we'll fix it later.
+            Err(())
         }
 
         fn get_commitment_tree(
             &self,
             _block_height: BlockHeight,
-        ) -> Result<Option<CommitmentTree<Node>>, Self::Error> {
+        ) -> Result<Option<sapling::CommitmentTree>, Self::Error> {
             Ok(None)
         }
 
@@ -523,7 +533,7 @@ pub mod testing {
         fn get_witnesses(
             &self,
             _block_height: BlockHeight,
-        ) -> Result<Vec<(Self::NoteRef, IncrementalWitness<Node>)>, Self::Error> {
+        ) -> Result<Vec<(Self::NoteRef, sapling::IncrementalWitness)>, Self::Error> {
             Ok(Vec::new())
         }
 
@@ -539,7 +549,8 @@ pub mod testing {
             &self,
             _account: AccountId,
             _anchor_height: BlockHeight,
-        ) -> Result<Vec<SpendableNote>, Self::Error> {
+            _exclude: &[Self::NoteRef],
+        ) -> Result<Vec<SpendableNote<Self::NoteRef>>, Self::Error> {
             Ok(Vec::new())
         }
 
@@ -548,23 +559,33 @@ pub mod testing {
             _account: AccountId,
             _target_value: Amount,
             _anchor_height: BlockHeight,
-        ) -> Result<Vec<SpendableNote>, Self::Error> {
+            _exclude: &[Self::NoteRef],
+        ) -> Result<Vec<SpendableNote<Self::NoteRef>>, Self::Error> {
             Ok(Vec::new())
         }
 
         fn get_transparent_receivers(
             &self,
             _account: AccountId,
-        ) -> Result<HashSet<TransparentAddress>, Self::Error> {
-            Ok(HashSet::new())
+        ) -> Result<HashMap<TransparentAddress, AddressMetadata>, Self::Error> {
+            Ok(HashMap::new())
         }
 
         fn get_unspent_transparent_outputs(
             &self,
             _address: &TransparentAddress,
             _anchor_height: BlockHeight,
+            _exclude: &[OutPoint],
         ) -> Result<Vec<WalletTransparentOutput>, Self::Error> {
             Ok(Vec::new())
+        }
+
+        fn get_transparent_balances(
+            &self,
+            _account: AccountId,
+            _max_height: BlockHeight,
+        ) -> Result<HashMap<TransparentAddress, Amount>, Self::Error> {
+            Ok(HashMap::new())
         }
     }
 
@@ -578,7 +599,7 @@ pub mod testing {
             let account = AccountId::from(0);
             UnifiedSpendingKey::from_seed(&self.network, seed.expose_secret(), account)
                 .map(|k| (account, k))
-                .map_err(|_| Error::KeyDerivationError(account))
+                .map_err(|_| ())
         }
 
         fn get_next_available_address(
@@ -592,8 +613,8 @@ pub mod testing {
         fn advance_by_block(
             &mut self,
             _block: &PrunedBlock,
-            _updated_witnesses: &[(Self::NoteRef, IncrementalWitness<Node>)],
-        ) -> Result<Vec<(Self::NoteRef, IncrementalWitness<Node>)>, Self::Error> {
+            _updated_witnesses: &[(Self::NoteRef, sapling::IncrementalWitness)],
+        ) -> Result<Vec<(Self::NoteRef, sapling::IncrementalWitness)>, Self::Error> {
             Ok(vec![])
         }
 
@@ -611,12 +632,7 @@ pub mod testing {
             Ok(TxId::from_bytes([0u8; 32]))
         }
 
-        #[cfg(feature = "unstable")]
-        fn remove_unmined_tx(&mut self, _txid: &TxId) -> Result<(), Self::Error> {
-            Ok(())
-        }
-
-        fn rewind_to_height(&mut self, _block_height: BlockHeight) -> Result<(), Self::Error> {
+        fn truncate_to_height(&mut self, _block_height: BlockHeight) -> Result<(), Self::Error> {
             Ok(())
         }
 

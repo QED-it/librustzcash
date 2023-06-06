@@ -1,12 +1,13 @@
 //! Functions for creating transactions.
 //!
-use rusqlite::{named_params, Row};
+use rusqlite::{named_params, types::Value, Row};
+use std::rc::Rc;
 
 use group::ff::PrimeField;
 
 use zcash_primitives::{
     consensus::BlockHeight,
-    merkle_tree::IncrementalWitness,
+    merkle_tree::read_incremental_witness,
     sapling::{Diversifier, Rseed},
     transaction::components::Amount,
     zip32::AccountId,
@@ -14,11 +15,12 @@ use zcash_primitives::{
 
 use zcash_client_backend::wallet::SpendableNote;
 
-use crate::{error::SqliteClientError, WalletDb};
+use crate::{error::SqliteClientError, NoteId, WalletDb};
 
-fn to_spendable_note(row: &Row) -> Result<SpendableNote, SqliteClientError> {
+fn to_spendable_note(row: &Row) -> Result<SpendableNote<NoteId>, SqliteClientError> {
+    let note_id = NoteId::ReceivedNoteId(row.get(0)?);
     let diversifier = {
-        let d: Vec<_> = row.get(0)?;
+        let d: Vec<_> = row.get(1)?;
         if d.len() != 11 {
             return Err(SqliteClientError::CorruptedData(
                 "Invalid diversifier length".to_string(),
@@ -29,10 +31,10 @@ fn to_spendable_note(row: &Row) -> Result<SpendableNote, SqliteClientError> {
         Diversifier(tmp)
     };
 
-    let note_value = Amount::from_i64(row.get(1)?).unwrap();
+    let note_value = Amount::from_i64(row.get(2)?).unwrap();
 
     let rseed = {
-        let rcm_bytes: Vec<_> = row.get(2)?;
+        let rcm_bytes: Vec<_> = row.get(3)?;
 
         // We store rcm directly in the data DB, regardless of whether the note
         // used a v1 or v2 note plaintext, so for the purposes of spending let's
@@ -47,11 +49,12 @@ fn to_spendable_note(row: &Row) -> Result<SpendableNote, SqliteClientError> {
     };
 
     let witness = {
-        let d: Vec<_> = row.get(3)?;
-        IncrementalWitness::read(&d[..])?
+        let d: Vec<_> = row.get(4)?;
+        read_incremental_witness(&d[..])?
     };
 
     Ok(SpendableNote {
+        note_id,
         diversifier,
         note_value,
         rseed,
@@ -59,30 +62,38 @@ fn to_spendable_note(row: &Row) -> Result<SpendableNote, SqliteClientError> {
     })
 }
 
-#[deprecated(
-    note = "This method will be removed in a future update. Use zcash_client_backend::data_api::WalletRead::get_spendable_sapling_notes instead."
-)]
-pub fn get_spendable_sapling_notes<P>(
+pub(crate) fn get_spendable_sapling_notes<P>(
     wdb: &WalletDb<P>,
     account: AccountId,
     anchor_height: BlockHeight,
-) -> Result<Vec<SpendableNote>, SqliteClientError> {
+    exclude: &[NoteId],
+) -> Result<Vec<SpendableNote<NoteId>>, SqliteClientError> {
     let mut stmt_select_notes = wdb.conn.prepare(
-        "SELECT diversifier, value, rcm, witness
-            FROM received_notes
-            INNER JOIN transactions ON transactions.id_tx = received_notes.tx
-            INNER JOIN sapling_witnesses ON sapling_witnesses.note = received_notes.id_note
+        "SELECT id_note, diversifier, value, rcm, witness
+            FROM sapling_received_notes
+            INNER JOIN transactions ON transactions.id_tx = sapling_received_notes.tx
+            INNER JOIN sapling_witnesses ON sapling_witnesses.note = sapling_received_notes.id_note
             WHERE account = :account
             AND spent IS NULL
             AND transactions.block <= :anchor_height
-            AND sapling_witnesses.block = :anchor_height",
+            AND sapling_witnesses.block = :anchor_height
+            AND id_note NOT IN rarray(:exclude)",
     )?;
 
-    // Select notes
+    let excluded: Vec<Value> = exclude
+        .iter()
+        .filter_map(|n| match n {
+            NoteId::ReceivedNoteId(i) => Some(Value::from(*i)),
+            NoteId::SentNoteId(_) => None,
+        })
+        .collect();
+    let excluded_ptr = Rc::new(excluded);
+
     let notes = stmt_select_notes.query_and_then(
         named_params![
             ":account": &u32::from(account),
             ":anchor_height": &u32::from(anchor_height),
+            ":exclude": &excluded_ptr,
         ],
         to_spendable_note,
     )?;
@@ -90,15 +101,13 @@ pub fn get_spendable_sapling_notes<P>(
     notes.collect::<Result<_, _>>()
 }
 
-#[deprecated(
-    note = "This method will be removed in a future update. Use zcash_client_backend::data_api::WalletRead::select_spendable_sapling_notes instead."
-)]
-pub fn select_spendable_sapling_notes<P>(
+pub(crate) fn select_spendable_sapling_notes<P>(
     wdb: &WalletDb<P>,
     account: AccountId,
     target_value: Amount,
     anchor_height: BlockHeight,
-) -> Result<Vec<SpendableNote>, SqliteClientError> {
+    exclude: &[NoteId],
+) -> Result<Vec<SpendableNote<NoteId>>, SqliteClientError> {
     // The goal of this SQL statement is to select the oldest notes until the required
     // value has been reached, and then fetch the witnesses at the desired height for the
     // selected notes. This is achieved in several steps:
@@ -123,9 +132,12 @@ pub fn select_spendable_sapling_notes<P>(
                 SELECT id_note, diversifier, value, rcm,
                     SUM(value) OVER
                         (PARTITION BY account, spent ORDER BY id_note) AS so_far
-                FROM received_notes
-                INNER JOIN transactions ON transactions.id_tx = received_notes.tx
-                WHERE account = :account AND spent IS NULL AND transactions.block <= :anchor_height
+                FROM sapling_received_notes
+                INNER JOIN transactions ON transactions.id_tx = sapling_received_notes.tx
+                WHERE account = :account 
+                AND spent IS NULL 
+                AND transactions.block <= :anchor_height
+                AND id_note NOT IN rarray(:exclude)
             )
             SELECT * FROM eligible WHERE so_far < :target_value
             UNION
@@ -134,17 +146,26 @@ pub fn select_spendable_sapling_notes<P>(
             SELECT note, witness FROM sapling_witnesses
             WHERE block = :anchor_height
         )
-        SELECT selected.diversifier, selected.value, selected.rcm, witnesses.witness
+        SELECT selected.id_note, selected.diversifier, selected.value, selected.rcm, witnesses.witness
         FROM selected
         INNER JOIN witnesses ON selected.id_note = witnesses.note",
     )?;
 
-    // Select notes
+    let excluded: Vec<Value> = exclude
+        .iter()
+        .filter_map(|n| match n {
+            NoteId::ReceivedNoteId(i) => Some(Value::from(*i)),
+            NoteId::SentNoteId(_) => None,
+        })
+        .collect();
+    let excluded_ptr = Rc::new(excluded);
+
     let notes = stmt_select_notes.query_and_then(
         named_params![
             ":account": &u32::from(account),
             ":anchor_height": &u32::from(anchor_height),
             ":target_value": &i64::from(target_value),
+            ":exclude": &excluded_ptr
         ],
         to_spendable_note,
     )?;
@@ -166,27 +187,51 @@ mod tests {
         consensus::{BlockHeight, BranchId},
         legacy::TransparentAddress,
         sapling::{note_encryption::try_sapling_output_recovery, prover::TxProver},
-        transaction::{components::Amount, Transaction},
-        zip32::sapling::{ExtendedFullViewingKey, ExtendedSpendingKey},
+        transaction::{components::Amount, fees::zip317::FeeRule as Zip317FeeRule, Transaction},
+        zip32::{sapling::ExtendedSpendingKey, Scope},
     };
 
     use zcash_client_backend::{
+        address::RecipientAddress,
         data_api::{
-            self, chain::scan_cached_blocks, wallet::create_spend_to_address, WalletRead,
-            WalletWrite,
+            self,
+            chain::scan_cached_blocks,
+            error::Error,
+            wallet::{create_spend_to_address, input_selection::GreedyInputSelector, spend},
+            WalletRead, WalletWrite,
         },
+        fees::{zip317, DustOutputPolicy},
         keys::UnifiedSpendingKey,
         wallet::OvkPolicy,
+        zip321::{Payment, TransactionRequest},
     };
 
     use crate::{
         chain::init::init_cache_database,
-        tests::{self, fake_compact_block, insert_into_cache, network, sapling_activation_height},
+        tests::{
+            self, fake_compact_block, insert_into_cache, network, sapling_activation_height,
+            AddressType,
+        },
         wallet::{
             get_balance, get_balance_at,
             init::{init_blocks_table, init_wallet_db},
         },
         AccountId, BlockDb, DataConnStmtCache, WalletDb,
+    };
+
+    #[cfg(feature = "transparent-inputs")]
+    use {
+        zcash_client_backend::{
+            data_api::wallet::shield_transparent_funds, fees::fixed,
+            wallet::WalletTransparentOutput,
+        },
+        zcash_primitives::{
+            memo::MemoBytes,
+            transaction::{
+                components::{amount::NonNegativeAmount, OutPoint, TxOut},
+                fees::fixed::FeeRule as FixedFeeRule,
+            },
+        },
     };
 
     fn test_prover() -> impl TxProver {
@@ -217,7 +262,7 @@ mod tests {
 
         // Attempting to spend with a USK that is not in the wallet results in an error
         let mut db_write = db_data.get_update_ops().unwrap();
-        assert!(matches!(
+        assert_matches!(
             create_spend_to_address(
                 &mut db_write,
                 &tests::network(),
@@ -229,10 +274,8 @@ mod tests {
                 OvkPolicy::Sender,
                 10,
             ),
-            Err(crate::SqliteClientError::BackendError(
-                data_api::error::Error::KeyNotRecognized
-            ))
-        ));
+            Err(data_api::error::Error::KeyNotRecognized)
+        );
     }
 
     #[test]
@@ -250,7 +293,7 @@ mod tests {
 
         // We cannot do anything if we aren't synchronised
         let mut db_write = db_data.get_update_ops().unwrap();
-        assert!(matches!(
+        assert_matches!(
             create_spend_to_address(
                 &mut db_write,
                 &tests::network(),
@@ -262,10 +305,8 @@ mod tests {
                 OvkPolicy::Sender,
                 10,
             ),
-            Err(crate::SqliteClientError::BackendError(
-                data_api::error::Error::ScanRequired
-            ))
-        ));
+            Err(data_api::error::Error::ScanRequired)
+        );
     }
 
     #[test]
@@ -297,7 +338,7 @@ mod tests {
 
         // We cannot spend anything
         let mut db_write = db_data.get_update_ops().unwrap();
-        assert!(matches!(
+        assert_matches!(
             create_spend_to_address(
                 &mut db_write,
                 &tests::network(),
@@ -309,14 +350,12 @@ mod tests {
                 OvkPolicy::Sender,
                 10,
             ),
-            Err(crate::SqliteClientError::BackendError(
-                data_api::error::Error::InsufficientBalance(
-                    available,
-                    required
-                )
-            ))
-            if available == Amount::zero() && required == Amount::from_u64(1001).unwrap()
-        ));
+            Err(data_api::error::Error::InsufficientFunds {
+                available,
+                required
+            })
+            if available == Amount::zero() && required == Amount::from_u64(10001).unwrap()
+        );
     }
 
     #[test]
@@ -341,6 +380,7 @@ mod tests {
             sapling_activation_height(),
             BlockHash([0; 32]),
             &dfvk,
+            AddressType::DefaultExternal,
             value,
         );
         insert_into_cache(&db_cache, &cb);
@@ -356,7 +396,13 @@ mod tests {
         );
 
         // Add more funds to the wallet in a second note
-        let (cb, _) = fake_compact_block(sapling_activation_height() + 1, cb.hash(), &dfvk, value);
+        let (cb, _) = fake_compact_block(
+            sapling_activation_height() + 1,
+            cb.hash(),
+            &dfvk,
+            AddressType::DefaultExternal,
+            value,
+        );
         insert_into_cache(&db_cache, &cb);
         scan_cached_blocks(&tests::network(), &db_cache, &mut db_write, None).unwrap();
 
@@ -374,7 +420,7 @@ mod tests {
         // Spend fails because there are insufficient verified notes
         let extsk2 = ExtendedSpendingKey::master(&[]);
         let to = extsk2.default_address().1.into();
-        assert!(matches!(
+        assert_matches!(
             create_spend_to_address(
                 &mut db_write,
                 &tests::network(),
@@ -386,27 +432,30 @@ mod tests {
                 OvkPolicy::Sender,
                 10,
             ),
-            Err(crate::SqliteClientError::BackendError(
-                data_api::error::Error::InsufficientBalance(
-                    available,
-                    required
-                )
-            ))
+            Err(data_api::error::Error::InsufficientFunds {
+                available,
+                required
+            })
             if available == Amount::from_u64(50000).unwrap()
-                && required == Amount::from_u64(71000).unwrap()
-        ));
+                && required == Amount::from_u64(80000).unwrap()
+        );
 
         // Mine blocks SAPLING_ACTIVATION_HEIGHT + 2 to 9 until just before the second
         // note is verified
         for i in 2..10 {
-            let (cb, _) =
-                fake_compact_block(sapling_activation_height() + i, cb.hash(), &dfvk, value);
+            let (cb, _) = fake_compact_block(
+                sapling_activation_height() + i,
+                cb.hash(),
+                &dfvk,
+                AddressType::DefaultExternal,
+                value,
+            );
             insert_into_cache(&db_cache, &cb);
         }
         scan_cached_blocks(&tests::network(), &db_cache, &mut db_write, None).unwrap();
 
         // Second spend still fails
-        assert!(matches!(
+        assert_matches!(
             create_spend_to_address(
                 &mut db_write,
                 &tests::network(),
@@ -418,23 +467,27 @@ mod tests {
                 OvkPolicy::Sender,
                 10,
             ),
-            Err(crate::SqliteClientError::BackendError(
-                data_api::error::Error::InsufficientBalance(
-                    available,
-                    required
-                )
-            ))
+            Err(data_api::error::Error::InsufficientFunds {
+                available,
+                required
+            })
             if available == Amount::from_u64(50000).unwrap()
-                && required == Amount::from_u64(71000).unwrap()
-        ));
+                && required == Amount::from_u64(80000).unwrap()
+        );
 
         // Mine block 11 so that the second note becomes verified
-        let (cb, _) = fake_compact_block(sapling_activation_height() + 10, cb.hash(), &dfvk, value);
+        let (cb, _) = fake_compact_block(
+            sapling_activation_height() + 10,
+            cb.hash(),
+            &dfvk,
+            AddressType::DefaultExternal,
+            value,
+        );
         insert_into_cache(&db_cache, &cb);
         scan_cached_blocks(&tests::network(), &db_cache, &mut db_write, None).unwrap();
 
         // Second spend should now succeed
-        assert!(matches!(
+        assert_matches!(
             create_spend_to_address(
                 &mut db_write,
                 &tests::network(),
@@ -447,7 +500,7 @@ mod tests {
                 10,
             ),
             Ok(_)
-        ));
+        );
     }
 
     #[test]
@@ -472,6 +525,7 @@ mod tests {
             sapling_activation_height(),
             BlockHash([0; 32]),
             &dfvk,
+            AddressType::DefaultExternal,
             value,
         );
         insert_into_cache(&db_cache, &cb);
@@ -482,7 +536,7 @@ mod tests {
         // Send some of the funds to another address
         let extsk2 = ExtendedSpendingKey::master(&[]);
         let to = extsk2.default_address().1.into();
-        assert!(matches!(
+        assert_matches!(
             create_spend_to_address(
                 &mut db_write,
                 &tests::network(),
@@ -495,10 +549,10 @@ mod tests {
                 10,
             ),
             Ok(_)
-        ));
+        );
 
         // A second spend fails because there are no usable notes
-        assert!(matches!(
+        assert_matches!(
             create_spend_to_address(
                 &mut db_write,
                 &tests::network(),
@@ -510,22 +564,21 @@ mod tests {
                 OvkPolicy::Sender,
                 10,
             ),
-            Err(crate::SqliteClientError::BackendError(
-                data_api::error::Error::InsufficientBalance(
-                    available,
-                    required
-                )
-            ))
-            if available == Amount::zero() && required == Amount::from_u64(3000).unwrap()
-        ));
+            Err(data_api::error::Error::InsufficientFunds {
+                available,
+                required
+            })
+            if available == Amount::zero() && required == Amount::from_u64(12000).unwrap()
+        );
 
-        // Mine blocks SAPLING_ACTIVATION_HEIGHT + 1 to 21 (that don't send us funds)
+        // Mine blocks SAPLING_ACTIVATION_HEIGHT + 1 to 41 (that don't send us funds)
         // until just before the first transaction expires
-        for i in 1..22 {
+        for i in 1..42 {
             let (cb, _) = fake_compact_block(
                 sapling_activation_height() + i,
                 cb.hash(),
-                &ExtendedFullViewingKey::from(&ExtendedSpendingKey::master(&[i as u8])).into(),
+                &ExtendedSpendingKey::master(&[i as u8]).to_diversifiable_full_viewing_key(),
+                AddressType::DefaultExternal,
                 value,
             );
             insert_into_cache(&db_cache, &cb);
@@ -533,7 +586,7 @@ mod tests {
         scan_cached_blocks(&tests::network(), &db_cache, &mut db_write, None).unwrap();
 
         // Second spend still fails
-        assert!(matches!(
+        assert_matches!(
             create_spend_to_address(
                 &mut db_write,
                 &tests::network(),
@@ -545,20 +598,19 @@ mod tests {
                 OvkPolicy::Sender,
                 10,
             ),
-            Err(crate::SqliteClientError::BackendError(
-                data_api::error::Error::InsufficientBalance(
-                    available,
-                    required
-                )
-            ))
-            if available == Amount::zero() && required == Amount::from_u64(3000).unwrap()
-        ));
+            Err(data_api::error::Error::InsufficientFunds {
+                available,
+                required
+            })
+            if available == Amount::zero() && required == Amount::from_u64(12000).unwrap()
+        );
 
-        // Mine block SAPLING_ACTIVATION_HEIGHT + 22 so that the first transaction expires
+        // Mine block SAPLING_ACTIVATION_HEIGHT + 42 so that the first transaction expires
         let (cb, _) = fake_compact_block(
-            sapling_activation_height() + 22,
+            sapling_activation_height() + 42,
             cb.hash(),
-            &ExtendedFullViewingKey::from(&ExtendedSpendingKey::master(&[22])).into(),
+            &ExtendedSpendingKey::master(&[42]).to_diversifiable_full_viewing_key(),
+            AddressType::DefaultExternal,
             value,
         );
         insert_into_cache(&db_cache, &cb);
@@ -602,6 +654,7 @@ mod tests {
             sapling_activation_height(),
             BlockHash([0; 32]),
             &dfvk,
+            AddressType::DefaultExternal,
             value,
         );
         insert_into_cache(&db_cache, &cb);
@@ -611,7 +664,7 @@ mod tests {
 
         let extsk2 = ExtendedSpendingKey::master(&[]);
         let addr2 = extsk2.default_address().1;
-        let to = addr2.clone().into();
+        let to = addr2.into();
 
         let send_and_recover_with_policy = |db_write: &mut DataConnStmtCache<'_, _>, ovk_policy| {
             let tx_row = create_spend_to_address(
@@ -640,26 +693,21 @@ mod tests {
                 .unwrap();
             let tx = Transaction::read(&raw_tx[..], BranchId::Canopy).unwrap();
 
-            // Fetch the output index from the database
-            let output_index: i64 = db_write
-                .wallet_db
-                .conn
-                .query_row(
-                    "SELECT output_index FROM sent_notes
-                    WHERE tx = ?",
-                    [tx_row],
-                    |row| row.get(0),
-                )
-                .unwrap();
+            for output in tx.sapling_bundle().unwrap().shielded_outputs() {
+                // Find the output that decrypts with the external OVK
+                let result = try_sapling_output_recovery(
+                    &network,
+                    sapling_activation_height(),
+                    &dfvk.to_ovk(Scope::External),
+                    output,
+                );
 
-            let output = &tx.sapling_bundle().unwrap().shielded_outputs[output_index as usize];
+                if result.is_some() {
+                    return result;
+                }
+            }
 
-            try_sapling_output_recovery(
-                &network,
-                sapling_activation_height(),
-                &dfvk.fvk().ovk,
-                output,
-            )
+            None
         };
 
         // Send some of the funds to another address, keeping history.
@@ -668,13 +716,14 @@ mod tests {
             send_and_recover_with_policy(&mut db_write, OvkPolicy::Sender).unwrap();
         assert_eq!(&recovered_to, &addr2);
 
-        // Mine blocks SAPLING_ACTIVATION_HEIGHT + 1 to 22 (that don't send us funds)
+        // Mine blocks SAPLING_ACTIVATION_HEIGHT + 1 to 42 (that don't send us funds)
         // so that the first transaction expires
-        for i in 1..=22 {
+        for i in 1..=42 {
             let (cb, _) = fake_compact_block(
                 sapling_activation_height() + i,
                 cb.hash(),
-                &ExtendedFullViewingKey::from(&ExtendedSpendingKey::master(&[i as u8])).into(),
+                &ExtendedSpendingKey::master(&[i as u8]).to_diversifiable_full_viewing_key(),
+                AddressType::DefaultExternal,
                 value,
             );
             insert_into_cache(&db_cache, &cb);
@@ -703,11 +752,12 @@ mod tests {
         let dfvk = usk.sapling().to_diversifiable_full_viewing_key();
 
         // Add funds to the wallet in a single note
-        let value = Amount::from_u64(51000).unwrap();
+        let value = Amount::from_u64(60000).unwrap();
         let (cb, _) = fake_compact_block(
             sapling_activation_height(),
             BlockHash([0; 32]),
             &dfvk,
+            AddressType::DefaultExternal,
             value,
         );
         insert_into_cache(&db_cache, &cb);
@@ -723,7 +773,7 @@ mod tests {
         );
 
         let to = TransparentAddress::PublicKey([7; 20]).into();
-        assert!(matches!(
+        assert_matches!(
             create_spend_to_address(
                 &mut db_write,
                 &tests::network(),
@@ -736,6 +786,233 @@ mod tests {
                 10,
             ),
             Ok(_)
-        ));
+        );
+    }
+
+    #[test]
+    fn create_to_address_spends_a_change_note() {
+        let cache_file = NamedTempFile::new().unwrap();
+        let db_cache = BlockDb(Connection::open(cache_file.path()).unwrap());
+        init_cache_database(&db_cache).unwrap();
+
+        let data_file = NamedTempFile::new().unwrap();
+        let mut db_data = WalletDb::for_path(data_file.path(), tests::network()).unwrap();
+        init_wallet_db(&mut db_data, None).unwrap();
+
+        // Add an account to the wallet
+        let mut ops = db_data.get_update_ops().unwrap();
+        let seed = Secret::new([0u8; 32].to_vec());
+        let (_, usk) = ops.create_account(&seed).unwrap();
+        let dfvk = usk.sapling().to_diversifiable_full_viewing_key();
+
+        // Add funds to the wallet in a single note
+        let value = Amount::from_u64(60000).unwrap();
+        let (cb, _) = fake_compact_block(
+            sapling_activation_height(),
+            BlockHash([0; 32]),
+            &dfvk,
+            AddressType::Internal,
+            value,
+        );
+        insert_into_cache(&db_cache, &cb);
+        let mut db_write = db_data.get_update_ops().unwrap();
+        scan_cached_blocks(&tests::network(), &db_cache, &mut db_write, None).unwrap();
+
+        // Verified balance matches total balance
+        let (_, anchor_height) = db_data.get_target_and_anchor_heights(10).unwrap().unwrap();
+        assert_eq!(get_balance(&db_data, AccountId::from(0)).unwrap(), value);
+        assert_eq!(
+            get_balance_at(&db_data, AccountId::from(0), anchor_height).unwrap(),
+            value
+        );
+
+        let to = TransparentAddress::PublicKey([7; 20]).into();
+        assert_matches!(
+            create_spend_to_address(
+                &mut db_write,
+                &tests::network(),
+                test_prover(),
+                &usk,
+                &to,
+                Amount::from_u64(50000).unwrap(),
+                None,
+                OvkPolicy::Sender,
+                10,
+            ),
+            Ok(_)
+        );
+    }
+
+    #[test]
+    fn zip317_spend() {
+        let cache_file = NamedTempFile::new().unwrap();
+        let db_cache = BlockDb(Connection::open(cache_file.path()).unwrap());
+        init_cache_database(&db_cache).unwrap();
+
+        let data_file = NamedTempFile::new().unwrap();
+        let mut db_data = WalletDb::for_path(data_file.path(), tests::network()).unwrap();
+        init_wallet_db(&mut db_data, None).unwrap();
+
+        // Add an account to the wallet
+        let mut ops = db_data.get_update_ops().unwrap();
+        let seed = Secret::new([0u8; 32].to_vec());
+        let (_, usk) = ops.create_account(&seed).unwrap();
+        let dfvk = usk.sapling().to_diversifiable_full_viewing_key();
+
+        // Add funds to the wallet
+        let (cb, _) = fake_compact_block(
+            sapling_activation_height(),
+            BlockHash([0; 32]),
+            &dfvk,
+            AddressType::Internal,
+            Amount::from_u64(50000).unwrap(),
+        );
+        insert_into_cache(&db_cache, &cb);
+
+        // Add 10 dust notes to the wallet
+        for i in 1..=10 {
+            let (cb, _) = fake_compact_block(
+                sapling_activation_height() + i,
+                cb.hash(),
+                &dfvk,
+                AddressType::DefaultExternal,
+                Amount::from_u64(1000).unwrap(),
+            );
+            insert_into_cache(&db_cache, &cb);
+        }
+
+        let mut db_write = db_data.get_update_ops().unwrap();
+        scan_cached_blocks(&tests::network(), &db_cache, &mut db_write, None).unwrap();
+
+        // Verified balance matches total balance
+        let total = Amount::from_u64(60000).unwrap();
+        let (_, anchor_height) = db_data.get_target_and_anchor_heights(1).unwrap().unwrap();
+        assert_eq!(get_balance(&db_data, AccountId::from(0)).unwrap(), total);
+        assert_eq!(
+            get_balance_at(&db_data, AccountId::from(0), anchor_height).unwrap(),
+            total
+        );
+
+        let input_selector = GreedyInputSelector::new(
+            zip317::SingleOutputChangeStrategy::new(Zip317FeeRule::standard()),
+            DustOutputPolicy::default(),
+        );
+
+        // This first request will fail due to insufficient non-dust funds
+        let req = TransactionRequest::new(vec![Payment {
+            recipient_address: RecipientAddress::Shielded(dfvk.default_address().1),
+            amount: Amount::from_u64(50000).unwrap(),
+            memo: None,
+            label: None,
+            message: None,
+            other_params: vec![],
+        }])
+        .unwrap();
+
+        assert_matches!(
+            spend(
+                &mut db_write,
+                &tests::network(),
+                test_prover(),
+                &input_selector,
+                &usk,
+                req,
+                OvkPolicy::Sender,
+                1,
+            ),
+            Err(Error::InsufficientFunds { available, required })
+                if available == Amount::from_u64(51000).unwrap()
+                && required == Amount::from_u64(60000).unwrap()
+        );
+
+        // This request will succeed, spending a single dust input to pay the 10000
+        // ZAT fee in addition to the 41000 ZAT output to the recipient
+        let req = TransactionRequest::new(vec![Payment {
+            recipient_address: RecipientAddress::Shielded(dfvk.default_address().1),
+            amount: Amount::from_u64(41000).unwrap(),
+            memo: None,
+            label: None,
+            message: None,
+            other_params: vec![],
+        }])
+        .unwrap();
+
+        assert_matches!(
+            spend(
+                &mut db_write,
+                &tests::network(),
+                test_prover(),
+                &input_selector,
+                &usk,
+                req,
+                OvkPolicy::Sender,
+                1,
+            ),
+            Ok(_)
+        );
+    }
+
+    #[test]
+    #[cfg(feature = "transparent-inputs")]
+    fn shield_transparent() {
+        let cache_file = NamedTempFile::new().unwrap();
+        let db_cache = BlockDb(Connection::open(cache_file.path()).unwrap());
+        init_cache_database(&db_cache).unwrap();
+
+        let data_file = NamedTempFile::new().unwrap();
+        let mut db_data = WalletDb::for_path(data_file.path(), tests::network()).unwrap();
+        init_wallet_db(&mut db_data, None).unwrap();
+
+        // Add an account to the wallet
+        let mut db_write = db_data.get_update_ops().unwrap();
+        let seed = Secret::new([0u8; 32].to_vec());
+        let (account_id, usk) = db_write.create_account(&seed).unwrap();
+        let dfvk = usk.sapling().to_diversifiable_full_viewing_key();
+        let uaddr = db_data.get_current_address(account_id).unwrap().unwrap();
+        let taddr = uaddr.transparent().unwrap();
+
+        let utxo = WalletTransparentOutput::from_parts(
+            OutPoint::new([1u8; 32], 1),
+            TxOut {
+                value: Amount::from_u64(10000).unwrap(),
+                script_pubkey: taddr.script(),
+            },
+            sapling_activation_height(),
+        )
+        .unwrap();
+
+        let res0 = db_write.put_received_transparent_utxo(&utxo);
+        assert!(matches!(res0, Ok(_)));
+
+        let input_selector = GreedyInputSelector::new(
+            fixed::SingleOutputChangeStrategy::new(FixedFeeRule::standard()),
+            DustOutputPolicy::default(),
+        );
+
+        // Add funds to the wallet
+        let (cb, _) = fake_compact_block(
+            sapling_activation_height(),
+            BlockHash([0; 32]),
+            &dfvk,
+            AddressType::Internal,
+            Amount::from_u64(50000).unwrap(),
+        );
+        insert_into_cache(&db_cache, &cb);
+        scan_cached_blocks(&tests::network(), &db_cache, &mut db_write, None).unwrap();
+
+        assert_matches!(
+            shield_transparent_funds(
+                &mut db_write,
+                &tests::network(),
+                test_prover(),
+                &input_selector,
+                NonNegativeAmount::from_u64(10000).unwrap(),
+                &usk,
+                &[*taddr],
+                &MemoBytes::empty(),
+                0
+            ),
+            Ok(_)
+        );
     }
 }
