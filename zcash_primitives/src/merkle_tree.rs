@@ -80,14 +80,14 @@ pub fn read_position<R: Read>(mut reader: R) -> io::Result<Position> {
 pub fn write_address<W: Write>(mut writer: W, addr: Address) -> io::Result<()> {
     writer.write_u8(addr.level().into())?;
     // TODO: consider returning an error instead of panic (unwrap)
-    writer.write_u64::<LittleEndian>(addr.index().try_into().unwrap())
+    writer.write_u64::<LittleEndian>(addr.index())
 }
 
 pub fn read_address<R: Read>(mut reader: R) -> io::Result<Address> {
     let level = reader.read_u8().map(Level::from)?;
     let index = reader.read_u64::<LittleEndian>()?;
     // TODO: consider returning an error instead of panic (unwrap)
-    Ok(Address::from_parts(level, index.try_into().unwrap()))
+    Ok(Address::from_parts(level, index))
 }
 
 pub fn read_frontier_v0<H: Hashable + HashSer + Clone, R: Read>(

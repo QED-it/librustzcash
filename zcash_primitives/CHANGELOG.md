@@ -6,9 +6,21 @@ and this library adheres to Rust's notion of
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+
+## [0.12.0] - 2023-06-06
+### Added
+- `zcash_primitives::transaction`:
+  - `Transaction::temporary_zcashd_read_v5_sapling`
+  - `Transaction::temporary_zcashd_write_v5_sapling`
+- Implementations of `memuse::DynamicUsage` for the following types:
+  - `zcash_primitives::transaction::components::sapling`:
+    - `Bundle<Authorized>`
+    - `SpendDescription<Authorized>`
+
 ### Changed
 - MSRV is now 1.65.0.
-- Bumped dependencies to `secp256k1 0.26`, `hdwallet 0.4`.
+- Bumped dependencies to `secp256k1 0.26`, `hdwallet 0.4`, `incrementalmerkletree 0.4`
+  `zcash_note_encryption 0.4`, `orchard 0.5`
 
 ### Removed
 - `merkle_tree::Hashable` has been removed and its uses have been replaced by
