@@ -25,12 +25,12 @@ use super::components::tze;
 
 pub fn create_test_asset(asset_desc: &str) -> orchard::note::AssetBase {
     use orchard::{
-        keys::{IssuanceAuthorizingKey, IssuanceValidatingKey, SpendingKey},
+        keys::{IssuanceAuthorizingKey, IssuanceKey, IssuanceValidatingKey},
         note::AssetBase,
     };
 
-    let sk = SpendingKey::from_bytes([0u8; 32]).unwrap();
-    let isk: IssuanceAuthorizingKey = (&sk).into();
+    let sk_iss = IssuanceKey::from_bytes([0u8; 32]).unwrap();
+    let isk: IssuanceAuthorizingKey = (&sk_iss).into();
 
     AssetBase::derive(&IssuanceValidatingKey::from(&isk), asset_desc)
 }
