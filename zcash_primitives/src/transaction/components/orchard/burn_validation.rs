@@ -7,7 +7,7 @@ use super::Amount;
 // FIXME: Consider making tuple (AssetBase, Amount) a new type.
 
 #[derive(Debug)]
-#[cfg_attr(test, derive(PartialEq))]
+#[cfg_attr(test, derive(PartialEq, Eq))]
 pub enum BurnError {
     DuplicateAsset,
     NativeAsset,
