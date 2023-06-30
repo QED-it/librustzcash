@@ -23,18 +23,6 @@ use super::{
 #[cfg(feature = "zfuture")]
 use super::components::tze;
 
-pub fn create_test_asset(asset_desc: &str) -> orchard::note::AssetBase {
-    use orchard::{
-        keys::{IssuanceAuthorizingKey, IssuanceKey, IssuanceValidatingKey},
-        note::AssetBase,
-    };
-
-    let sk_iss = IssuanceKey::from_bytes([0u8; 32]).unwrap();
-    let isk: IssuanceAuthorizingKey = (&sk_iss).into();
-
-    AssetBase::derive(&IssuanceValidatingKey::from(&isk), asset_desc)
-}
-
 #[test]
 fn tx_read_write() {
     let data = &self::data::tx_read_write::TX_READ_WRITE;
@@ -360,4 +348,33 @@ fn zip_0244() {
             tv.sighash_shielded
         );
     }
+}
+
+/// Creates an item of bundle burn list for a given asset description and amount.
+///
+/// This function is deterministic and guarantees that each call with the same parameters
+/// will return the same result. It achieves determinism by using a static `IssuanceKey`.
+///
+/// # Arguments
+///
+/// * `asset_desc` - The asset description string.
+/// * `amount` - The amount for the burn.
+///
+/// # Returns
+///
+/// A tuple `(AssetBase, Amount)` representing the burn list item.
+///
+pub fn get_burn_tuple(asset_desc: &str, amount: u64) -> (orchard::note::AssetBase, Amount) {
+    use orchard::{
+        keys::{IssuanceAuthorizingKey, IssuanceKey, IssuanceValidatingKey},
+        note::AssetBase,
+    };
+
+    let sk_iss = IssuanceKey::from_bytes([0u8; 32]).unwrap();
+    let isk: IssuanceAuthorizingKey = (&sk_iss).into();
+
+    (
+        AssetBase::derive(&IssuanceValidatingKey::from(&isk), asset_desc),
+        Amount::from_u64(amount).unwrap(),
+    )
 }

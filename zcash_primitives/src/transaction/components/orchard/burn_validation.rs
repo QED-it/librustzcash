@@ -4,8 +4,6 @@ use orchard::note::AssetBase;
 
 use super::Amount;
 
-// FIXME: Consider making tuple (AssetBase, Amount) a new type.
-
 #[derive(Debug)]
 #[cfg_attr(test, derive(PartialEq, Eq))]
 pub enum BurnError {
@@ -24,21 +22,20 @@ impl fmt::Display for BurnError {
     }
 }
 
-/// Validates burns for a bundle by ensuring each asset is unique, non-native, and has a non-zero value.
+/// Validates burn for a bundle by ensuring each asset is unique, non-native, and has a non-zero value.
 ///
-/// Each burn element is represented as a tuple of `AssetBase` and `Amount`, where `AssetBase` identifies
-/// the asset to be burned and `Amount` is the quantity to burn.
+/// Each burn element is represented as a tuple of `AssetBase` and `Amount`.
 ///
 /// # Arguments
 ///
-/// * `burns` - A vector of burns, where each burn is represented as a tuple of `AssetBase` and `Amount`.
+/// * `burn` - A vector of assets, where each asset is represented as a tuple of `AssetBase` and `Amount`.
 ///
 /// # Errors
 ///
 /// Returns a `BurnError` if:
-/// * Any asset in the list of burns is not unique (`BurnError::DuplicateAsset`).
-/// * Any asset in the list of burns is native (`BurnError::NativeAsset`).
-/// * Any asset in the list of burns has a zero amount (`BurnError::ZeroAmount`).
+/// * Any asset in the `burn` vector is not unique (`BurnError::DuplicateAsset`).
+/// * Any asset in the `burn` vector is native (`BurnError::NativeAsset`).
+/// * Any asset in the `burn` vector has a zero amount (`BurnError::ZeroAmount`).
 pub fn validate_bundle_burn(bundle_burn: &Vec<(AssetBase, Amount)>) -> Result<(), BurnError> {
     let mut asset_set = std::collections::HashSet::<AssetBase>::new();
 
@@ -49,7 +46,6 @@ pub fn validate_bundle_burn(bundle_burn: &Vec<(AssetBase, Amount)>) -> Result<()
         if asset.is_native().into() {
             return Err(BurnError::NativeAsset);
         }
-        // FIXME: check for negative amounts?
         if i64::from(amount) == 0 {
             return Err(BurnError::ZeroAmount);
         }
@@ -62,14 +58,14 @@ pub fn validate_bundle_burn(bundle_burn: &Vec<(AssetBase, Amount)>) -> Result<()
 mod tests {
     use super::*;
 
-    use crate::transaction::tests::create_test_asset;
+    use crate::transaction::tests::get_burn_tuple;
 
     #[test]
-    fn test_validate_bundle_burn_success() {
+    fn validate_bundle_burn_success() {
         let bundle_burn = vec![
-            (create_test_asset("Asset 1"), Amount::from_u64(10).unwrap()),
-            (create_test_asset("Asset 2"), Amount::from_u64(20).unwrap()),
-            (create_test_asset("Asset 3"), Amount::from_u64(10).unwrap()),
+            get_burn_tuple("Asset 1", 10),
+            get_burn_tuple("Asset 2", 20),
+            get_burn_tuple("Asset 3", 10),
         ];
 
         let result = validate_bundle_burn(&bundle_burn);
@@ -78,11 +74,11 @@ mod tests {
     }
 
     #[test]
-    fn test_validate_bundle_burn_duplicate_asset() {
+    fn validate_bundle_burn_duplicate_asset() {
         let bundle_burn = vec![
-            (create_test_asset("Asset 1"), Amount::from_u64(10).unwrap()),
-            (create_test_asset("Asset 1"), Amount::from_u64(20).unwrap()),
-            (create_test_asset("Asset 3"), Amount::from_u64(10).unwrap()),
+            get_burn_tuple("Asset 1", 10),
+            get_burn_tuple("Asset 1", 20),
+            get_burn_tuple("Asset 3", 10),
         ];
 
         let result = validate_bundle_burn(&bundle_burn);
@@ -91,11 +87,11 @@ mod tests {
     }
 
     #[test]
-    fn test_validate_bundle_burn_native_asset() {
+    fn validate_bundle_burn_native_asset() {
         let bundle_burn = vec![
-            (create_test_asset("Asset 1"), Amount::from_u64(10).unwrap()),
+            get_burn_tuple("Asset 1", 10),
             (AssetBase::native(), Amount::from_u64(20).unwrap()),
-            (create_test_asset("Asset 3"), Amount::from_u64(10).unwrap()),
+            get_burn_tuple("Asset 3", 10),
         ];
 
         let result = validate_bundle_burn(&bundle_burn);
@@ -104,11 +100,11 @@ mod tests {
     }
 
     #[test]
-    fn test_validate_bundle_burn_zero_amount() {
+    fn validate_bundle_burn_zero_amount() {
         let bundle_burn = vec![
-            (create_test_asset("Asset 1"), Amount::from_u64(10).unwrap()),
-            (create_test_asset("Asset 2"), Amount::from_u64(0).unwrap()),
-            (create_test_asset("Asset 3"), Amount::from_u64(10).unwrap()),
+            get_burn_tuple("Asset 1", 10),
+            get_burn_tuple("Asset 2", 0),
+            get_burn_tuple("Asset 3", 10),
         ];
 
         let result = validate_bundle_burn(&bundle_burn);

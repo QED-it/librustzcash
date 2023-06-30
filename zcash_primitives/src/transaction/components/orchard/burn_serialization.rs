@@ -39,7 +39,7 @@ fn write_asset_base<W: Write>(mut writer: W, asset_base: &AssetBase) -> io::Resu
     writer.write_all(&asset_base.to_bytes())
 }
 
-fn write_asset_burn<W: Write>(
+pub fn write_asset_burn<W: Write>(
     mut writer: W,
     (asset_base, amount): &(AssetBase, Amount),
 ) -> io::Result<()> {
@@ -49,32 +49,27 @@ fn write_asset_burn<W: Write>(
     Ok(())
 }
 
-pub fn write_bundle_burn<W: Write>(
-    mut writer: W,
-    bundle_burn: &[(AssetBase, Amount)],
-) -> io::Result<()> {
-    Vector::write(&mut writer, bundle_burn, |w, b| write_asset_burn(w, b))
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
 
     use std::io::Cursor;
 
-    use crate::transaction::tests::create_test_asset;
+    use crate::transaction::tests::get_burn_tuple;
 
     use super::super::burn_validation::BurnError;
 
+    fn write_bundle_burn<W: Write>(
+        mut writer: W,
+        bundle_burn: &[(AssetBase, Amount)],
+    ) -> io::Result<()> {
+        Vector::write(&mut writer, bundle_burn, |w, b| write_asset_burn(w, b))
+    }
+
     #[test]
-    fn test_read_write_bundle_burn_success() {
+    fn read_write_bundle_burn_success() {
         let bundle_burn = (1..10)
-            .map(|i| {
-                (
-                    create_test_asset(&format!("Asset {i}")),
-                    Amount::from_u64(i * 10).unwrap(),
-                )
-            })
+            .map(|i| get_burn_tuple(&format!("Asset {i}"), i * 10))
             .collect::<Vec<_>>();
 
         let mut buffer = Vec::new();
@@ -87,14 +82,12 @@ mod tests {
         assert_eq!(result, bundle_burn);
     }
 
-    // This test implementation covers only one failure case intentionally,
-    // as the other cases are already covered in the validate_bundle_burn tests.
     #[test]
-    fn test_read_bundle_burn_duplicate_asset() {
+    fn read_bundle_burn_duplicate_asset() {
         let bundle_burn = vec![
-            (create_test_asset("Asset 1"), Amount::from_u64(10).unwrap()),
-            (create_test_asset("Asset 1"), Amount::from_u64(20).unwrap()),
-            (create_test_asset("Asset 3"), Amount::from_u64(10).unwrap()),
+            get_burn_tuple("Asset 1", 10),
+            get_burn_tuple("Asset 1", 20),
+            get_burn_tuple("Asset 3", 10),
         ];
 
         let mut buffer = Vec::new();
