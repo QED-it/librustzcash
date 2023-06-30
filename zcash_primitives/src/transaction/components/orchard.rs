@@ -19,7 +19,7 @@ use crate::transaction::Transaction;
 mod burn_serialization;
 mod burn_validation;
 
-use burn_serialization::{read_bundle_burn, write_bundle_burn};
+use burn_serialization::{read_bundle_burn, write_asset_burn};
 
 pub const FLAG_SPENDS_ENABLED: u8 = 0b0000_0001;
 pub const FLAG_OUTPUTS_ENABLED: u8 = 0b0000_0010;
@@ -219,7 +219,7 @@ pub fn write_v5_bundle<W: Write>(
 
         writer.write_all(&[bundle.flags().to_byte()])?;
         writer.write_all(&bundle.value_balance().to_i64_le_bytes())?;
-        write_bundle_burn(&mut writer, bundle.burn())?;
+        Vector::write(&mut writer, bundle.burn(), |w, b| write_asset_burn(w, b))?;
         writer.write_all(&bundle.anchor().to_bytes())?;
         Vector::write(
             &mut writer,
