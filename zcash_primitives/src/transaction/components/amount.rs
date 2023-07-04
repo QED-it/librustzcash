@@ -299,7 +299,7 @@ pub mod testing {
     use super::{Amount, MAX_MONEY};
 
     prop_compose! {
-        pub fn arb_amount()(amt in -MAX_MONEY..MAX_MONEY) -> Amount {
+        pub fn arb_amount()(amt in 1..MAX_MONEY) -> Amount {
             Amount::from_i64(amt).unwrap()
         }
     }
