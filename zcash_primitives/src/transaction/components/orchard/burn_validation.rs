@@ -9,7 +9,7 @@ use super::Amount;
 pub enum BurnError {
     DuplicateAsset,
     NativeAsset,
-    ZeroAmount,
+    NonPositiveAmount,
 }
 
 impl fmt::Display for BurnError {
@@ -17,12 +17,14 @@ impl fmt::Display for BurnError {
         match *self {
             BurnError::DuplicateAsset => write!(f, "Encountered a duplicate asset to burn."),
             BurnError::NativeAsset => write!(f, "Cannot burn a native asset."),
-            BurnError::ZeroAmount => write!(f, "Cannot burn an asset with a zero amount."),
+            BurnError::NonPositiveAmount => {
+                write!(f, "Cannot burn an asset with a nonpositive amount.")
+            }
         }
     }
 }
 
-/// Validates burn for a bundle by ensuring each asset is unique, non-native, and has a non-zero value.
+/// Validates burn for a bundle by ensuring each asset is unique, non-native, and has a positive value.
 ///
 /// Each burn element is represented as a tuple of `AssetBase` and `Amount`.
 ///
@@ -35,7 +37,7 @@ impl fmt::Display for BurnError {
 /// Returns a `BurnError` if:
 /// * Any asset in the `burn` vector is not unique (`BurnError::DuplicateAsset`).
 /// * Any asset in the `burn` vector is native (`BurnError::NativeAsset`).
-/// * Any asset in the `burn` vector has a zero amount (`BurnError::ZeroAmount`).
+/// * Any asset in the `burn` vector has a nonpositive amount (`BurnError::NonPositiveAmount`).
 pub fn validate_bundle_burn(bundle_burn: &Vec<(AssetBase, Amount)>) -> Result<(), BurnError> {
     let mut asset_set = std::collections::HashSet::<AssetBase>::new();
 
@@ -46,8 +48,8 @@ pub fn validate_bundle_burn(bundle_burn: &Vec<(AssetBase, Amount)>) -> Result<()
         if asset.is_native().into() {
             return Err(BurnError::NativeAsset);
         }
-        if i64::from(amount) == 0 {
-            return Err(BurnError::ZeroAmount);
+        if i64::from(amount) <= 0 {
+            return Err(BurnError::NonPositiveAmount);
         }
     }
 
@@ -109,6 +111,6 @@ mod tests {
 
         let result = validate_bundle_burn(&bundle_burn);
 
-        assert_eq!(result, Err(BurnError::ZeroAmount));
+        assert_eq!(result, Err(BurnError::NonPositiveAmount));
     }
 }
