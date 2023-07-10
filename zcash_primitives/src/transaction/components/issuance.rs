@@ -22,7 +22,7 @@ pub fn read_v5_bundle<R: Read>(mut reader: R) -> io::Result<Option<IssueBundle<S
         let ik = read_ik(&mut reader);
         let authorization = read_authorization(&mut reader);
 
-        Ok(Some(IssueBundle::from_parts(ik?, actions, authorization?)))
+        Ok(Some(IssueBundle::from_parts(ik?, NonEmpty::from_vec(actions).unwrap(), authorization?)))
     }
 }
 
@@ -44,7 +44,7 @@ fn read_action<R: Read>(mut reader: R) -> io::Result<IssueAction> {
     let asset_descr: String = String::from_utf8(asset_descr_bytes).unwrap();
     Ok(IssueAction::from_parts(
         asset_descr,
-        NonEmpty::from_vec(notes).unwrap(),
+        notes,
         finalize,
     ))
 }
@@ -89,7 +89,7 @@ pub fn write_v5_bundle<W: Write>(
     mut writer: W,
 ) -> io::Result<()> {
     if let Some(bundle) = &bundle {
-        Vector::write(&mut writer, bundle.actions(), |w, action| {
+        Vector::write_nonempty(&mut writer, bundle.actions(), |w, action| {
             write_action(action, w)
         })?;
         writer.write_all(&bundle.ik().to_bytes())?;
@@ -102,7 +102,7 @@ pub fn write_v5_bundle<W: Write>(
 
 fn write_action<W: Write>(action: &IssueAction, mut writer: W) -> io::Result<()> {
     writer.write_u8(action.is_finalized().as_u8())?;
-    Vector::write_nonempty(&mut writer, action.notes(), |w, note| write_note(note, w))?;
+    Vector::write(&mut writer, action.notes(), |w, note| write_note(note, w))?;
     Vector::write(&mut writer, action.asset_desc().as_bytes(), |w, b| {
         w.write_u8(*b)
     })?;
