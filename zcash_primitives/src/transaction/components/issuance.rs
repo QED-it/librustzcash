@@ -22,7 +22,11 @@ pub fn read_v5_bundle<R: Read>(mut reader: R) -> io::Result<Option<IssueBundle<S
         let ik = read_ik(&mut reader);
         let authorization = read_authorization(&mut reader);
 
-        Ok(Some(IssueBundle::from_parts(ik?, NonEmpty::from_vec(actions).unwrap(), authorization?)))
+        Ok(Some(IssueBundle::from_parts(
+            ik?,
+            NonEmpty::from_vec(actions).unwrap(),
+            authorization?,
+        )))
     }
 }
 
@@ -42,11 +46,7 @@ fn read_action<R: Read>(mut reader: R) -> io::Result<IssueAction> {
     let notes = Vector::read(&mut reader, |r| read_note(r))?;
     let asset_descr_bytes = Vector::read(&mut reader, |r| r.read_u8())?;
     let asset_descr: String = String::from_utf8(asset_descr_bytes).unwrap();
-    Ok(IssueAction::from_parts(
-        asset_descr,
-        notes,
-        finalize,
-    ))
+    Ok(IssueAction::from_parts(asset_descr, notes, finalize))
 }
 
 fn read_note<R: Read>(mut reader: R) -> io::Result<Note> {

@@ -2,12 +2,12 @@ use std::borrow::Borrow;
 use std::convert::TryFrom;
 use std::io::Write;
 
+use crate::consensus::{BlockHeight, BranchId};
 use blake2b_simd::{Hash as Blake2bHash, Params, State};
 use byteorder::{LittleEndian, WriteBytesExt};
 use ff::PrimeField;
 use orchard::bundle::{self as orchardbundle};
 use orchard::issuance::{IssueBundle, Signed};
-use crate::consensus::{BlockHeight, BranchId};
 
 use super::{
     components::{
