@@ -5,7 +5,7 @@ use std::io::Write;
 use blake2b_simd::{Hash as Blake2bHash, Params, State};
 use byteorder::{LittleEndian, WriteBytesExt};
 use ff::PrimeField;
-use orchard::bundle::{self as orchard};
+use orchard::bundle::{self as orchardbundle};
 use orchard::issuance::{IssueBundle, Signed};
 use crate::consensus::{BlockHeight, BranchId};
 
