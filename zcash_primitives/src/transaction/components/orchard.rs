@@ -16,6 +16,11 @@ use zcash_encoding::{Array, CompactSize, Vector};
 use super::Amount;
 use crate::transaction::Transaction;
 
+mod burn_serialization;
+mod burn_validation;
+
+use burn_serialization::{read_bundle_burn, write_asset_burn};
+
 pub const FLAG_SPENDS_ENABLED: u8 = 0b0000_0001;
 pub const FLAG_OUTPUTS_ENABLED: u8 = 0b0000_0010;
 pub const FLAGS_EXPECTED_UNSET: u8 = !(FLAG_SPENDS_ENABLED | FLAG_OUTPUTS_ENABLED);
@@ -63,6 +68,7 @@ pub fn read_v5_bundle<R: Read>(
     } else {
         let flags = read_flags(&mut reader)?;
         let value_balance = Transaction::read_amount(&mut reader)?;
+        let burn = read_bundle_burn(&mut reader)?;
         let anchor = read_anchor(&mut reader)?;
         let proof_bytes = Vector::read(&mut reader, |r| r.read_u8())?;
         let actions = NonEmpty::from_vec(
@@ -83,7 +89,7 @@ pub fn read_v5_bundle<R: Read>(
             actions,
             flags,
             value_balance,
-            vec![], // TODO implement "burn" reading and writing
+            burn,
             anchor,
             authorization,
         )))
@@ -213,6 +219,7 @@ pub fn write_v5_bundle<W: Write>(
 
         writer.write_all(&[bundle.flags().to_byte()])?;
         writer.write_all(&bundle.value_balance().to_i64_le_bytes())?;
+        Vector::write(&mut writer, bundle.burn(), |w, b| write_asset_burn(w, b))?;
         writer.write_all(&bundle.anchor().to_bytes())?;
         Vector::write(
             &mut writer,
