@@ -16,9 +16,12 @@ pub mod fees;
 pub mod keys;
 pub mod proto;
 pub mod scan;
+pub mod scanning;
 pub mod wallet;
-pub mod welding_rig;
 pub mod zip321;
+
+#[cfg(feature = "unstable-serialization")]
+pub mod serialization;
 
 pub use decrypt::{decrypt_transaction, DecryptedOutput, TransferType};
 

@@ -1,23 +1,22 @@
 //! Functions for initializing the various databases.
-use std::collections::HashMap;
+
 use std::fmt;
 
-use rusqlite::{self, types::ToSql};
+use rusqlite::{self};
 use schemer::{Migrator, MigratorError};
 use schemer_rusqlite::RusqliteAdapter;
 use secrecy::SecretVec;
+use shardtree::error::ShardTreeError;
 use uuid::Uuid;
 
 use zcash_primitives::{
-    block::BlockHash,
-    consensus::{self, BlockHeight},
+    consensus::{self},
     transaction::components::amount::BalanceError,
-    zip32::AccountId,
 };
 
-use zcash_client_backend::keys::UnifiedFullViewingKey;
+use crate::WalletDb;
 
-use crate::{error::SqliteClientError, wallet, WalletDb};
+use super::commitment_tree::{self};
 
 mod migrations;
 
@@ -34,6 +33,9 @@ pub enum WalletMigrationError {
 
     /// Wrapper for amount balance violations
     BalanceError(BalanceError),
+
+    /// Wrapper for commitment tree invariant violations
+    CommitmentTree(ShardTreeError<commitment_tree::Error>),
 }
 
 impl From<rusqlite::Error> for WalletMigrationError {
@@ -45,6 +47,12 @@ impl From<rusqlite::Error> for WalletMigrationError {
 impl From<BalanceError> for WalletMigrationError {
     fn from(e: BalanceError) -> Self {
         WalletMigrationError::BalanceError(e)
+    }
+}
+
+impl From<ShardTreeError<commitment_tree::Error>> for WalletMigrationError {
+    fn from(e: ShardTreeError<commitment_tree::Error>) -> Self {
+        WalletMigrationError::CommitmentTree(e)
     }
 }
 
@@ -62,6 +70,7 @@ impl fmt::Display for WalletMigrationError {
             }
             WalletMigrationError::DbError(e) => write!(f, "{}", e),
             WalletMigrationError::BalanceError(e) => write!(f, "Balance error: {:?}", e),
+            WalletMigrationError::CommitmentTree(e) => write!(f, "Commitment tree error: {:?}", e),
         }
     }
 }
@@ -111,14 +120,14 @@ impl std::error::Error for WalletMigrationError {
 // check for unspent transparent outputs whenever running initialization with a version of the
 // library *not* compiled with the `transparent-inputs` feature flag, and fail if any are present.
 pub fn init_wallet_db<P: consensus::Parameters + 'static>(
-    wdb: &mut WalletDb<P>,
+    wdb: &mut WalletDb<rusqlite::Connection, P>,
     seed: Option<SecretVec<u8>>,
 ) -> Result<(), MigratorError<WalletMigrationError>> {
     init_wallet_db_internal(wdb, seed, &[])
 }
 
 fn init_wallet_db_internal<P: consensus::Parameters + 'static>(
-    wdb: &mut WalletDb<P>,
+    wdb: &mut WalletDb<rusqlite::Connection, P>,
     seed: Option<SecretVec<u8>>,
     target_migrations: &[Uuid],
 ) -> Result<(), MigratorError<WalletMigrationError>> {
@@ -150,194 +159,42 @@ fn init_wallet_db_internal<P: consensus::Parameters + 'static>(
     Ok(())
 }
 
-/// Initialises the data database with the given set of account [`UnifiedFullViewingKey`]s.
-///
-/// **WARNING** This method should be used with care, and should ordinarily be unnecessary.
-/// Prefer to use [`WalletWrite::create_account`] instead.
-///
-/// [`WalletWrite::create_account`]: zcash_client_backend::data_api::WalletWrite::create_account
-///
-/// The [`UnifiedFullViewingKey`]s are stored internally and used by other APIs such as
-/// [`scan_cached_blocks`], and [`create_spend_to_address`]. Account identifiers in `keys` **MUST**
-/// form a consecutive sequence beginning at account 0, and the [`UnifiedFullViewingKey`]
-/// corresponding to a given account identifier **MUST** be derived from the wallet's mnemonic seed
-/// at the BIP-44 `account` path level as described by [ZIP
-/// 316](https://zips.z.cash/zip-0316)
-///
-/// # Examples
-///
-/// ```
-/// # #[cfg(feature = "transparent-inputs")]
-/// # {
-/// use tempfile::NamedTempFile;
-/// use secrecy::Secret;
-/// use std::collections::HashMap;
-///
-/// use zcash_primitives::{
-///     consensus::{Network, Parameters},
-///     zip32::{AccountId, ExtendedSpendingKey}
-/// };
-///
-/// use zcash_client_backend::{
-///     keys::{
-///         sapling,
-///         UnifiedFullViewingKey
-///     },
-/// };
-///
-/// use zcash_client_sqlite::{
-///     WalletDb,
-///     wallet::init::{init_accounts_table, init_wallet_db}
-/// };
-///
-/// let data_file = NamedTempFile::new().unwrap();
-/// let mut db_data = WalletDb::for_path(data_file.path(), Network::TestNetwork).unwrap();
-/// init_wallet_db(&mut db_data, Some(Secret::new(vec![]))).unwrap();
-///
-/// let seed = [0u8; 32]; // insecure; replace with a strong random seed
-/// let account = AccountId::from(0);
-/// let extsk = sapling::spending_key(&seed, Network::TestNetwork.coin_type(), account);
-/// let dfvk = extsk.to_diversifiable_full_viewing_key();
-/// let ufvk = UnifiedFullViewingKey::new(None, Some(dfvk), None).unwrap();
-/// let ufvks = HashMap::from([(account, ufvk)]);
-/// init_accounts_table(&db_data, &ufvks).unwrap();
-/// # }
-/// ```
-///
-/// [`get_address`]: crate::wallet::get_address
-/// [`scan_cached_blocks`]: zcash_client_backend::data_api::chain::scan_cached_blocks
-/// [`create_spend_to_address`]: zcash_client_backend::data_api::wallet::create_spend_to_address
-pub fn init_accounts_table<P: consensus::Parameters>(
-    wdb: &WalletDb<P>,
-    keys: &HashMap<AccountId, UnifiedFullViewingKey>,
-) -> Result<(), SqliteClientError> {
-    let mut empty_check = wdb.conn.prepare("SELECT * FROM accounts LIMIT 1")?;
-    if empty_check.exists([])? {
-        return Err(SqliteClientError::TableNotEmpty);
-    }
-
-    // Ensure that the account identifiers are sequential and begin at zero.
-    if let Some(account_id) = keys.keys().max() {
-        if usize::try_from(u32::from(*account_id)).unwrap() >= keys.len() {
-            return Err(SqliteClientError::AccountIdDiscontinuity);
-        }
-    }
-
-    // Insert accounts atomically
-    wdb.conn.execute("BEGIN IMMEDIATE", [])?;
-    for (account, key) in keys.iter() {
-        wallet::add_account(wdb, *account, key)?;
-    }
-    wdb.conn.execute("COMMIT", [])?;
-
-    Ok(())
-}
-
-/// Initialises the data database with the given block.
-///
-/// This enables a newly-created database to be immediately-usable, without needing to
-/// synchronise historic blocks.
-///
-/// # Examples
-///
-/// ```
-/// use tempfile::NamedTempFile;
-/// use zcash_primitives::{
-///     block::BlockHash,
-///     consensus::{BlockHeight, Network},
-/// };
-/// use zcash_client_sqlite::{
-///     WalletDb,
-///     wallet::init::init_blocks_table,
-/// };
-///
-/// // The block height.
-/// let height = BlockHeight::from_u32(500_000);
-/// // The hash of the block header.
-/// let hash = BlockHash([0; 32]);
-/// // The nTime field from the block header.
-/// let time = 12_3456_7890;
-/// // The serialized Sapling commitment tree as of this block.
-/// // Pre-compute and hard-code, or obtain from a service.
-/// let sapling_tree = &[];
-///
-/// let data_file = NamedTempFile::new().unwrap();
-/// let db = WalletDb::for_path(data_file.path(), Network::TestNetwork).unwrap();
-/// init_blocks_table(&db, height, hash, time, sapling_tree);
-/// ```
-pub fn init_blocks_table<P>(
-    wdb: &WalletDb<P>,
-    height: BlockHeight,
-    hash: BlockHash,
-    time: u32,
-    sapling_tree: &[u8],
-) -> Result<(), SqliteClientError> {
-    let mut empty_check = wdb.conn.prepare("SELECT * FROM blocks LIMIT 1")?;
-    if empty_check.exists([])? {
-        return Err(SqliteClientError::TableNotEmpty);
-    }
-
-    wdb.conn.execute(
-        "INSERT INTO blocks (height, hash, time, sapling_tree)
-        VALUES (?, ?, ?, ?)",
-        [
-            u32::from(height).to_sql()?,
-            hash.0.to_sql()?,
-            time.to_sql()?,
-            sapling_tree.to_sql()?,
-        ],
-    )?;
-
-    Ok(())
-}
-
 #[cfg(test)]
 #[allow(deprecated)]
 mod tests {
-    use rusqlite::{self, ToSql};
+    use rusqlite::{self, named_params, ToSql};
     use secrecy::Secret;
-    use std::collections::HashMap;
+
     use tempfile::NamedTempFile;
 
     use zcash_client_backend::{
         address::RecipientAddress,
-        data_api::WalletRead,
+        data_api::scanning::ScanPriority,
         encoding::{encode_extended_full_viewing_key, encode_payment_address},
         keys::{sapling, UnifiedFullViewingKey, UnifiedSpendingKey},
     };
 
     use zcash_primitives::{
-        block::BlockHash,
-        consensus::{BlockHeight, BranchId, Parameters},
+        consensus::{self, BlockHeight, BranchId, Network, NetworkUpgrade, Parameters},
         transaction::{TransactionData, TxVersion},
-        zip32::sapling::ExtendedFullViewingKey,
+        zip32::{sapling::ExtendedFullViewingKey, AccountId},
     };
 
-    use crate::{
-        error::SqliteClientError,
-        tests::{self, network},
-        AccountId, WalletDb,
-    };
+    use crate::{testing::TestBuilder, wallet::scanning::priority_code, WalletDb};
 
-    use super::{init_accounts_table, init_blocks_table, init_wallet_db};
+    use super::init_wallet_db;
 
     #[cfg(feature = "transparent-inputs")]
     use {
-        crate::{
-            wallet::{self, pool_code, PoolType},
-            WalletWrite,
-        },
+        crate::wallet::{self, pool_code, PoolType},
         zcash_address::test_vectors,
-        zcash_primitives::{
-            consensus::Network, legacy::keys as transparent, zip32::DiversifierIndex,
-        },
+        zcash_client_backend::data_api::WalletWrite,
+        zcash_primitives::zip32::DiversifierIndex,
     };
 
     #[test]
     fn verify_schema() {
-        let data_file = NamedTempFile::new().unwrap();
-        let mut db_data = WalletDb::for_path(data_file.path(), tests::network()).unwrap();
-        init_wallet_db(&mut db_data, None).unwrap();
+        let st = TestBuilder::new().build();
 
         use regex::Regex;
         let re = Regex::new(r"\s+").unwrap();
@@ -345,8 +202,9 @@ mod tests {
         let expected_tables = vec![
             "CREATE TABLE \"accounts\" (
                 account INTEGER PRIMARY KEY,
-                ufvk TEXT NOT NULL
-            )",
+                ufvk TEXT NOT NULL,
+                birthday_height INTEGER NOT NULL,
+                recover_until_height INTEGER )",
             "CREATE TABLE addresses (
                 account INTEGER NOT NULL,
                 diversifier_index_be BLOB NOT NULL,
@@ -359,7 +217,22 @@ mod tests {
                 height INTEGER PRIMARY KEY,
                 hash BLOB NOT NULL,
                 time INTEGER NOT NULL,
-                sapling_tree BLOB NOT NULL
+                sapling_tree BLOB NOT NULL ,
+                sapling_commitment_tree_size INTEGER,
+                orchard_commitment_tree_size INTEGER,
+                sapling_output_count INTEGER,
+                orchard_action_count INTEGER)",
+            "CREATE TABLE nullifier_map (
+                spend_pool INTEGER NOT NULL,
+                nf BLOB NOT NULL,
+                block_height INTEGER NOT NULL,
+                tx_index INTEGER NOT NULL,
+                CONSTRAINT tx_locator
+                    FOREIGN KEY (block_height, tx_index)
+                    REFERENCES tx_locator_map(block_height, tx_index)
+                    ON DELETE CASCADE
+                    ON UPDATE RESTRICT,
+                CONSTRAINT nf_uniq UNIQUE (spend_pool, nf)
             )",
             "CREATE TABLE sapling_received_notes (
                 id_note INTEGER PRIMARY KEY,
@@ -373,10 +246,36 @@ mod tests {
                 is_change INTEGER NOT NULL,
                 memo BLOB,
                 spent INTEGER,
+                commitment_tree_position INTEGER,
                 FOREIGN KEY (tx) REFERENCES transactions(id_tx),
                 FOREIGN KEY (account) REFERENCES accounts(account),
                 FOREIGN KEY (spent) REFERENCES transactions(id_tx),
                 CONSTRAINT tx_output UNIQUE (tx, output_index)
+            )",
+            "CREATE TABLE sapling_tree_cap (
+                -- cap_id exists only to be able to take advantage of `ON CONFLICT`
+                -- upsert functionality; the table will only ever contain one row
+                cap_id INTEGER PRIMARY KEY,
+                cap_data BLOB NOT NULL
+            )",
+            "CREATE TABLE sapling_tree_checkpoint_marks_removed (
+                checkpoint_id INTEGER NOT NULL,
+                mark_removed_position INTEGER NOT NULL,
+                FOREIGN KEY (checkpoint_id) REFERENCES sapling_tree_checkpoints(checkpoint_id)
+                ON DELETE CASCADE,
+                CONSTRAINT spend_position_unique UNIQUE (checkpoint_id, mark_removed_position)
+            )",
+            "CREATE TABLE sapling_tree_checkpoints (
+                checkpoint_id INTEGER PRIMARY KEY,
+                position INTEGER
+            )",
+            "CREATE TABLE sapling_tree_shards (
+                shard_index INTEGER PRIMARY KEY,
+                subtree_end_height INTEGER,
+                root_hash BLOB,
+                shard_data BLOB,
+                contains_marked INTEGER,
+                CONSTRAINT root_unique UNIQUE (root_hash)
             )",
             "CREATE TABLE sapling_witnesses (
                 id_witness INTEGER PRIMARY KEY,
@@ -386,6 +285,16 @@ mod tests {
                 FOREIGN KEY (note) REFERENCES sapling_received_notes(id_note),
                 FOREIGN KEY (block) REFERENCES blocks(height),
                 CONSTRAINT witness_height UNIQUE (note, block)
+            )",
+            "CREATE TABLE scan_queue (
+                block_range_start INTEGER NOT NULL,
+                block_range_end INTEGER NOT NULL,
+                priority INTEGER NOT NULL,
+                CONSTRAINT range_start_uniq UNIQUE (block_range_start),
+                CONSTRAINT range_end_uniq UNIQUE (block_range_end),
+                CONSTRAINT range_bounds_order CHECK (
+                    block_range_start < block_range_end
+                )
             )",
             "CREATE TABLE schemer_migrations (
                 id blob PRIMARY KEY
@@ -419,6 +328,12 @@ mod tests {
                 fee INTEGER,
                 FOREIGN KEY (block) REFERENCES blocks(height)
             )",
+            "CREATE TABLE tx_locator_map (
+                block_height INTEGER NOT NULL,
+                tx_index INTEGER NOT NULL,
+                txid BLOB NOT NULL UNIQUE,
+                PRIMARY KEY (block_height, tx_index)
+            )",
             "CREATE TABLE \"utxos\" (
                 id_utxo INTEGER PRIMARY KEY,
                 received_by_account INTEGER NOT NULL,
@@ -435,7 +350,8 @@ mod tests {
             )",
         ];
 
-        let mut tables_query = db_data
+        let mut tables_query = st
+            .wallet()
             .conn
             .prepare("SELECT sql FROM sqlite_schema WHERE type = 'table' ORDER BY tbl_name")
             .unwrap();
@@ -451,6 +367,70 @@ mod tests {
         }
 
         let expected_views = vec![
+            // v_sapling_shard_scan_ranges
+            format!(
+                "CREATE VIEW v_sapling_shard_scan_ranges AS
+                SELECT
+                    shard.shard_index,
+                    shard.shard_index << 16 AS start_position,
+                    (shard.shard_index + 1) << 16 AS end_position_exclusive,
+                    IFNULL(prev_shard.subtree_end_height, {}) AS subtree_start_height,
+                    shard.subtree_end_height,
+                    shard.contains_marked,
+                    scan_queue.block_range_start,
+                    scan_queue.block_range_end,
+                    scan_queue.priority
+                FROM sapling_tree_shards shard
+                LEFT OUTER JOIN sapling_tree_shards prev_shard
+                    ON shard.shard_index = prev_shard.shard_index + 1
+                -- Join with scan ranges that overlap with the subtree's involved blocks.
+                INNER JOIN scan_queue ON (
+                    subtree_start_height < scan_queue.block_range_end AND
+                    (
+                        scan_queue.block_range_start <= shard.subtree_end_height OR
+                        shard.subtree_end_height IS NULL
+                    )
+                )",
+                u32::from(st.network().activation_height(NetworkUpgrade::Sapling).unwrap()),
+            ),
+            // v_sapling_shard_unscanned_ranges
+            format!(
+                "CREATE VIEW v_sapling_shard_unscanned_ranges AS
+                WITH wallet_birthday AS (SELECT MIN(birthday_height) AS height FROM accounts)
+                SELECT
+                    shard_index,
+                    start_position,
+                    end_position_exclusive,
+                    subtree_start_height,
+                    subtree_end_height,
+                    contains_marked,
+                    block_range_start,
+                    block_range_end,
+                    priority
+                FROM v_sapling_shard_scan_ranges
+                INNER JOIN wallet_birthday
+                WHERE priority > {}
+                AND block_range_end > wallet_birthday.height",
+                priority_code(&ScanPriority::Scanned)
+            ),
+            // v_sapling_shards_scan_state
+            "CREATE VIEW v_sapling_shards_scan_state AS
+            SELECT
+                shard_index,
+                start_position,
+                end_position_exclusive,
+                subtree_start_height,
+                subtree_end_height,
+                contains_marked,
+                MAX(priority) AS max_priority
+            FROM v_sapling_shard_scan_ranges
+            GROUP BY
+                shard_index,
+                start_position,
+                end_position_exclusive,
+                subtree_start_height,
+                subtree_end_height,
+                contains_marked".to_owned(),
             // v_transactions
             "CREATE VIEW v_transactions AS
             WITH
@@ -468,8 +448,9 @@ mod tests {
                             ELSE 1
                        END AS received_count,
                        CASE
-                           WHEN sapling_received_notes.memo IS NULL THEN 0
-                           ELSE 1
+                         WHEN (sapling_received_notes.memo IS NULL OR sapling_received_notes.memo = X'F6')
+                           THEN 0
+                         ELSE 1
                        END AS memo_present
                 FROM   sapling_received_notes
                 UNION
@@ -500,8 +481,9 @@ mod tests {
                        COUNT(DISTINCT sent_notes.id_note) as sent_notes,
                        SUM(
                          CASE
-                             WHEN sent_notes.memo IS NULL THEN 0
-                             ELSE 1
+                           WHEN (sent_notes.memo IS NULL OR sent_notes.memo = X'F6')
+                             THEN 0
+                           ELSE 1
                          END
                        ) AS memo_count
                 FROM sent_notes
@@ -540,7 +522,7 @@ mod tests {
             LEFT JOIN sent_note_counts
                       ON sent_note_counts.account_id = notes.account_id
                       AND sent_note_counts.id_tx = notes.id_tx
-            GROUP BY notes.account_id, transactions.id_tx",
+            GROUP BY notes.account_id, transactions.id_tx".to_owned(),
             // v_tx_outputs
             "CREATE VIEW v_tx_outputs AS
             SELECT sapling_received_notes.tx           AS id_tx,
@@ -584,10 +566,11 @@ mod tests {
                       ON (sent_notes.tx, sent_notes.output_pool, sent_notes.output_index) =
                          (sapling_received_notes.tx, 2, sapling_received_notes.output_index)
             WHERE  sapling_received_notes.is_change IS NULL
-               OR  sapling_received_notes.is_change = 0"
+               OR  sapling_received_notes.is_change = 0".to_owned(),
         ];
 
-        let mut views_query = db_data
+        let mut views_query = st
+            .wallet()
             .conn
             .prepare("SELECT sql FROM sqlite_schema WHERE type = 'view' ORDER BY tbl_name")
             .unwrap();
@@ -597,7 +580,7 @@ mod tests {
             let sql: String = row.get(0).unwrap();
             assert_eq!(
                 re.replace_all(&sql, " "),
-                re.replace_all(expected_views[expected_idx], " ")
+                re.replace_all(&expected_views[expected_idx], " ")
             );
             expected_idx += 1;
         }
@@ -605,8 +588,8 @@ mod tests {
 
     #[test]
     fn init_migrate_from_0_3_0() {
-        fn init_0_3_0<P>(
-            wdb: &mut WalletDb<P>,
+        fn init_0_3_0<P: consensus::Parameters>(
+            wdb: &mut WalletDb<rusqlite::Connection, P>,
             extfvk: &ExtendedFullViewingKey,
             account: AccountId,
         ) -> Result<(), rusqlite::Error> {
@@ -689,11 +672,11 @@ mod tests {
             )?;
 
             let address = encode_payment_address(
-                tests::network().hrp_sapling_payment_address(),
+                wdb.params.hrp_sapling_payment_address(),
                 &extfvk.default_address().1,
             );
             let extfvk = encode_extended_full_viewing_key(
-                tests::network().hrp_sapling_extended_full_viewing_key(),
+                wdb.params.hrp_sapling_extended_full_viewing_key(),
                 extfvk,
             );
             wdb.conn.execute(
@@ -709,20 +692,25 @@ mod tests {
             Ok(())
         }
 
+        let data_file = NamedTempFile::new().unwrap();
+        let mut db_data = WalletDb::for_path(data_file.path(), Network::TestNetwork).unwrap();
+
         let seed = [0xab; 32];
         let account = AccountId::from(0);
-        let secret_key = sapling::spending_key(&seed, tests::network().coin_type(), account);
+        let secret_key = sapling::spending_key(&seed, db_data.params.coin_type(), account);
         let extfvk = secret_key.to_extended_full_viewing_key();
-        let data_file = NamedTempFile::new().unwrap();
-        let mut db_data = WalletDb::for_path(data_file.path(), tests::network()).unwrap();
+
         init_0_3_0(&mut db_data, &extfvk, account).unwrap();
-        init_wallet_db(&mut db_data, Some(Secret::new(seed.to_vec()))).unwrap();
+        assert_matches!(
+            init_wallet_db(&mut db_data, Some(Secret::new(seed.to_vec()))),
+            Ok(_)
+        );
     }
 
     #[test]
     fn init_migrate_from_autoshielding_poc() {
-        fn init_autoshielding<P>(
-            wdb: &WalletDb<P>,
+        fn init_autoshielding<P: consensus::Parameters>(
+            wdb: &mut WalletDb<rusqlite::Connection, P>,
             extfvk: &ExtendedFullViewingKey,
             account: AccountId,
         ) -> Result<(), rusqlite::Error> {
@@ -821,11 +809,11 @@ mod tests {
             )?;
 
             let address = encode_payment_address(
-                tests::network().hrp_sapling_payment_address(),
+                wdb.params.hrp_sapling_payment_address(),
                 &extfvk.default_address().1,
             );
             let extfvk = encode_extended_full_viewing_key(
-                tests::network().hrp_sapling_extended_full_viewing_key(),
+                wdb.params.hrp_sapling_extended_full_viewing_key(),
                 extfvk,
             );
             wdb.conn.execute(
@@ -840,7 +828,7 @@ mod tests {
 
             // add a sapling sent note
             wdb.conn.execute(
-                "INSERT INTO blocks (height, hash, time, sapling_tree) VALUES (0, 0, 0, '')",
+                "INSERT INTO blocks (height, hash, time, sapling_tree) VALUES (0, 0, 0, x'000000')",
                 [],
             )?;
 
@@ -860,8 +848,11 @@ mod tests {
             let mut tx_bytes = vec![];
             tx.write(&mut tx_bytes).unwrap();
             wdb.conn.execute(
-                "INSERT INTO transactions (block, id_tx, txid, raw) VALUES (0, 0, '', ?)",
-                [&tx_bytes[..]],
+                "INSERT INTO transactions (block, id_tx, txid, raw) VALUES (0, 0, :txid, :tx_bytes)",
+                named_params![
+                    ":txid": tx.txid().as_ref(),
+                    ":tx_bytes": &tx_bytes[..]
+                ],
             )?;
             wdb.conn.execute(
                 "INSERT INTO sent_notes (tx, output_index, from_account, address, value)
@@ -872,20 +863,25 @@ mod tests {
             Ok(())
         }
 
+        let data_file = NamedTempFile::new().unwrap();
+        let mut db_data = WalletDb::for_path(data_file.path(), Network::TestNetwork).unwrap();
+
         let seed = [0xab; 32];
         let account = AccountId::from(0);
-        let secret_key = sapling::spending_key(&seed, tests::network().coin_type(), account);
+        let secret_key = sapling::spending_key(&seed, db_data.params.coin_type(), account);
         let extfvk = secret_key.to_extended_full_viewing_key();
-        let data_file = NamedTempFile::new().unwrap();
-        let mut db_data = WalletDb::for_path(data_file.path(), tests::network()).unwrap();
-        init_autoshielding(&db_data, &extfvk, account).unwrap();
-        init_wallet_db(&mut db_data, Some(Secret::new(seed.to_vec()))).unwrap();
+
+        init_autoshielding(&mut db_data, &extfvk, account).unwrap();
+        assert_matches!(
+            init_wallet_db(&mut db_data, Some(Secret::new(seed.to_vec()))),
+            Ok(_)
+        );
     }
 
     #[test]
     fn init_migrate_from_main_pre_migrations() {
-        fn init_main<P>(
-            wdb: &WalletDb<P>,
+        fn init_main<P: consensus::Parameters>(
+            wdb: &mut WalletDb<rusqlite::Connection, P>,
             ufvk: &UnifiedFullViewingKey,
             account: AccountId,
         ) -> Result<(), rusqlite::Error> {
@@ -984,9 +980,9 @@ mod tests {
                 [],
             )?;
 
-            let ufvk_str = ufvk.encode(&tests::network());
+            let ufvk_str = ufvk.encode(&wdb.params);
             let address_str =
-                RecipientAddress::Unified(ufvk.default_address().0).encode(&tests::network());
+                RecipientAddress::Unified(ufvk.default_address().0).encode(&wdb.params);
             wdb.conn.execute(
                 "INSERT INTO accounts (account, ufvk, address, transparent_address)
                 VALUES (?, ?, ?, '')",
@@ -1002,9 +998,9 @@ mod tests {
             {
                 let taddr =
                     RecipientAddress::Transparent(*ufvk.default_address().0.transparent().unwrap())
-                        .encode(&tests::network());
+                        .encode(&wdb.params);
                 wdb.conn.execute(
-                    "INSERT INTO blocks (height, hash, time, sapling_tree) VALUES (0, 0, 0, '')",
+                    "INSERT INTO blocks (height, hash, time, sapling_tree) VALUES (0, 0, 0, x'000000')",
                     [],
                 )?;
                 wdb.conn.execute(
@@ -1020,149 +1016,50 @@ mod tests {
             Ok(())
         }
 
+        let data_file = NamedTempFile::new().unwrap();
+        let mut db_data = WalletDb::for_path(data_file.path(), Network::TestNetwork).unwrap();
+
         let seed = [0xab; 32];
         let account = AccountId::from(0);
-        let secret_key = UnifiedSpendingKey::from_seed(&tests::network(), &seed, account).unwrap();
-        let data_file = NamedTempFile::new().unwrap();
-        let mut db_data = WalletDb::for_path(data_file.path(), tests::network()).unwrap();
-        init_main(&db_data, &secret_key.to_unified_full_viewing_key(), account).unwrap();
-        init_wallet_db(&mut db_data, Some(Secret::new(seed.to_vec()))).unwrap();
-    }
+        let secret_key = UnifiedSpendingKey::from_seed(&db_data.params, &seed, account).unwrap();
 
-    #[test]
-    fn init_accounts_table_only_works_once() {
-        let data_file = NamedTempFile::new().unwrap();
-        let mut db_data = WalletDb::for_path(data_file.path(), tests::network()).unwrap();
-        init_wallet_db(&mut db_data, Some(Secret::new(vec![]))).unwrap();
-
-        // We can call the function as many times as we want with no data
-        init_accounts_table(&db_data, &HashMap::new()).unwrap();
-        init_accounts_table(&db_data, &HashMap::new()).unwrap();
-
-        let seed = [0u8; 32];
-        let account = AccountId::from(0);
-
-        // First call with data should initialise the accounts table
-        let extsk = sapling::spending_key(&seed, network().coin_type(), account);
-        let dfvk = extsk.to_diversifiable_full_viewing_key();
-
-        #[cfg(feature = "transparent-inputs")]
-        let ufvk = UnifiedFullViewingKey::new(
-            Some(
-                transparent::AccountPrivKey::from_seed(&network(), &seed, account)
-                    .unwrap()
-                    .to_account_pubkey(),
-            ),
-            Some(dfvk),
-            None,
+        init_main(
+            &mut db_data,
+            &secret_key.to_unified_full_viewing_key(),
+            account,
         )
         .unwrap();
-
-        #[cfg(not(feature = "transparent-inputs"))]
-        let ufvk = UnifiedFullViewingKey::new(Some(dfvk), None).unwrap();
-        let ufvks = HashMap::from([(account, ufvk)]);
-
-        init_accounts_table(&db_data, &ufvks).unwrap();
-
-        // Subsequent calls should return an error
-        init_accounts_table(&db_data, &HashMap::new()).unwrap_err();
-        init_accounts_table(&db_data, &ufvks).unwrap_err();
-    }
-
-    #[test]
-    fn init_accounts_table_allows_no_gaps() {
-        let data_file = NamedTempFile::new().unwrap();
-        let mut db_data = WalletDb::for_path(data_file.path(), network()).unwrap();
-        init_wallet_db(&mut db_data, Some(Secret::new(vec![]))).unwrap();
-
-        // allow sequential initialization
-        let seed = [0u8; 32];
-        let ufvks = |ids: &[u32]| {
-            ids.iter()
-                .map(|a| {
-                    let account = AccountId::from(*a);
-                    UnifiedSpendingKey::from_seed(&network(), &seed, account)
-                        .map(|k| (account, k.to_unified_full_viewing_key()))
-                        .unwrap()
-                })
-                .collect::<HashMap<_, _>>()
-        };
-
-        // should fail if we have a gap
         assert_matches!(
-            init_accounts_table(&db_data, &ufvks(&[0, 2])),
-            Err(SqliteClientError::AccountIdDiscontinuity)
+            init_wallet_db(&mut db_data, Some(Secret::new(seed.to_vec()))),
+            Ok(_)
         );
-
-        // should succeed if there are no gaps
-        assert!(init_accounts_table(&db_data, &ufvks(&[0, 1, 2])).is_ok());
-    }
-
-    #[test]
-    fn init_blocks_table_only_works_once() {
-        let data_file = NamedTempFile::new().unwrap();
-        let mut db_data = WalletDb::for_path(data_file.path(), tests::network()).unwrap();
-        init_wallet_db(&mut db_data, Some(Secret::new(vec![]))).unwrap();
-
-        // First call with data should initialise the blocks table
-        init_blocks_table(
-            &db_data,
-            BlockHeight::from(1u32),
-            BlockHash([1; 32]),
-            1,
-            &[],
-        )
-        .unwrap();
-
-        // Subsequent calls should return an error
-        init_blocks_table(
-            &db_data,
-            BlockHeight::from(2u32),
-            BlockHash([2; 32]),
-            2,
-            &[],
-        )
-        .unwrap_err();
-    }
-
-    #[test]
-    fn init_accounts_table_stores_correct_address() {
-        let data_file = NamedTempFile::new().unwrap();
-        let mut db_data = WalletDb::for_path(data_file.path(), tests::network()).unwrap();
-        init_wallet_db(&mut db_data, None).unwrap();
-
-        let seed = [0u8; 32];
-
-        // Add an account to the wallet
-        let account_id = AccountId::from(0);
-        let usk = UnifiedSpendingKey::from_seed(&tests::network(), &seed, account_id).unwrap();
-        let ufvk = usk.to_unified_full_viewing_key();
-        let expected_address = ufvk.sapling().unwrap().default_address().1;
-        let ufvks = HashMap::from([(account_id, ufvk)]);
-        init_accounts_table(&db_data, &ufvks).unwrap();
-
-        // The account's address should be in the data DB
-        let ua = db_data.get_current_address(AccountId::from(0)).unwrap();
-        assert_eq!(ua.unwrap().sapling().unwrap(), &expected_address);
     }
 
     #[test]
     #[cfg(feature = "transparent-inputs")]
     fn account_produces_expected_ua_sequence() {
-        let data_file = NamedTempFile::new().unwrap();
-        let mut db_data = WalletDb::for_path(data_file.path(), Network::MainNetwork).unwrap();
-        init_wallet_db(&mut db_data, None).unwrap();
+        use zcash_client_backend::data_api::AccountBirthday;
 
-        let mut ops = db_data.get_update_ops().unwrap();
+        let network = Network::MainNetwork;
+        let data_file = NamedTempFile::new().unwrap();
+        let mut db_data = WalletDb::for_path(data_file.path(), network).unwrap();
         let seed = test_vectors::UNIFIED[0].root_seed;
-        let (account, _usk) = ops.create_account(&Secret::new(seed.to_vec())).unwrap();
+        assert_matches!(
+            init_wallet_db(&mut db_data, Some(Secret::new(seed.to_vec()))),
+            Ok(_)
+        );
+
+        let birthday = AccountBirthday::from_sapling_activation(&network);
+        let (account, _usk) = db_data
+            .create_account(&Secret::new(seed.to_vec()), birthday)
+            .unwrap();
         assert_eq!(account, AccountId::from(0u32));
 
         for tv in &test_vectors::UNIFIED[..3] {
             if let Some(RecipientAddress::Unified(tvua)) =
                 RecipientAddress::decode(&Network::MainNetwork, tv.unified_addr)
             {
-                let (ua, di) = wallet::get_current_address(&db_data, account)
+                let (ua, di) = wallet::get_current_address(&db_data.conn, &db_data.params, account)
                     .unwrap()
                     .expect("create_account generated the first address");
                 assert_eq!(DiversifierIndex::from(tv.diversifier_index), di);
@@ -1170,7 +1067,8 @@ mod tests {
                 assert_eq!(tvua.sapling(), ua.sapling());
                 assert_eq!(tv.unified_addr, ua.encode(&Network::MainNetwork));
 
-                ops.get_next_available_address(account)
+                db_data
+                    .get_next_available_address(account)
                     .unwrap()
                     .expect("get_next_available_address generated an address");
             } else {

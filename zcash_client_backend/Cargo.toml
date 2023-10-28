@@ -1,7 +1,7 @@
 [package]
 name = "zcash_client_backend"
 description = "APIs for creating shielded Zcash light clients"
-version = "0.9.0"
+version = "0.10.0-rc.1"
 authors = [
     "Jack Grigg <jack@z.cash>",
     "Kris Nuttycombe <kris@electriccoin.co>"
@@ -20,16 +20,15 @@ exclude = ["*.proto"]
 development = ["zcash_proofs"]
 
 [dependencies]
-incrementalmerkletree = { version = "0.4", features = ["legacy-api"] }
 zcash_address = { version = "0.3", path = "../components/zcash_address" }
 zcash_encoding = { version = "0.2", path = "../components/zcash_encoding" }
 zcash_note_encryption = "0.4"
-zcash_primitives = { version = "0.12", path = "../zcash_primitives", default-features = false }
+zcash_primitives = { version = "=0.13.0-rc.1", path = "../zcash_primitives", default-features = false }
 
 # Dependencies exposed in a public API:
 # (Breaking upgrades to these require a breaking upgrade to this crate.)
 # - Data Access API
-time = "0.2"
+time = "0.3.22"
 
 # - Encodings
 base64 = "0.21"
@@ -44,8 +43,9 @@ memuse = "0.2"
 tracing = "0.1"
 
 # - Protobuf interfaces and gRPC bindings
-prost = "0.11"
-tonic = { version = "0.9", optional = true }
+hex = "0.4"
+prost = "0.12"
+tonic = { version = "0.10", optional = true }
 
 # - Secret management
 secrecy = "0.8"
@@ -54,7 +54,11 @@ subtle = "2.2.3"
 # - Shielded protocols
 bls12_381 = "0.8"
 group = "0.13"
-orchard = { version = "0.5", default-features = false }
+orchard = { version = "0.6", default-features = false }
+
+# - Note commitment trees
+incrementalmerkletree = "0.5"
+shardtree = "0.1"
 
 # - Test dependencies
 proptest = { version = "1.0.0", optional = true }
@@ -73,20 +77,21 @@ crossbeam-channel = "0.5"
 rayon = "1.5"
 
 [build-dependencies]
-tonic-build = "0.9"
+tonic-build = "0.10"
 which = "4"
 
 [dev-dependencies]
 assert_matches = "1.5"
 gumdrop = "0.8"
-hex = "0.4"
 jubjub = "0.10"
 proptest = "1.0.0"
 rand_core = "0.6"
 rand_xorshift = "0.3"
 tempfile = "3.5.0"
-zcash_proofs = { version = "0.12", path = "../zcash_proofs", default-features = false }
+zcash_proofs = { version = "=0.13.0-rc.1", path = "../zcash_proofs", default-features = false }
 zcash_address = { version = "0.3", path = "../components/zcash_address", features = ["test-dependencies"] }
+
+time = ">=0.3.22, <0.3.24" # time 0.3.24 has MSRV 1.67
 
 [features]
 lightwalletd-tonic = ["tonic"]
@@ -98,6 +103,7 @@ test-dependencies = [
     "incrementalmerkletree/test-dependencies"
 ]
 unstable = ["byteorder"]
+unstable-serialization = ["byteorder"]
 
 [lib]
 bench = false

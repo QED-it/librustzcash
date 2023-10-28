@@ -283,10 +283,9 @@ mod tests {
     use tempfile::NamedTempFile;
 
     use zcash_client_backend::keys::UnifiedSpendingKey;
-    use zcash_primitives::zip32::AccountId;
+    use zcash_primitives::{consensus::Network, zip32::AccountId};
 
     use crate::{
-        tests,
         wallet::init::{init_wallet_db_internal, migrations::addresses_table},
         WalletDb,
     };
@@ -310,24 +309,24 @@ mod tests {
 
     #[test]
     fn transaction_views() {
+        let network = Network::TestNetwork;
         let data_file = NamedTempFile::new().unwrap();
-        let mut db_data = WalletDb::for_path(data_file.path(), tests::network()).unwrap();
+        let mut db_data = WalletDb::for_path(data_file.path(), network).unwrap();
         init_wallet_db_internal(&mut db_data, None, &[addresses_table::MIGRATION_ID]).unwrap();
         let usk =
-            UnifiedSpendingKey::from_seed(&tests::network(), &[0u8; 32][..], AccountId::from(0))
-                .unwrap();
+            UnifiedSpendingKey::from_seed(&network, &[0u8; 32][..], AccountId::from(0)).unwrap();
         let ufvk = usk.to_unified_full_viewing_key();
 
         db_data
             .conn
             .execute(
                 "INSERT INTO accounts (account, ufvk) VALUES (0, ?)",
-                params![ufvk.encode(&tests::network())],
+                params![ufvk.encode(&network)],
             )
             .unwrap();
 
         db_data.conn.execute_batch(
-            "INSERT INTO blocks (height, hash, time, sapling_tree) VALUES (0, 0, 0, '');
+            "INSERT INTO blocks (height, hash, time, sapling_tree) VALUES (0, 0, 0, x'00');
             INSERT INTO transactions (block, id_tx, txid) VALUES (0, 0, '');
 
             INSERT INTO sent_notes (tx, output_pool, output_index, from_account, address, value)
@@ -402,8 +401,9 @@ mod tests {
     #[test]
     #[cfg(feature = "transparent-inputs")]
     fn migrate_from_wm2() {
+        let network = Network::TestNetwork;
         let data_file = NamedTempFile::new().unwrap();
-        let mut db_data = WalletDb::for_path(data_file.path(), tests::network()).unwrap();
+        let mut db_data = WalletDb::for_path(data_file.path(), network).unwrap();
         init_wallet_db_internal(
             &mut db_data,
             None,
@@ -440,8 +440,7 @@ mod tests {
         tx.write(&mut tx_bytes).unwrap();
 
         let usk =
-            UnifiedSpendingKey::from_seed(&tests::network(), &[0u8; 32][..], AccountId::from(0))
-                .unwrap();
+            UnifiedSpendingKey::from_seed(&network, &[0u8; 32][..], AccountId::from(0)).unwrap();
         let ufvk = usk.to_unified_full_viewing_key();
         let (ua, _) = ufvk.default_address();
         let taddr = ufvk
@@ -451,16 +450,16 @@ mod tests {
                     .ok()
                     .map(|k| k.derive_address(0).unwrap())
             })
-            .map(|a| a.encode(&tests::network()));
+            .map(|a| a.encode(&network));
 
         db_data.conn.execute(
             "INSERT INTO accounts (account, ufvk, address, transparent_address) VALUES (0, ?, ?, ?)",
-            params![ufvk.encode(&tests::network()), ua.encode(&tests::network()), &taddr]
+            params![ufvk.encode(&network), ua.encode(&network), &taddr]
         ).unwrap();
         db_data
             .conn
             .execute_batch(
-                "INSERT INTO blocks (height, hash, time, sapling_tree) VALUES (0, 0, 0, '');",
+                "INSERT INTO blocks (height, hash, time, sapling_tree) VALUES (0, 0, 0, x'00');",
             )
             .unwrap();
         db_data.conn.execute(

@@ -8,14 +8,6 @@ use orchard::value as orchard;
 pub const COIN: i64 = 1_0000_0000;
 pub const MAX_MONEY: i64 = 21_000_000 * COIN;
 
-#[deprecated(
-    since = "0.12.0",
-    note = "To calculate the ZIP 317 fee, use `transaction::fees::zip317::FeeRule`.
-For a constant representing the minimum ZIP 317 fee, use `transaction::fees::zip317::MINIMUM_FEE`.
-For the constant amount 1000 zatoshis, use `Amount::const_from_i64(1000)`."
-)]
-pub const DEFAULT_FEE: Amount = Amount(1000);
-
 /// A type-safe representation of some quantity of Zcash.
 ///
 /// An Amount can only be constructed from an integer that is within the valid monetary
@@ -246,6 +238,9 @@ impl TryFrom<orchard::ValueSum> for Amount {
 pub struct NonNegativeAmount(Amount);
 
 impl NonNegativeAmount {
+    /// Returns the identity `NonNegativeAmount`
+    pub const ZERO: Self = NonNegativeAmount(Amount(0));
+
     /// Creates a NonNegativeAmount from a u64.
     ///
     /// Returns an error if the amount is outside the range `{0..MAX_MONEY}`.
@@ -264,6 +259,50 @@ impl NonNegativeAmount {
 impl From<NonNegativeAmount> for Amount {
     fn from(n: NonNegativeAmount) -> Self {
         n.0
+    }
+}
+
+impl TryFrom<Amount> for NonNegativeAmount {
+    type Error = ();
+
+    fn try_from(value: Amount) -> Result<Self, Self::Error> {
+        if value.is_negative() {
+            Err(())
+        } else {
+            Ok(NonNegativeAmount(value))
+        }
+    }
+}
+
+impl Add<NonNegativeAmount> for NonNegativeAmount {
+    type Output = Option<NonNegativeAmount>;
+
+    fn add(self, rhs: NonNegativeAmount) -> Option<NonNegativeAmount> {
+        (self.0 + rhs.0).map(NonNegativeAmount)
+    }
+}
+
+impl Add<NonNegativeAmount> for Option<NonNegativeAmount> {
+    type Output = Self;
+
+    fn add(self, rhs: NonNegativeAmount) -> Option<NonNegativeAmount> {
+        self.and_then(|lhs| lhs + rhs)
+    }
+}
+
+impl Sub<NonNegativeAmount> for NonNegativeAmount {
+    type Output = Option<NonNegativeAmount>;
+
+    fn sub(self, rhs: NonNegativeAmount) -> Option<NonNegativeAmount> {
+        (self.0 - rhs.0).and_then(|amt| NonNegativeAmount::try_from(amt).ok())
+    }
+}
+
+impl Sub<NonNegativeAmount> for Option<NonNegativeAmount> {
+    type Output = Self;
+
+    fn sub(self, rhs: NonNegativeAmount) -> Option<NonNegativeAmount> {
+        self.and_then(|lhs| lhs - rhs)
     }
 }
 

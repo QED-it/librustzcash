@@ -6,9 +6,10 @@ use rusqlite::{self, named_params};
 use schemer;
 use schemer_rusqlite::RusqliteMigration;
 use uuid::Uuid;
+use zcash_client_backend::data_api::{PoolType, ShieldedProtocol};
 
 use super::add_transaction_views;
-use crate::wallet::{init::WalletMigrationError, pool_code, PoolType};
+use crate::wallet::{init::WalletMigrationError, pool_code};
 
 pub(super) const MIGRATION_ID: Uuid = Uuid::from_fields(
     0x2aa4d24f,
@@ -48,7 +49,7 @@ impl RusqliteMigration for Migration {
              SELECT tx, :output_pool, output_index, from_account, from_account, value
              FROM sent_notes",
              named_params![
-                ":output_pool": &pool_code(PoolType::Sapling)
+                ":output_pool": &pool_code(PoolType::Shielded(ShieldedProtocol::Sapling))
              ]
         )?;
 
@@ -211,10 +212,9 @@ mod tests {
     use tempfile::NamedTempFile;
 
     use zcash_client_backend::keys::UnifiedSpendingKey;
-    use zcash_primitives::zip32::AccountId;
+    use zcash_primitives::{consensus::Network, zip32::AccountId};
 
     use crate::{
-        tests,
         wallet::init::{init_wallet_db_internal, migrations::add_transaction_views},
         WalletDb,
     };
@@ -222,38 +222,38 @@ mod tests {
     #[test]
     fn v_transactions_net() {
         let data_file = NamedTempFile::new().unwrap();
-        let mut db_data = WalletDb::for_path(data_file.path(), tests::network()).unwrap();
+        let mut db_data = WalletDb::for_path(data_file.path(), Network::TestNetwork).unwrap();
         init_wallet_db_internal(&mut db_data, None, &[add_transaction_views::MIGRATION_ID])
             .unwrap();
 
         // Create two accounts in the wallet.
         let usk0 =
-            UnifiedSpendingKey::from_seed(&tests::network(), &[0u8; 32][..], AccountId::from(0))
+            UnifiedSpendingKey::from_seed(&db_data.params, &[0u8; 32][..], AccountId::from(0))
                 .unwrap();
         let ufvk0 = usk0.to_unified_full_viewing_key();
         db_data
             .conn
             .execute(
                 "INSERT INTO accounts (account, ufvk) VALUES (0, ?)",
-                params![ufvk0.encode(&tests::network())],
+                params![ufvk0.encode(&db_data.params)],
             )
             .unwrap();
 
         let usk1 =
-            UnifiedSpendingKey::from_seed(&tests::network(), &[1u8; 32][..], AccountId::from(1))
+            UnifiedSpendingKey::from_seed(&db_data.params, &[1u8; 32][..], AccountId::from(1))
                 .unwrap();
         let ufvk1 = usk1.to_unified_full_viewing_key();
         db_data
             .conn
             .execute(
                 "INSERT INTO accounts (account, ufvk) VALUES (1, ?)",
-                params![ufvk1.encode(&tests::network())],
+                params![ufvk1.encode(&db_data.params)],
             )
             .unwrap();
 
         // - Tx 0 contains two received notes of 2 and 5 zatoshis that are controlled by account 0.
         db_data.conn.execute_batch(
-            "INSERT INTO blocks (height, hash, time, sapling_tree) VALUES (0, 0, 0, '');
+            "INSERT INTO blocks (height, hash, time, sapling_tree) VALUES (0, 0, 0, x'00');
             INSERT INTO transactions (block, id_tx, txid) VALUES (0, 0, 'tx0');
 
             INSERT INTO received_notes (tx, output_index, account, diversifier, value, rcm, nf, is_change)
@@ -265,7 +265,7 @@ mod tests {
         //   of 2 zatoshis. This is representative of a historic transaction where no `sent_notes`
         //   entry was created for the change value.
         db_data.conn.execute_batch(
-            "INSERT INTO blocks (height, hash, time, sapling_tree) VALUES (1, 1, 1, '');
+            "INSERT INTO blocks (height, hash, time, sapling_tree) VALUES (1, 1, 1, x'00');
             INSERT INTO transactions (block, id_tx, txid) VALUES (1, 1, 'tx1');
             UPDATE received_notes SET spent = 1 WHERE tx = 0;
             INSERT INTO sent_notes (tx, output_pool, output_index, from_account, to_account, to_address, value)
@@ -279,7 +279,7 @@ mod tests {
         //   other half to the sending account as change. Also there's a random transparent utxo,
         //   received, who knows where it came from but it's for account 0.
         db_data.conn.execute_batch(
-            "INSERT INTO blocks (height, hash, time, sapling_tree) VALUES (2, 2, 2, '');
+            "INSERT INTO blocks (height, hash, time, sapling_tree) VALUES (2, 2, 2, x'00');
             INSERT INTO transactions (block, id_tx, txid) VALUES (2, 2, 'tx2');
             UPDATE received_notes SET spent = 2 WHERE tx = 1;
             INSERT INTO utxos (received_by_account, address, prevout_txid, prevout_idx, script, value_zat, height)
@@ -297,7 +297,7 @@ mod tests {
         // - Tx 3 just receives transparent funds and does nothing else. For this to work, the
         //   transaction must be retrieved by the wallet.
         db_data.conn.execute_batch(
-            "INSERT INTO blocks (height, hash, time, sapling_tree) VALUES (3, 3, 3, '');
+            "INSERT INTO blocks (height, hash, time, sapling_tree) VALUES (3, 3, 3, x'00');
             INSERT INTO transactions (block, id_tx, txid) VALUES (3, 3, 'tx3');
 
             INSERT INTO utxos (received_by_account, address, prevout_txid, prevout_idx, script, value_zat, height)

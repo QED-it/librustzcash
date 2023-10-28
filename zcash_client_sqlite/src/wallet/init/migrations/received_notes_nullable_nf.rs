@@ -233,10 +233,9 @@ mod tests {
     use tempfile::NamedTempFile;
 
     use zcash_client_backend::keys::UnifiedSpendingKey;
-    use zcash_primitives::zip32::AccountId;
+    use zcash_primitives::{consensus::Network, zip32::AccountId};
 
     use crate::{
-        tests,
         wallet::init::{init_wallet_db_internal, migrations::v_transactions_net},
         WalletDb,
     };
@@ -244,25 +243,25 @@ mod tests {
     #[test]
     fn received_notes_nullable_migration() {
         let data_file = NamedTempFile::new().unwrap();
-        let mut db_data = WalletDb::for_path(data_file.path(), tests::network()).unwrap();
+        let mut db_data = WalletDb::for_path(data_file.path(), Network::TestNetwork).unwrap();
         init_wallet_db_internal(&mut db_data, None, &[v_transactions_net::MIGRATION_ID]).unwrap();
 
         // Create an account in the wallet
         let usk0 =
-            UnifiedSpendingKey::from_seed(&tests::network(), &[0u8; 32][..], AccountId::from(0))
+            UnifiedSpendingKey::from_seed(&db_data.params, &[0u8; 32][..], AccountId::from(0))
                 .unwrap();
         let ufvk0 = usk0.to_unified_full_viewing_key();
         db_data
             .conn
             .execute(
                 "INSERT INTO accounts (account, ufvk) VALUES (0, ?)",
-                params![ufvk0.encode(&tests::network())],
+                params![ufvk0.encode(&db_data.params)],
             )
             .unwrap();
 
         // Tx 0 contains two received notes of 2 and 5 zatoshis that are controlled by account 0.
         db_data.conn.execute_batch(
-            "INSERT INTO blocks (height, hash, time, sapling_tree) VALUES (0, 0, 0, '');
+            "INSERT INTO blocks (height, hash, time, sapling_tree) VALUES (0, 0, 0, x'00');
             INSERT INTO transactions (block, id_tx, txid) VALUES (0, 0, 'tx0');
 
             INSERT INTO received_notes (tx, output_index, account, diversifier, value, rcm, nf, is_change)

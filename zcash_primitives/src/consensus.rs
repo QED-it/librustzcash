@@ -23,6 +23,12 @@ impl BlockHeight {
     pub const fn from_u32(v: u32) -> BlockHeight {
         BlockHeight(v)
     }
+
+    /// Subtracts the provided value from this height, returning `H0` if this would result in
+    /// underflow of the wrapped `u32`.
+    pub fn saturating_sub(self, v: u32) -> BlockHeight {
+        BlockHeight(self.0.saturating_sub(v))
+    }
 }
 
 impl fmt::Display for BlockHeight {
@@ -361,7 +367,7 @@ impl Parameters for Network {
 /// consensus rules enforced by the network are altered.
 ///
 /// See [ZIP 200](https://zips.z.cash/zip-0200) for more details.
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum NetworkUpgrade {
     /// The [Overwinter] network upgrade.
     ///
@@ -626,6 +632,12 @@ pub mod testing {
                         .prop_map(|h| Some(BlockHeight(h))),
                 )
             })
+    }
+
+    impl incrementalmerkletree::testing::TestCheckpoint for BlockHeight {
+        fn from_u64(value: u64) -> Self {
+            BlockHeight(u32::try_from(value).expect("Test checkpoint ids do not exceed 32 bits"))
+        }
     }
 }
 

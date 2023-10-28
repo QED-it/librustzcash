@@ -6,13 +6,67 @@ and this library adheres to Rust's notion of
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+
+## [0.8.0-rc.1] - 2023-09-08
+### Added
+- `zcash_client_sqlite::commitment_tree` Types related to management of note
+  commitment trees using the `shardtree` crate.
+- A new default-enabled feature flag `multicore`. This allows users to disable
+  multicore support by setting `default_features = false` on their
+  `zcash_primitives`, `zcash_proofs`, and `zcash_client_sqlite` dependencies.
+- `zcash_client_sqlite::ReceivedNoteId`
+- `zcash_client_sqlite::wallet::commitment_tree` A new module containing a
+  sqlite-backed implementation of `shardtree::store::ShardStore`.
+- `impl zcash_client_backend::data_api::WalletCommitmentTrees for WalletDb`
+
 ### Changed
 - MSRV is now 1.65.0.
-- Bumped dependencies to `hdwallet 0.4`, `incrementalmerkletree 0.4`, `bs58 0.5`,
-  `zcash_primitives 0.12`
+- Bumped dependencies to `hdwallet 0.4`, `incrementalmerkletree 0.5`, `bs58 0.5`,
+  `prost 0.12`, `rusqlite 0.29`, `schemer-rusqlite 0.2.2`, `time 0.3.22`,
+  `tempfile 3.5`, `zcash_address 0.3`, `zcash_note_encryption 0.4`,
+  `zcash_primitives 0.13`, `zcash_client_backend 0.10`.
+- Added dependencies on `shardtree 0.0`, `zcash_encoding 0.2`, `byteorder 1`
+- A `CommitmentTree` variant has been added to `zcash_client_sqlite::wallet::init::WalletMigrationError`
+- `min_confirmations` parameter values are now more strongly enforced. Previously,
+  a note could be spent with fewer than `min_confirmations` confirmations if the
+  wallet did not contain enough observed blocks to satisfy the `min_confirmations`
+  value specified; this situation is now treated as an error.
+- `zcash_client_sqlite::error::SqliteClientError` has new error variants:
+  - `SqliteClientError::AccountUnknown`
+  - `SqliteClientError::BlockConflict`
+  - `SqliteClientError::CacheMiss`
+  - `SqliteClientError::ChainHeightUnknown`
+  - `SqliteClientError::CommitmentTree`
+  - `SqliteClientError::NonSequentialBlocks`
+- `zcash_client_backend::FsBlockDbError` has a new error variant:
+  - `FsBlockDbError::CacheMiss`
+- `zcash_client_sqlite::FsBlockDb::write_block_metadata` now overwrites any
+  existing metadata entries that have the same height as a new entry.
 
 ### Removed
 - The empty `wallet::transact` module has been removed.
+- `zcash_client_sqlite::NoteId` has been replaced with `zcash_client_sqlite::ReceivedNoteId`
+  as the `SentNoteId` variant is now unused following changes to
+  `zcash_client_backend::data_api::WalletRead`.
+- `zcash_client_sqlite::wallet::init::{init_blocks_table, init_accounts_table}`
+  have been removed. `zcash_client_backend::data_api::WalletWrite::create_account`
+  should be used instead; the initialization of the note commitment tree
+  previously performed by `init_blocks_table` is now handled by passing an
+  `AccountBirthday` containing the note commitment tree frontier as of the
+  end of the birthday height block to `create_account` instead.
+- `zcash_client_sqlite::DataConnStmtCache` has been removed in favor of using
+  `rusqlite` caching for prepared statements.
+- `zcash_client_sqlite::prepared` has been entirely removed.
+
+### Fixed
+- Fixed an off-by-one error in the `BlockSource` implementation for the SQLite-backed
+ `BlockDb` block database which could result in blocks being skipped at the start of
+ scan ranges.
+- `zcash_client_sqlite::{BlockDb, FsBlockDb}::with_blocks` now return an error
+  if `from_height` is set to a block height that does not exist in the cache.
+- `WalletDb::get_transaction` no longer returns an error when called on a transaction
+  that has not yet been mined, unless the transaction's consensus branch ID cannot be
+  determined by other means.
 
 ## [0.7.1] - 2023-05-17
 
