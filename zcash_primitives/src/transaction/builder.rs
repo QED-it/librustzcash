@@ -4,6 +4,10 @@ use std::cmp::Ordering;
 use std::error;
 use std::fmt;
 use std::sync::mpsc::Sender;
+use orchard::Address;
+use orchard::issuance::{IssueBundle, IssueInfo};
+use orchard::keys::IssuanceValidatingKey;
+use orchard::note::AssetBase;
 
 use rand::{rngs::OsRng, CryptoRng, RngCore};
 
@@ -68,6 +72,8 @@ pub enum Error<FeeError> {
     SaplingBuild(sapling_builder::Error),
     /// An error occurred in constructing the Orchard parts of a transaction.
     OrchardBuild(orchard::builder::BuildError),
+    /// An error occurred in constructing the Orchard parts of a transaction.
+    IssuanceBuild(orchard::issuance::Error),
     /// An error occurred in adding an Orchard Spend to a transaction.
     OrchardSpend(orchard::builder::SpendError),
     /// An error occurred in adding an Orchard Output to a transaction.
@@ -98,6 +104,7 @@ impl<FE: fmt::Display> fmt::Display for Error<FE> {
             Error::TransparentBuild(err) => err.fmt(f),
             Error::SaplingBuild(err) => err.fmt(f),
             Error::OrchardBuild(err) => write!(f, "{:?}", err),
+            Error::IssuanceBuild(err) => write!(f, "{:?}", err),
             Error::OrchardSpend(err) => write!(f, "Could not add Orchard spend: {}", err),
             Error::OrchardRecipient(err) => write!(f, "Could not add Orchard recipient: {}", err),
             Error::OrchardAnchorNotAvailable => write!(
@@ -156,6 +163,7 @@ pub struct Builder<'a, P, R> {
     transparent_builder: TransparentBuilder,
     sapling_builder: SaplingBuilder<P>,
     orchard_builder: Option<orchard::builder::Builder>,
+    issuance_builder: Option<IssueBundle<orchard::issuance::Unauthorized>>,
     // TODO: In the future, instead of taking the spending keys as arguments when calling
     // `add_sapling_spend` or `add_orchard_spend`, we will build an unauthorized, unproven
     // transaction, and then the caller will be responsible for using the spending keys or their
@@ -238,7 +246,7 @@ impl<'a, P: consensus::Parameters, R: RngCore + CryptoRng> Builder<'a, P, R> {
         let orchard_builder = if params.is_nu_active(NetworkUpgrade::Nu5, target_height) {
             orchard_anchor.map(|anchor| {
                 orchard::builder::Builder::new(
-                    orchard::bundle::Flags::from_parts(true, true),
+                    orchard::bundle::Flags::from_parts(true, true, true),
                     anchor,
                 )
             })
@@ -264,6 +272,7 @@ impl<'a, P: consensus::Parameters, R: RngCore + CryptoRng> Builder<'a, P, R> {
             transparent_builder: TransparentBuilder::empty(),
             sapling_builder: SaplingBuilder::new(params, target_height),
             orchard_builder,
+            issuance_builder: None,
             orchard_saks: Vec::new(),
             #[cfg(feature = "zfuture")]
             tze_builder: TzeBuilder::empty(),
@@ -271,6 +280,26 @@ impl<'a, P: consensus::Parameters, R: RngCore + CryptoRng> Builder<'a, P, R> {
             tze_builder: std::marker::PhantomData,
             progress_notifier: None,
         }
+    }
+
+    /// Adds an Issuance action to the transaction.
+    pub fn add_issuance<FeeError>(
+        &mut self,
+        ik: IssuanceValidatingKey,
+        asset_desc: String,
+        recipient: Address,
+        value: orchard::value::NoteValue,
+    ) -> Result<(), Error<FeeError>> {
+        if self.issuance_builder.is_none() {
+            self.issuance_builder = Some(
+                IssueBundle::new(ik, asset_desc, Some(IssueInfo { recipient, value }), OsRng)
+                    .map_err(Error::IssuanceBuild)?.0
+            );
+        } else {
+            self.issuance_builder.as_mut().unwrap().add_recipient(asset_desc, recipient, value, OsRng).map_err(Error::IssuanceBuild)?;
+        };
+
+        Ok(())
     }
 
     /// Adds an Orchard note to be spent in this bundle.
@@ -301,6 +330,7 @@ impl<'a, P: consensus::Parameters, R: RngCore + CryptoRng> Builder<'a, P, R> {
         ovk: Option<orchard::keys::OutgoingViewingKey>,
         recipient: orchard::Address,
         value: u64,
+        asset: AssetBase,
         memo: MemoBytes,
     ) -> Result<(), Error<FeeError>> {
         self.orchard_builder
@@ -310,6 +340,7 @@ impl<'a, P: consensus::Parameters, R: RngCore + CryptoRng> Builder<'a, P, R> {
                 ovk,
                 recipient,
                 orchard::value::NoteValue::from_raw(value),
+                asset,
                 Some(*memo.as_array()),
             )
             .map_err(Error::OrchardRecipient)
@@ -778,6 +809,7 @@ mod tests {
             tze_builder: std::marker::PhantomData,
             progress_notifier: None,
             orchard_builder: None,
+            issuance_builder: None,
             orchard_saks: Vec::new(),
         };
 
