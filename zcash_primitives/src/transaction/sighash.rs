@@ -1,5 +1,6 @@
 use crate::legacy::Script;
 use blake2b_simd::Hash as Blake2bHash;
+use orchard::issuance::IssueAuth;
 
 use super::{
     components::{
@@ -80,8 +81,9 @@ pub fn signature_hash<
     TA: TransparentAuthorizingContext,
     SA: sapling::Authorization<SpendProof = GrothProofBytes, OutputProof = GrothProofBytes>,
     A: Authorization<SaplingAuth = SA, TransparentAuth = TA>,
+    IA: IssueAuth,
 >(
-    tx: &TransactionData<A>,
+    tx: &TransactionData<A, IA>,
     signable_input: &SignableInput<'a>,
     txid_parts: &TxDigests<Blake2bHash>,
 ) -> SignatureHash {

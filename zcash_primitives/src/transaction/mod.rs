@@ -15,7 +15,7 @@ use blake2b_simd::Hash as Blake2bHash;
 use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
 use ff::PrimeField;
 use memuse::DynamicUsage;
-use orchard::issuance::{IssueBundle, Signed};
+use orchard::issuance::{IssueAuth, IssueBundle, Signed};
 use std::convert::TryFrom;
 use std::fmt;
 use std::fmt::Debug;
@@ -66,7 +66,7 @@ const ZFUTURE_VERSION_GROUP_ID: u32 = 0xFFFFFFFF;
 const ZFUTURE_TX_VERSION: u32 = 0x0000FFFF;
 
 #[derive(Clone, Copy, PartialOrd, Ord, PartialEq, Eq, Hash)]
-pub struct TxId([u8; 32]);
+pub struct TxId(pub [u8; 32]);
 
 memuse::impl_no_dynamic_usage!(TxId);
 
@@ -282,13 +282,13 @@ impl Authorization for Unauthorized {
 #[derive(Debug)]
 pub struct Transaction {
     txid: TxId,
-    data: TransactionData<Authorized>,
+    data: TransactionData<Authorized, Signed>,
 }
 
 impl Deref for Transaction {
-    type Target = TransactionData<Authorized>;
+    type Target = TransactionData<Authorized, Signed>;
 
-    fn deref(&self) -> &TransactionData<Authorized> {
+    fn deref(&self) -> &TransactionData<Authorized, Signed> {
         &self.data
     }
 }
@@ -300,7 +300,7 @@ impl PartialEq for Transaction {
 }
 
 #[derive(Debug)]
-pub struct TransactionData<A: Authorization> {
+pub struct TransactionData<A: Authorization, IA: IssueAuth> {
     version: TxVersion,
     consensus_branch_id: BranchId,
     lock_time: u32,
@@ -309,12 +309,12 @@ pub struct TransactionData<A: Authorization> {
     sprout_bundle: Option<sprout::Bundle>,
     sapling_bundle: Option<sapling::Bundle<A::SaplingAuth>>,
     orchard_bundle: Option<orchard::bundle::Bundle<A::OrchardAuth, Amount>>,
-    issue_bundle: Option<IssueBundle<Signed>>,
+    issue_bundle: Option<IssueBundle<IA>>,
     #[cfg(feature = "zfuture")]
     tze_bundle: Option<tze::Bundle<A::TzeAuth>>,
 }
 
-impl<A: Authorization> TransactionData<A> {
+impl<A: Authorization, IA: IssueAuth> TransactionData<A, IA> {
     #[allow(clippy::too_many_arguments)]
     pub fn from_parts(
         version: TxVersion,
@@ -325,7 +325,7 @@ impl<A: Authorization> TransactionData<A> {
         sprout_bundle: Option<sprout::Bundle>,
         sapling_bundle: Option<sapling::Bundle<A::SaplingAuth>>,
         orchard_bundle: Option<orchard::Bundle<A::OrchardAuth, Amount>>,
-        issue_bundle: Option<IssueBundle<Signed>>,
+        issue_bundle: Option<IssueBundle<IA>>,
     ) -> Self {
         TransactionData {
             version,
@@ -402,7 +402,7 @@ impl<A: Authorization> TransactionData<A> {
         self.orchard_bundle.as_ref()
     }
 
-    pub fn issue_bundle(&self) -> Option<&IssueBundle<Signed>> {
+    pub fn issue_bundle(&self) -> Option<&IssueBundle<IA>> {
         self.issue_bundle.as_ref()
     }
 
@@ -441,7 +441,7 @@ impl<A: Authorization> TransactionData<A> {
             .ok_or_else(|| BalanceError::Overflow.into())
     }
 
-    pub fn digest<D: TransactionDigest<A>>(&self, digester: D) -> D::Digest {
+    pub fn digest<D: TransactionDigest<A, IA>>(&self, digester: D) -> D::Digest {
         digester.combine(
             digester.digest_header(
                 self.version,
@@ -476,7 +476,7 @@ impl<A: Authorization> TransactionData<A> {
         #[cfg(feature = "zfuture")] f_tze: impl FnOnce(
             Option<tze::Bundle<A::TzeAuth>>,
         ) -> Option<tze::Bundle<B::TzeAuth>>,
-    ) -> TransactionData<B> {
+    ) -> TransactionData<B, IA> {
         TransactionData {
             version: self.version,
             consensus_branch_id: self.consensus_branch_id,
@@ -498,7 +498,7 @@ impl<A: Authorization> TransactionData<A> {
         f_sapling: impl sapling::MapAuth<A::SaplingAuth, B::SaplingAuth>,
         mut f_orchard: impl orchard_serialization::MapAuth<A::OrchardAuth, B::OrchardAuth>,
         #[cfg(feature = "zfuture")] f_tze: impl tze::MapAuth<A::TzeAuth, B::TzeAuth>,
-    ) -> TransactionData<B> {
+    ) -> TransactionData<B, IA> {
         TransactionData {
             version: self.version,
             consensus_branch_id: self.consensus_branch_id,
@@ -523,7 +523,7 @@ impl<A: Authorization> TransactionData<A> {
     }
 }
 
-impl<A: Authorization> TransactionData<A> {
+impl<A: Authorization, IA: IssueAuth> TransactionData<A, IA> {
     pub fn sapling_value_balance(&self) -> Amount {
         self.sapling_bundle
             .as_ref()
@@ -531,14 +531,14 @@ impl<A: Authorization> TransactionData<A> {
     }
 }
 
-impl TransactionData<Authorized> {
+impl TransactionData<Authorized, Signed> {
     pub fn freeze(self) -> io::Result<Transaction> {
         Transaction::from_data(self)
     }
 }
 
 impl Transaction {
-    fn from_data(data: TransactionData<Authorized>) -> io::Result<Self> {
+    fn from_data(data: TransactionData<Authorized, Signed>) -> io::Result<Self> {
         match data.version {
             TxVersion::Sprout(_) | TxVersion::Overwinter | TxVersion::Sapling => {
                 Self::from_data_v4(data)
@@ -549,7 +549,7 @@ impl Transaction {
         }
     }
 
-    fn from_data_v4(data: TransactionData<Authorized>) -> io::Result<Self> {
+    fn from_data_v4(data: TransactionData<Authorized, Signed>) -> io::Result<Self> {
         let mut tx = Transaction {
             txid: TxId([0; 32]),
             data,
@@ -560,7 +560,7 @@ impl Transaction {
         Ok(tx)
     }
 
-    fn from_data_v5(data: TransactionData<Authorized>) -> Self {
+    fn from_data_v5(data: TransactionData<Authorized, Signed>) -> Self {
         let txid = to_txid(
             data.version,
             data.consensus_branch_id,
@@ -570,7 +570,7 @@ impl Transaction {
         Transaction { txid, data }
     }
 
-    pub fn into_data(self) -> TransactionData<Authorized> {
+    pub fn into_data(self) -> TransactionData<Authorized, Signed> {
         self.data
     }
 
@@ -1046,7 +1046,7 @@ pub struct TxDigests<A> {
     pub tze_digests: Option<TzeDigests<A>>,
 }
 
-pub trait TransactionDigest<A: Authorization> {
+pub trait TransactionDigest<A: Authorization, IA: IssueAuth> {
     type HeaderDigest;
     type TransparentDigest;
     type SaplingDigest;
@@ -1081,7 +1081,7 @@ pub trait TransactionDigest<A: Authorization> {
         orchard_bundle: Option<&orchard::Bundle<A::OrchardAuth, Amount>>,
     ) -> Self::OrchardDigest;
 
-    fn digest_issue(&self, issue_bundle: Option<&IssueBundle<Signed>>) -> Self::IssueDigest;
+    fn digest_issue(&self, issue_bundle: Option<&IssueBundle<IA>>) -> Self::IssueDigest;
 
     #[cfg(feature = "zfuture")]
     fn digest_tze(&self, tze_bundle: Option<&tze::Bundle<A::TzeAuth>>) -> Self::TzeDigest;
@@ -1149,7 +1149,7 @@ pub mod testing {
             orchard_bundle in orchard::arb_bundle_for_version(version),
             issue_bundle in issuance::arb_bundle_for_version(version),
             version in Just(version)
-        ) -> TransactionData<Authorized> {
+        ) -> TransactionData<Authorized, Signed> {
             TransactionData {
                 version,
                 consensus_branch_id,
@@ -1177,7 +1177,7 @@ pub mod testing {
             issue_bundle in issuance::arb_bundle_for_version(version),
             tze_bundle in tze::arb_bundle(consensus_branch_id),
             version in Just(version)
-        ) -> TransactionData<Authorized> {
+        ) -> TransactionData<Authorized, Signed> {
             TransactionData {
                 version,
                 consensus_branch_id,

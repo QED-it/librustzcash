@@ -7,7 +7,7 @@ use blake2b_simd::{Hash as Blake2bHash, Params, State};
 use byteorder::{LittleEndian, WriteBytesExt};
 use ff::PrimeField;
 use orchard::bundle::{self as orchardbundle};
-use orchard::issuance::{IssueBundle, Signed};
+use orchard::issuance::{IssueAuth, IssueBundle, Signed};
 
 use super::{
     components::{
@@ -291,7 +291,7 @@ fn hash_tze_txid_data(tze_digests: Option<&TzeDigests<Blake2bHash>>) -> Blake2bH
 /// This implements the [TxId Digest section of ZIP 244](https://zips.z.cash/zip-0244#txid-digest)
 pub struct TxIdDigester;
 
-impl<A: Authorization> TransactionDigest<A> for TxIdDigester {
+impl<A: Authorization, IA: IssueAuth> TransactionDigest<A, IA> for TxIdDigester {
     type HeaderDigest = Blake2bHash;
     type TransparentDigest = Option<TransparentDigests<Blake2bHash>>;
     type SaplingDigest = Option<Blake2bHash>;
@@ -334,7 +334,7 @@ impl<A: Authorization> TransactionDigest<A> for TxIdDigester {
         orchard_bundle.map(|b| b.commitment().0)
     }
 
-    fn digest_issue(&self, issue_bundle: Option<&IssueBundle<Signed>>) -> Self::IssueDigest {
+    fn digest_issue(&self, issue_bundle: Option<&IssueBundle<IA>>) -> Self::IssueDigest {
         issue_bundle.map(|b| b.commitment().0)
     }
 
@@ -439,7 +439,7 @@ pub fn to_txid(
 /// function.
 pub struct BlockTxCommitmentDigester;
 
-impl TransactionDigest<Authorized> for BlockTxCommitmentDigester {
+impl TransactionDigest<Authorized, Signed> for BlockTxCommitmentDigester {
     /// We use the header digest to pass the transaction ID into
     /// where it needs to be used for personalization string construction.
     type HeaderDigest = BranchId;

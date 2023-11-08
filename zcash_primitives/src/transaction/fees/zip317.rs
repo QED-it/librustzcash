@@ -18,7 +18,7 @@ use crate::{
 /// but as a constant.
 ///
 /// [ZIP 317]: https//zips.z.cash/zip-0317
-pub const MINIMUM_FEE: Amount = Amount::const_from_i64(10_000);
+pub const MINIMUM_FEE: Amount = Amount::const_from_i64(0);
 
 /// A [`FeeRule`] implementation that implements the [ZIP 317] fee rule.
 ///
