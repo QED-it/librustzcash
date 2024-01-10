@@ -65,7 +65,7 @@ const ZFUTURE_VERSION_GROUP_ID: u32 = 0xFFFFFFFF;
 const ZFUTURE_TX_VERSION: u32 = 0x0000FFFF;
 
 #[derive(Clone, Copy, PartialOrd, Ord, PartialEq, Eq, Hash)]
-pub struct TxId([u8; 32]);
+pub struct TxId(pub [u8; 32]);
 
 memuse::impl_no_dynamic_usage!(TxId);
 
