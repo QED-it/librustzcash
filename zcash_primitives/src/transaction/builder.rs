@@ -45,6 +45,8 @@ use crate::{
     },
 };
 
+use orchard::{note::AssetBase, note_encryption_vanilla::OrchardDomainVanilla};
+
 /// Since Blossom activation, the default transaction expiry delta should be 40 blocks.
 /// <https://zips.z.cash/zip-0203#changes-for-blossom>
 const DEFAULT_TX_EXPIRY_DELTA: u32 = 40;
@@ -238,7 +240,8 @@ impl<'a, P: consensus::Parameters, R: RngCore + CryptoRng> Builder<'a, P, R> {
         let orchard_builder = if params.is_nu_active(NetworkUpgrade::Nu5, target_height) {
             orchard_anchor.map(|anchor| {
                 orchard::builder::Builder::new(
-                    orchard::bundle::Flags::from_parts(true, true),
+                    // FIXME: pass true as the last arg qfor ZSA
+                    orchard::bundle::Flags::from_parts(true, true, false),
                     anchor,
                 )
             })
@@ -310,6 +313,7 @@ impl<'a, P: consensus::Parameters, R: RngCore + CryptoRng> Builder<'a, P, R> {
                 ovk,
                 recipient,
                 orchard::value::NoteValue::from_raw(value),
+                AssetBase::native(),
                 Some(*memo.as_array()),
             )
             .map_err(Error::OrchardRecipient)
@@ -504,7 +508,7 @@ impl<'a, P: consensus::Parameters, R: RngCore + CryptoRng> Builder<'a, P, R> {
             )
             .map_err(Error::SaplingBuild)?;
 
-        let orchard_bundle: Option<orchard::Bundle<_, Amount>> =
+        let orchard_bundle: Option<orchard::Bundle<_, Amount, OrchardDomainVanilla>> =
             if let Some(builder) = self.orchard_builder {
                 Some(builder.build(&mut rng).map_err(Error::OrchardBuild)?)
             } else {
@@ -570,14 +574,17 @@ impl<'a, P: consensus::Parameters, R: RngCore + CryptoRng> Builder<'a, P, R> {
         let orchard_bundle = unauthed_tx
             .orchard_bundle
             .map(|b| {
-                b.create_proof(&orchard::circuit::ProvingKey::build(), &mut rng)
-                    .and_then(|b| {
-                        b.apply_signatures(
-                            &mut rng,
-                            *shielded_sig_commitment.as_ref(),
-                            &self.orchard_saks,
-                        )
-                    })
+                b.create_proof(
+                    &orchard::circuit::ProvingKey::build::<OrchardDomainVanilla>(),
+                    &mut rng,
+                )
+                .and_then(|b| {
+                    b.apply_signatures(
+                        &mut rng,
+                        *shielded_sig_commitment.as_ref(),
+                        &self.orchard_saks,
+                    )
+                })
             })
             .transpose()
             .map_err(Error::OrchardBuild)?;
