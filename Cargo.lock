@@ -973,31 +973,13 @@ dependencies = [
 [[package]]
 name = "halo2_gadgets"
 version = "0.3.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "126a150072b0c38c7b573fe3eaf0af944a7fed09e154071bf2436d3f016f7230"
-dependencies = [
- "arrayvec",
- "bitvec",
- "ff",
- "group",
- "halo2_proofs 0.3.0 (registry+https://github.com/rust-lang/crates.io-index)",
- "lazy_static",
- "pasta_curves",
- "rand",
- "subtle",
- "uint",
-]
-
-[[package]]
-name = "halo2_gadgets"
-version = "0.3.0"
 source = "git+https://github.com/QED-it/halo2?branch=orchardzsa-backward-compatability#4cc147385e7cf106b9fab6d6951d66a343899e38"
 dependencies = [
  "arrayvec",
  "bitvec",
  "ff",
  "group",
- "halo2_proofs 0.3.0 (git+https://github.com/QED-it/halo2?branch=orchardzsa-backward-compatability)",
+ "halo2_proofs",
  "lazy_static",
  "pasta_curves",
  "rand",
@@ -1010,22 +992,6 @@ name = "halo2_legacy_pdqsort"
 version = "0.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "47716fe1ae67969c5e0b2ef826f32db8c3be72be325e1aa3c1951d06b5575ec5"
-
-[[package]]
-name = "halo2_proofs"
-version = "0.3.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7b867a8d9bbb85fca76fff60652b5cd19b853a1c4d0665cb89bee68b18d2caf0"
-dependencies = [
- "blake2b_simd",
- "ff",
- "group",
- "halo2_legacy_pdqsort",
- "maybe-rayon",
- "pasta_curves",
- "rand_core",
- "tracing",
-]
 
 [[package]]
 name = "halo2_proofs"
@@ -1595,7 +1561,7 @@ checksum = "624a8340c38c1b80fd549087862da4ba43e08858af025b236e509b6649fc13d5"
 [[package]]
 name = "orchard"
 version = "0.5.0"
-source = "git+https://github.com/QED-it/orchard?branch=orchardzsa-backward-compatability#e2268a175ff6d95d004315e5f9179e3b34d1e518"
+source = "git+https://github.com/QED-it/orchard?branch=orchardzsa-backward-compatability#53d65182a71cd053f17c1fd15d5eb0671e397ac2"
 dependencies = [
  "aes",
  "bitvec",
@@ -1604,8 +1570,8 @@ dependencies = [
  "fpe",
  "group",
  "half 2.2.1",
- "halo2_gadgets 0.3.0 (git+https://github.com/QED-it/halo2?branch=orchardzsa-backward-compatability)",
- "halo2_proofs 0.3.0 (git+https://github.com/QED-it/halo2?branch=orchardzsa-backward-compatability)",
+ "halo2_gadgets",
+ "halo2_proofs",
  "hex",
  "incrementalmerkletree",
  "k256",
@@ -1620,35 +1586,6 @@ dependencies = [
  "subtle",
  "tracing",
  "zcash_note_encryption 0.4.0 (git+https://github.com/QED-it/zcash_note_encryption?branch=zsa1)",
-]
-
-[[package]]
-name = "orchard"
-version = "0.6.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5d31e68534df32024dcc89a8390ec6d7bef65edd87d91b45cfb481a2eb2d77c5"
-dependencies = [
- "aes",
- "bitvec",
- "blake2b_simd",
- "ff",
- "fpe",
- "group",
- "halo2_gadgets 0.3.0 (registry+https://github.com/rust-lang/crates.io-index)",
- "halo2_proofs 0.3.0 (registry+https://github.com/rust-lang/crates.io-index)",
- "hex",
- "incrementalmerkletree",
- "lazy_static",
- "memuse",
- "nonempty",
- "pasta_curves",
- "proptest",
- "rand",
- "reddsa",
- "serde",
- "subtle",
- "tracing",
- "zcash_note_encryption 0.4.0 (registry+https://github.com/rust-lang/crates.io-index)",
 ]
 
 [[package]]
@@ -3171,7 +3108,7 @@ dependencies = [
  "jubjub",
  "memuse",
  "nom",
- "orchard 0.6.0",
+ "orchard",
  "percent-encoding",
  "proptest",
  "prost",
@@ -3320,7 +3257,7 @@ dependencies = [
  "lazy_static",
  "memuse",
  "nonempty",
- "orchard 0.5.0",
+ "orchard",
  "pprof",
  "proptest",
  "rand",
