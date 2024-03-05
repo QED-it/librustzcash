@@ -1,12 +1,12 @@
 //! Structs representing the components within Zcash transactions.
 
 pub mod amount;
+pub mod note;
 pub mod orchard;
 pub mod sapling;
 pub mod sprout;
 pub mod transparent;
 pub mod tze;
-pub mod note;
 
 pub use self::{
     amount::Amount,
