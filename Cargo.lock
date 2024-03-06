@@ -1589,6 +1589,36 @@ dependencies = [
 ]
 
 [[package]]
+name = "orchard"
+version = "0.5.0"
+source = "git+https://github.com/QED-it/orchard?branch=orchardzsa-backward-compatability-ak#b19df05f5cb3ce0d229aa2e1b66ad6980ee55eda"
+dependencies = [
+ "aes",
+ "bitvec",
+ "blake2b_simd",
+ "ff",
+ "fpe",
+ "group",
+ "half 2.2.1",
+ "halo2_gadgets",
+ "halo2_proofs",
+ "hex",
+ "incrementalmerkletree",
+ "k256",
+ "lazy_static",
+ "memuse",
+ "nonempty",
+ "pasta_curves",
+ "proptest",
+ "rand",
+ "reddsa",
+ "serde",
+ "subtle",
+ "tracing",
+ "zcash_note_encryption 0.4.0 (git+https://github.com/QED-it/zcash_note_encryption?branch=zsa1)",
+]
+
+[[package]]
 name = "os_str_bytes"
 version = "6.5.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3108,7 +3138,7 @@ dependencies = [
  "jubjub",
  "memuse",
  "nom",
- "orchard",
+ "orchard 0.5.0 (git+https://github.com/QED-it/orchard?branch=orchardzsa-backward-compatability)",
  "percent-encoding",
  "proptest",
  "prost",
@@ -3257,7 +3287,7 @@ dependencies = [
  "lazy_static",
  "memuse",
  "nonempty",
- "orchard",
+ "orchard 0.5.0 (git+https://github.com/QED-it/orchard?branch=orchardzsa-backward-compatability-ak)",
  "pprof",
  "proptest",
  "rand",

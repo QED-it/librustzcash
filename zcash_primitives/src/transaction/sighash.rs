@@ -13,6 +13,7 @@ use super::{
 
 #[cfg(feature = "zfuture")]
 use crate::extensions::transparent::Precondition;
+use crate::transaction::sighash_v5::v6_signature_hash;
 
 pub const SIGHASH_ALL: u8 = 0x01;
 pub const SIGHASH_NONE: u8 = 0x02;
@@ -91,6 +92,8 @@ pub fn signature_hash<
         }
 
         TxVersion::Zip225 => v5_signature_hash(tx, signable_input, txid_parts),
+
+        TxVersion::Zsa => v6_signature_hash(tx, signable_input, txid_parts),
 
         #[cfg(feature = "zfuture")]
         TxVersion::ZFuture => v5_signature_hash(tx, signable_input, txid_parts),

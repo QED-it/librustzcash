@@ -212,6 +212,7 @@ impl Parameters for MainNetwork {
             NetworkUpgrade::Heartwood => Some(BlockHeight(903_000)),
             NetworkUpgrade::Canopy => Some(BlockHeight(1_046_400)),
             NetworkUpgrade::Nu5 => Some(BlockHeight(1_687_104)),
+            NetworkUpgrade::V6 => Some(BlockHeight(1_687_104)),
             #[cfg(feature = "zfuture")]
             NetworkUpgrade::ZFuture => None,
         }
@@ -263,6 +264,7 @@ impl Parameters for TestNetwork {
             NetworkUpgrade::Heartwood => Some(BlockHeight(903_800)),
             NetworkUpgrade::Canopy => Some(BlockHeight(1_028_500)),
             NetworkUpgrade::Nu5 => Some(BlockHeight(1_842_420)),
+            NetworkUpgrade::V6 => Some(BlockHeight(1_842_420)),
             #[cfg(feature = "zfuture")]
             NetworkUpgrade::ZFuture => None,
         }
@@ -393,6 +395,10 @@ pub enum NetworkUpgrade {
     ///
     /// [Nu5]: https://z.cash/upgrade/nu5/
     Nu5,
+    /// The [V6] network upgrade.
+    ///
+    /// [V6]: TODO https://z.cash/upgrade/v6
+    V6,
     /// The ZFUTURE network upgrade.
     ///
     /// This upgrade is expected never to activate on mainnet;
@@ -413,6 +419,7 @@ impl fmt::Display for NetworkUpgrade {
             NetworkUpgrade::Heartwood => write!(f, "Heartwood"),
             NetworkUpgrade::Canopy => write!(f, "Canopy"),
             NetworkUpgrade::Nu5 => write!(f, "Nu5"),
+            NetworkUpgrade::V6 => write!(f, "V6"),
             #[cfg(feature = "zfuture")]
             NetworkUpgrade::ZFuture => write!(f, "ZFUTURE"),
         }
@@ -428,6 +435,7 @@ impl NetworkUpgrade {
             NetworkUpgrade::Heartwood => BranchId::Heartwood,
             NetworkUpgrade::Canopy => BranchId::Canopy,
             NetworkUpgrade::Nu5 => BranchId::Nu5,
+            NetworkUpgrade::V6 => BranchId::V6,
             #[cfg(feature = "zfuture")]
             NetworkUpgrade::ZFuture => BranchId::ZFuture,
         }
@@ -478,6 +486,8 @@ pub enum BranchId {
     Canopy,
     /// The consensus rules deployed by [`NetworkUpgrade::Nu5`].
     Nu5,
+    /// The consensus rules deployed by [`NetworkUpgrade::V6`]. // TODO double-check name
+    V6,
     /// Candidates for future consensus rules; this branch will never
     /// activate on mainnet.
     #[cfg(feature = "zfuture")]
@@ -515,6 +525,7 @@ impl From<BranchId> for u32 {
             BranchId::Heartwood => 0xf5b9_230b,
             BranchId::Canopy => 0xe9ff_75a6,
             BranchId::Nu5 => 0xc2d6_d0b4,
+            BranchId::V6 => 0x0000_0042, // TODO
             #[cfg(feature = "zfuture")]
             BranchId::ZFuture => 0xffff_ffff,
         }
@@ -585,6 +596,13 @@ impl BranchId {
                 let upper = params.activation_height(NetworkUpgrade::ZFuture);
                 #[cfg(not(feature = "zfuture"))]
                 let upper = None;
+                (lower, upper)
+            }),
+            BranchId::V6 => params.activation_height(NetworkUpgrade::V6).map(|lower| {
+                #[cfg(feature = "zfuture")]
+                    let upper = params.activation_height(NetworkUpgrade::ZFuture);
+                #[cfg(not(feature = "zfuture"))]
+                    let upper = None;
                 (lower, upper)
             }),
             #[cfg(feature = "zfuture")]

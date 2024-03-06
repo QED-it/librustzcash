@@ -20,6 +20,7 @@ use std::fmt;
 use std::fmt::Debug;
 use std::io::{self, Read, Write};
 use std::ops::Deref;
+use orchard::issuance::{IssueBundle, Signed};
 use zcash_encoding::{Array, CompactSize, Vector};
 
 use crate::{
@@ -54,6 +55,9 @@ const SAPLING_TX_VERSION: u32 = 4;
 
 const V5_TX_VERSION: u32 = 5;
 const V5_VERSION_GROUP_ID: u32 = 0x26A7270A;
+
+const V6_TX_VERSION: u32 = 6;
+const V6_VERSION_GROUP_ID: u32 = 0x26A7270B; // TODO ???
 
 /// These versions are used exclusively for in-development transaction
 /// serialization, and will never be active under the consensus rules.
@@ -124,6 +128,7 @@ pub enum TxVersion {
     Overwinter,
     Sapling,
     Zip225,
+    Zsa,
     #[cfg(feature = "zfuture")]
     ZFuture,
 }
@@ -139,6 +144,7 @@ impl TxVersion {
                 (OVERWINTER_TX_VERSION, OVERWINTER_VERSION_GROUP_ID) => Ok(TxVersion::Overwinter),
                 (SAPLING_TX_VERSION, SAPLING_VERSION_GROUP_ID) => Ok(TxVersion::Sapling),
                 (V5_TX_VERSION, V5_VERSION_GROUP_ID) => Ok(TxVersion::Zip225),
+                (V6_TX_VERSION, V6_VERSION_GROUP_ID) => Ok(TxVersion::Zsa),
                 #[cfg(feature = "zfuture")]
                 (ZFUTURE_TX_VERSION, ZFUTURE_VERSION_GROUP_ID) => Ok(TxVersion::ZFuture),
                 _ => Err(io::Error::new(
@@ -169,6 +175,7 @@ impl TxVersion {
                 TxVersion::Overwinter => OVERWINTER_TX_VERSION,
                 TxVersion::Sapling => SAPLING_TX_VERSION,
                 TxVersion::Zip225 => V5_TX_VERSION,
+                TxVersion::Zsa => V6_TX_VERSION,
                 #[cfg(feature = "zfuture")]
                 TxVersion::ZFuture => ZFUTURE_TX_VERSION,
             }
@@ -180,6 +187,7 @@ impl TxVersion {
             TxVersion::Overwinter => OVERWINTER_VERSION_GROUP_ID,
             TxVersion::Sapling => SAPLING_VERSION_GROUP_ID,
             TxVersion::Zip225 => V5_VERSION_GROUP_ID,
+            TxVersion::Zsa => V6_VERSION_GROUP_ID,
             #[cfg(feature = "zfuture")]
             TxVersion::ZFuture => ZFUTURE_VERSION_GROUP_ID,
         }
@@ -197,7 +205,7 @@ impl TxVersion {
         match self {
             TxVersion::Sprout(v) => *v >= 2u32,
             TxVersion::Overwinter | TxVersion::Sapling => true,
-            TxVersion::Zip225 => false,
+            TxVersion::Zip225 | TxVersion::Zsa => false,
             #[cfg(feature = "zfuture")]
             TxVersion::ZFuture => true,
         }
@@ -212,6 +220,7 @@ impl TxVersion {
             TxVersion::Sprout(_) | TxVersion::Overwinter => false,
             TxVersion::Sapling => true,
             TxVersion::Zip225 => true,
+            TxVersion::Zsa => true,
             #[cfg(feature = "zfuture")]
             TxVersion::ZFuture => true,
         }
@@ -220,10 +229,14 @@ impl TxVersion {
     pub fn has_orchard(&self) -> bool {
         match self {
             TxVersion::Sprout(_) | TxVersion::Overwinter | TxVersion::Sapling => false,
-            TxVersion::Zip225 => true,
+            TxVersion::Zip225 | TxVersion::Zsa => true,
             #[cfg(feature = "zfuture")]
             TxVersion::ZFuture => true,
         }
+    }
+
+    pub fn has_zsa(&self) -> bool {
+        matches!(self, TxVersion::Zsa)
     }
 
     #[cfg(feature = "zfuture")]
@@ -239,6 +252,7 @@ impl TxVersion {
                 TxVersion::Sapling
             }
             BranchId::Nu5 => TxVersion::Zip225,
+            BranchId::V6 => TxVersion::Zsa,
             #[cfg(feature = "zfuture")]
             BranchId::ZFuture => TxVersion::ZFuture,
         }
@@ -312,6 +326,7 @@ pub struct TransactionData<A: Authorization> {
     sprout_bundle: Option<sprout::Bundle>,
     sapling_bundle: Option<sapling::Bundle<A::SaplingAuth>>,
     orchard_bundle: Option<orchard::bundle::Bundle<A::OrchardAuth, Amount, OrchardDomainVanilla>>,
+    issue_bundle: Option<IssueBundle<Signed>>,
     #[cfg(feature = "zfuture")]
     tze_bundle: Option<tze::Bundle<A::TzeAuth>>,
 }
@@ -327,6 +342,7 @@ impl<A: Authorization> TransactionData<A> {
         sprout_bundle: Option<sprout::Bundle>,
         sapling_bundle: Option<sapling::Bundle<A::SaplingAuth>>,
         orchard_bundle: Option<orchard::Bundle<A::OrchardAuth, Amount, OrchardDomainVanilla>>,
+        issue_bundle: Option<IssueBundle<Signed>>,
     ) -> Self {
         TransactionData {
             version,
@@ -337,6 +353,7 @@ impl<A: Authorization> TransactionData<A> {
             sprout_bundle,
             sapling_bundle,
             orchard_bundle,
+            issue_bundle,
             #[cfg(feature = "zfuture")]
             tze_bundle: None,
         }
@@ -353,6 +370,7 @@ impl<A: Authorization> TransactionData<A> {
         sprout_bundle: Option<sprout::Bundle>,
         sapling_bundle: Option<sapling::Bundle<A::SaplingAuth>>,
         orchard_bundle: Option<orchard::Bundle<A::OrchardAuth, Amount, OrchardDomainVanilla>>,
+        issue_bundle: Option<IssueBundle<Signed>>,
         tze_bundle: Option<tze::Bundle<A::TzeAuth>>,
     ) -> Self {
         TransactionData {
@@ -364,6 +382,7 @@ impl<A: Authorization> TransactionData<A> {
             sprout_bundle,
             sapling_bundle,
             orchard_bundle,
+            issue_bundle,
             tze_bundle,
         }
     }
@@ -400,6 +419,10 @@ impl<A: Authorization> TransactionData<A> {
         &self,
     ) -> Option<&orchard::Bundle<A::OrchardAuth, Amount, OrchardDomainVanilla>> {
         self.orchard_bundle.as_ref()
+    }
+
+    pub fn issue_bundle(&self) -> Option<&IssueBundle<Signed>> {
+        self.issue_bundle.as_ref()
     }
 
     #[cfg(feature = "zfuture")]
@@ -448,6 +471,7 @@ impl<A: Authorization> TransactionData<A> {
             digester.digest_transparent(self.transparent_bundle.as_ref()),
             digester.digest_sapling(self.sapling_bundle.as_ref()),
             digester.digest_orchard(self.orchard_bundle.as_ref()),
+            digester.digest_issue(self.issue_bundle.as_ref()),
             #[cfg(feature = "zfuture")]
             digester.digest_tze(self.tze_bundle.as_ref()),
         )
@@ -483,6 +507,7 @@ impl<A: Authorization> TransactionData<A> {
             sprout_bundle: self.sprout_bundle,
             sapling_bundle: f_sapling(self.sapling_bundle),
             orchard_bundle: f_orchard(self.orchard_bundle),
+            issue_bundle: self.issue_bundle,
             #[cfg(feature = "zfuture")]
             tze_bundle: f_tze(self.tze_bundle),
         }
@@ -512,6 +537,7 @@ impl<A: Authorization> TransactionData<A> {
                     |f, a| f.map_authorization(a),
                 )
             }),
+            issue_bundle: self.issue_bundle,
             #[cfg(feature = "zfuture")]
             tze_bundle: self.tze_bundle.map(|b| b.map_authorization(f_tze)),
         }
@@ -538,7 +564,7 @@ impl Transaction {
             TxVersion::Sprout(_) | TxVersion::Overwinter | TxVersion::Sapling => {
                 Self::from_data_v4(data)
             }
-            TxVersion::Zip225 => Ok(Self::from_data_v5(data)),
+            TxVersion::Zip225 | TxVersion::Zsa => Ok(Self::from_data_v5(data)),
             #[cfg(feature = "zfuture")]
             TxVersion::ZFuture => Ok(Self::from_data_v5(data)),
         }
@@ -582,6 +608,7 @@ impl Transaction {
                 Self::read_v4(reader, version, consensus_branch_id)
             }
             TxVersion::Zip225 => Self::read_v5(reader.into_base_reader(), version),
+            TxVersion::Zsa => Self::read_v6(reader.into_base_reader(), version),
             #[cfg(feature = "zfuture")]
             TxVersion::ZFuture => Self::read_v5(reader.into_base_reader(), version),
         }
@@ -666,6 +693,7 @@ impl Transaction {
                     )
                 }),
                 orchard_bundle: None,
+                issue_bundle: None,
                 #[cfg(feature = "zfuture")]
                 tze_bundle: None,
             },
@@ -718,6 +746,7 @@ impl Transaction {
             sprout_bundle: None,
             sapling_bundle,
             orchard_bundle,
+            issue_bundle: None,
             #[cfg(feature = "zfuture")]
             tze_bundle,
         };
@@ -807,6 +836,40 @@ impl Transaction {
         }))
     }
 
+    fn read_v6<R: Read>(mut reader: R, version: TxVersion) -> io::Result<Self> {
+        let (consensus_branch_id, lock_time, expiry_height) =
+            Self::read_v5_header_fragment(&mut reader)?;
+        let transparent_bundle = Self::read_transparent(&mut reader)?;
+        let sapling_bundle = Self::read_v5_sapling(&mut reader)?;
+        // TODO zsa orchards bundle
+        let orchard_bundle = orchard_serialization::read_v5_bundle(&mut reader)?;
+        // TODO issue bundle
+        let issue_bundle = None;
+
+        #[cfg(feature = "zfuture")]
+            let tze_bundle = if version.has_tze() {
+            Self::read_tze(&mut reader)?
+        } else {
+            None
+        };
+
+        let data = TransactionData {
+            version,
+            consensus_branch_id,
+            lock_time,
+            expiry_height,
+            transparent_bundle,
+            sprout_bundle: None,
+            sapling_bundle,
+            orchard_bundle,
+            issue_bundle,
+            #[cfg(feature = "zfuture")]
+            tze_bundle,
+        };
+
+        Ok(Self::from_data_v5(data))
+    }
+
     #[cfg(feature = "zfuture")]
     fn read_tze<R: Read>(mut reader: &mut R) -> io::Result<Option<tze::Bundle<tze::Authorized>>> {
         let vin = Vector::read(&mut reader, TzeIn::read)?;
@@ -828,6 +891,7 @@ impl Transaction {
                 self.write_v4(writer)
             }
             TxVersion::Zip225 => self.write_v5(writer),
+            TxVersion::Zsa => self.write_v6(writer),
             #[cfg(feature = "zfuture")]
             TxVersion::ZFuture => self.write_v5(writer),
         }
@@ -993,6 +1057,11 @@ impl Transaction {
         Ok(())
     }
 
+    pub fn write_v6<W: Write>(&self, mut writer: W) -> io::Result<()> {
+        // TODO
+        Ok(())
+    }
+
     #[cfg(feature = "zfuture")]
     pub fn write_tze<W: Write>(&self, mut writer: W) -> io::Result<()> {
         if let Some(bundle) = &self.tze_bundle {
@@ -1032,6 +1101,7 @@ pub struct TxDigests<A> {
     pub transparent_digests: Option<TransparentDigests<A>>,
     pub sapling_digest: Option<A>,
     pub orchard_digest: Option<A>,
+    pub issue_digest: Option<A>,
     #[cfg(feature = "zfuture")]
     pub tze_digests: Option<TzeDigests<A>>,
 }
@@ -1041,6 +1111,7 @@ pub trait TransactionDigest<A: Authorization> {
     type TransparentDigest;
     type SaplingDigest;
     type OrchardDigest;
+    type IssueDigest;
 
     #[cfg(feature = "zfuture")]
     type TzeDigest;
@@ -1070,6 +1141,7 @@ pub trait TransactionDigest<A: Authorization> {
         orchard_bundle: Option<&orchard::Bundle<A::OrchardAuth, Amount, OrchardDomainVanilla>>,
     ) -> Self::OrchardDigest;
 
+    fn digest_issue(&self, issue_bundle: Option<&IssueBundle<Signed>>) -> Self::IssueDigest;
     #[cfg(feature = "zfuture")]
     fn digest_tze(&self, tze_bundle: Option<&tze::Bundle<A::TzeAuth>>) -> Self::TzeDigest;
 
@@ -1079,6 +1151,7 @@ pub trait TransactionDigest<A: Authorization> {
         transparent_digest: Self::TransparentDigest,
         sapling_digest: Self::SaplingDigest,
         orchard_digest: Self::OrchardDigest,
+        issue_digest: Self::IssueDigest,
         #[cfg(feature = "zfuture")] tze_digest: Self::TzeDigest,
     ) -> Self::Digest;
 }
@@ -1092,6 +1165,7 @@ pub mod testing {
     use proptest::prelude::*;
 
     use crate::consensus::BranchId;
+    use crate::transaction::components::issuance;
 
     use super::{
         components::{
@@ -1117,6 +1191,7 @@ pub mod testing {
                 Just(TxVersion::Sapling).boxed()
             }
             BranchId::Nu5 => Just(TxVersion::Zip225).boxed(),
+            BranchId::V6 => Just(TxVersion::Zsa).boxed(),
             #[cfg(feature = "zfuture")]
             BranchId::ZFuture => Just(TxVersion::ZFuture).boxed(),
         }
@@ -1132,6 +1207,8 @@ pub mod testing {
             transparent_bundle in transparent::arb_bundle(),
             sapling_bundle in sapling::arb_bundle_for_version(version),
             orchard_bundle in orchard::arb_bundle_for_version(version),
+            orchard_zsa_bundle in orchard::arb_bundle_for_version(version),
+            issue_bundle in issuance::testing::arb_bundle_for_version(version),
             version in Just(version)
         ) -> TransactionData<Authorized> {
             TransactionData {
@@ -1142,7 +1219,8 @@ pub mod testing {
                 transparent_bundle,
                 sprout_bundle: None,
                 sapling_bundle,
-                orchard_bundle
+                orchard_bundle,
+                issue_bundle,
             }
         }
     }
@@ -1157,6 +1235,8 @@ pub mod testing {
             transparent_bundle in transparent::arb_bundle(),
             sapling_bundle in sapling::arb_bundle_for_version(version),
             orchard_bundle in orchard::arb_bundle_for_version(version),
+            orchard_zsa_bundle in orchard::arb_bundle_for_version(version),
+            issue_bundle in issuance::testing::arb_bundle_for_version(version),
             tze_bundle in tze::arb_bundle(consensus_branch_id),
             version in Just(version)
         ) -> TransactionData<Authorized> {
@@ -1169,6 +1249,8 @@ pub mod testing {
                 sprout_bundle: None,
                 sapling_bundle,
                 orchard_bundle,
+                orchard_zsa_bundle,
+                issue_bundle,
                 tze_bundle
             }
         }
