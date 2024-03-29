@@ -4,6 +4,7 @@ use std::ops::Deref;
 use proptest::prelude::*;
 
 use crate::{consensus::BranchId, legacy::Script};
+use crate::transaction::OrchardBundle::{OrchardVanilla, OrchardZSA};
 
 use super::{
     components::Amount,
@@ -52,8 +53,14 @@ fn check_roundtrip(tx: Transaction) -> Result<(), TestCaseError> {
     );
     prop_assert_eq!(tx.sapling_value_balance(), txo.sapling_value_balance());
     prop_assert_eq!(
-        tx.orchard_bundle.as_ref().map(|v| *v.value_balance()),
-        txo.orchard_bundle.as_ref().map(|v| *v.value_balance())
+        tx.orchard_bundle.as_ref().map(|v| match v {
+            OrchardVanilla(b) => *b.value_balance(),
+            OrchardZSA(b) => *b.value_balance(),
+        }),
+        txo.orchard_bundle.as_ref().map(|v| match v {
+            OrchardVanilla(b) => *b.value_balance(),
+            OrchardZSA(b) => *b.value_balance(),
+        })
     );
     Ok(())
 }
@@ -110,6 +117,14 @@ proptest! {
     #![proptest_config(ProptestConfig::with_cases(10))]
     #[test]
     fn tx_serialization_roundtrip_nu5(tx in arb_tx(BranchId::Nu5)) {
+        check_roundtrip(tx)?;
+    }
+}
+
+proptest! {
+    #![proptest_config(ProptestConfig::with_cases(10))]
+    #[test]
+    fn tx_serialization_roundtrip_v6(tx in arb_tx(BranchId::V6)) {
         check_roundtrip(tx)?;
     }
 }

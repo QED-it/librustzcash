@@ -20,6 +20,7 @@ use std::fmt;
 use std::fmt::Debug;
 use std::io::{self, Read, Write};
 use std::ops::Deref;
+use orchard::builder::{InProgress, Unproven};
 use orchard::issuance::{IssueBundle, Signed};
 use zcash_encoding::{Array, CompactSize, Vector};
 
@@ -45,8 +46,8 @@ use self::{
 
 #[cfg(feature = "zfuture")]
 use self::components::tze::{self, TzeIn, TzeOut};
-
-use orchard::note_encryption_vanilla::OrchardDomainVanilla;
+use orchard::orchard_flavor::{OrchardVanilla, OrchardZSA};
+use crate::transaction::components::issuance;
 
 const OVERWINTER_VERSION_GROUP_ID: u32 = 0x03C48270;
 const OVERWINTER_TX_VERSION: u32 = 3;
@@ -287,7 +288,7 @@ impl Authorization for Unauthorized {
     type TransparentAuth = transparent::builder::Unauthorized;
     type SaplingAuth = sapling::builder::Unauthorized;
     type OrchardAuth = orchard::builder::InProgress<
-        orchard::builder::Unproven<OrchardDomainVanilla>,
+        orchard::builder::Unproven<OrchardVanilla>,
         orchard::builder::Unauthorized,
     >;
 
@@ -316,6 +317,51 @@ impl PartialEq for Transaction {
     }
 }
 
+#[derive(Debug, Clone)]
+pub enum OrchardBundle<A: orchard::bundle::Authorization> {
+    OrchardVanilla(orchard::Bundle<A, Amount, OrchardVanilla>),
+    OrchardZSA(orchard::Bundle<A, Amount, OrchardZSA>),
+}
+//
+// #[derive(Debug, Clone)]
+// pub enum UnprovenOrchardBundle {
+//     OrchardVanilla(orchard::Bundle<InProgress<Unproven<OrchardVanilla>, orchard::builder::Unauthorized>, Amount, OrchardVanilla>),
+//     OrchardZSA(orchard::Bundle<InProgress<Unproven<OrchardZSA>, orchard::builder::Unauthorized>, Amount, OrchardZSA>),
+// }
+
+impl<A: orchard::bundle::Authorization> OrchardBundle<A> {
+    pub fn value_balance(&self) -> &Amount {
+        match self {
+            OrchardBundle::OrchardVanilla(b) => b.value_balance(),
+            OrchardBundle::OrchardZSA(b) => b.value_balance(),
+        }
+    }
+
+    pub fn map_authorization<R, U: orchard::bundle::Authorization>(
+        self,
+        context: &mut R,
+        spend_auth: impl FnMut(&mut R, &A, A::SpendAuth) -> U::SpendAuth,
+        step: impl FnOnce(&mut R, A) -> U,
+    ) -> OrchardBundle<U> {
+        match self {
+            OrchardBundle::OrchardVanilla(b) => OrchardBundle::OrchardVanilla(b.map_authorization(context, spend_auth, step)),
+            OrchardBundle::OrchardZSA(b) => OrchardBundle::OrchardZSA(b.map_authorization(context, spend_auth, step)),
+        }
+    }
+
+    pub fn map<R, U: orchard::bundle::Authorization>(
+        self,
+        context: &mut R,
+        spend_auth: impl FnMut(&mut R, &A, A::SpendAuth) -> U::SpendAuth,
+        step: impl FnOnce(&mut R, A) -> U,
+    ) -> OrchardBundle<U> {
+        match self {
+            OrchardBundle::OrchardVanilla(b) => OrchardBundle::OrchardVanilla(b.map_authorization(context, spend_auth, step)),
+            OrchardBundle::OrchardZSA(b) => OrchardBundle::OrchardZSA(b.map_authorization(context, spend_auth, step)),
+        }
+    }
+}
+
 #[derive(Debug)]
 pub struct TransactionData<A: Authorization> {
     version: TxVersion,
@@ -325,7 +371,7 @@ pub struct TransactionData<A: Authorization> {
     transparent_bundle: Option<transparent::Bundle<A::TransparentAuth>>,
     sprout_bundle: Option<sprout::Bundle>,
     sapling_bundle: Option<sapling::Bundle<A::SaplingAuth>>,
-    orchard_bundle: Option<orchard::bundle::Bundle<A::OrchardAuth, Amount, OrchardDomainVanilla>>,
+    orchard_bundle: Option<OrchardBundle<A::OrchardAuth>>,
     issue_bundle: Option<IssueBundle<Signed>>,
     #[cfg(feature = "zfuture")]
     tze_bundle: Option<tze::Bundle<A::TzeAuth>>,
@@ -341,7 +387,7 @@ impl<A: Authorization> TransactionData<A> {
         transparent_bundle: Option<transparent::Bundle<A::TransparentAuth>>,
         sprout_bundle: Option<sprout::Bundle>,
         sapling_bundle: Option<sapling::Bundle<A::SaplingAuth>>,
-        orchard_bundle: Option<orchard::Bundle<A::OrchardAuth, Amount, OrchardDomainVanilla>>,
+        orchard_bundle: Option<OrchardBundle<A::OrchardAuth>>,
         issue_bundle: Option<IssueBundle<Signed>>,
     ) -> Self {
         TransactionData {
@@ -369,7 +415,7 @@ impl<A: Authorization> TransactionData<A> {
         transparent_bundle: Option<transparent::Bundle<A::TransparentAuth>>,
         sprout_bundle: Option<sprout::Bundle>,
         sapling_bundle: Option<sapling::Bundle<A::SaplingAuth>>,
-        orchard_bundle: Option<orchard::Bundle<A::OrchardAuth, Amount, OrchardDomainVanilla>>,
+        orchard_bundle: Option<OrchardBundle<A::OrchardAuth>>,
         issue_bundle: Option<IssueBundle<Signed>>,
         tze_bundle: Option<tze::Bundle<A::TzeAuth>>,
     ) -> Self {
@@ -417,7 +463,7 @@ impl<A: Authorization> TransactionData<A> {
 
     pub fn orchard_bundle(
         &self,
-    ) -> Option<&orchard::Bundle<A::OrchardAuth, Amount, OrchardDomainVanilla>> {
+    ) -> Option<&OrchardBundle<A::OrchardAuth>> {
         self.orchard_bundle.as_ref()
     }
 
@@ -490,10 +536,8 @@ impl<A: Authorization> TransactionData<A> {
             Option<sapling::Bundle<A::SaplingAuth>>,
         ) -> Option<sapling::Bundle<B::SaplingAuth>>,
         f_orchard: impl FnOnce(
-            Option<orchard::bundle::Bundle<A::OrchardAuth, Amount, OrchardDomainVanilla>>,
-        ) -> Option<
-            orchard::bundle::Bundle<B::OrchardAuth, Amount, OrchardDomainVanilla>,
-        >,
+            Option<OrchardBundle<A::OrchardAuth>>,
+        ) -> Option<OrchardBundle<B::OrchardAuth>>,
         #[cfg(feature = "zfuture")] f_tze: impl FnOnce(
             Option<tze::Bundle<A::TzeAuth>>,
         ) -> Option<tze::Bundle<B::TzeAuth>>,
@@ -841,10 +885,8 @@ impl Transaction {
             Self::read_v5_header_fragment(&mut reader)?;
         let transparent_bundle = Self::read_transparent(&mut reader)?;
         let sapling_bundle = Self::read_v5_sapling(&mut reader)?;
-        // TODO zsa orchards bundle
-        let orchard_bundle = orchard_serialization::read_v5_bundle(&mut reader)?;
-        // TODO issue bundle
-        let issue_bundle = None;
+        let orchard_bundle = orchard_serialization::read_v6_bundle(&mut reader)?;
+        let issue_bundle = issuance::read_v6_bundle(&mut reader)?;
 
         #[cfg(feature = "zfuture")]
             let tze_bundle = if version.has_tze() {
@@ -983,7 +1025,22 @@ impl Transaction {
         self.write_v5_header(&mut writer)?;
         self.write_transparent(&mut writer)?;
         self.write_v5_sapling(&mut writer)?;
-        orchard_serialization::write_v5_bundle(self.orchard_bundle.as_ref(), &mut writer)?;
+
+        match self.orchard_bundle.as_ref() {
+            Some(OrchardBundle::OrchardVanilla(orchard_bundle)) => {
+                orchard_serialization::write_v5_bundle(Some(orchard_bundle), &mut writer)?;
+            }
+            None => {
+                orchard_serialization::write_v5_bundle(None, &mut writer)?;
+            }
+            _ => {
+                return Err(io::Error::new(
+                    io::ErrorKind::InvalidInput,
+                    "Only Vanilla Orchard is supported in the V5 transaction format.",
+                ));
+            }
+        }
+
         #[cfg(feature = "zfuture")]
         self.write_tze(&mut writer)?;
         Ok(())
@@ -1058,7 +1115,37 @@ impl Transaction {
     }
 
     pub fn write_v6<W: Write>(&self, mut writer: W) -> io::Result<()> {
-        // TODO
+
+        // Currently, the only difference between V5 and V6 is the Orchard bundle. TODO deduplicate?
+        if self.sprout_bundle.is_some() {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "Sprout components cannot be present when serializing to the V5 transaction format.",
+            ));
+        }
+        self.write_v5_header(&mut writer)?;
+        self.write_transparent(&mut writer)?;
+        self.write_v5_sapling(&mut writer)?;
+
+        match self.orchard_bundle.as_ref() {
+            Some(OrchardBundle::OrchardZSA(orchard_bundle)) => {
+                orchard_serialization::write_v6_bundle(Some(orchard_bundle), &mut writer)?;
+            }
+            None => {
+                orchard_serialization::write_v6_bundle(None, &mut writer)?;
+            }
+            _ => {
+                return Err(io::Error::new(
+                    io::ErrorKind::InvalidInput,
+                    "Only Vanilla Orchard is supported in the V5 transaction format.",
+                ));
+            }
+        }
+
+        issuance::write_v6_bundle(self.issue_bundle.as_ref(), &mut writer)?;
+
+        #[cfg(feature = "zfuture")]
+        self.write_tze(&mut writer)?;
         Ok(())
     }
 
@@ -1138,7 +1225,7 @@ pub trait TransactionDigest<A: Authorization> {
 
     fn digest_orchard(
         &self,
-        orchard_bundle: Option<&orchard::Bundle<A::OrchardAuth, Amount, OrchardDomainVanilla>>,
+        orchard_bundle: Option<&OrchardBundle<A::OrchardAuth>>,
     ) -> Self::OrchardDigest;
 
     fn digest_issue(&self, issue_bundle: Option<&IssueBundle<Signed>>) -> Self::IssueDigest;
@@ -1207,7 +1294,6 @@ pub mod testing {
             transparent_bundle in transparent::arb_bundle(),
             sapling_bundle in sapling::arb_bundle_for_version(version),
             orchard_bundle in orchard::arb_bundle_for_version(version),
-            orchard_zsa_bundle in orchard::arb_bundle_for_version(version),
             issue_bundle in issuance::testing::arb_bundle_for_version(version),
             version in Just(version)
         ) -> TransactionData<Authorized> {
@@ -1235,7 +1321,6 @@ pub mod testing {
             transparent_bundle in transparent::arb_bundle(),
             sapling_bundle in sapling::arb_bundle_for_version(version),
             orchard_bundle in orchard::arb_bundle_for_version(version),
-            orchard_zsa_bundle in orchard::arb_bundle_for_version(version),
             issue_bundle in issuance::testing::arb_bundle_for_version(version),
             tze_bundle in tze::arb_bundle(consensus_branch_id),
             version in Just(version)
@@ -1249,7 +1334,6 @@ pub mod testing {
                 sprout_bundle: None,
                 sapling_bundle,
                 orchard_bundle,
-                orchard_zsa_bundle,
                 issue_bundle,
                 tze_bundle
             }

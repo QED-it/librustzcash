@@ -1561,7 +1561,6 @@ checksum = "624a8340c38c1b80fd549087862da4ba43e08858af025b236e509b6649fc13d5"
 [[package]]
 name = "orchard"
 version = "0.5.0"
-source = "git+https://github.com/QED-it/orchard?branch=orchardzsa-backward-compatability#53d65182a71cd053f17c1fd15d5eb0671e397ac2"
 dependencies = [
  "aes",
  "bitvec",
@@ -1591,7 +1590,7 @@ dependencies = [
 [[package]]
 name = "orchard"
 version = "0.5.0"
-source = "git+https://github.com/QED-it/orchard?branch=orchardzsa-backward-compatability-ak#b19df05f5cb3ce0d229aa2e1b66ad6980ee55eda"
+source = "git+https://github.com/QED-it/orchard?branch=orchardzsa-backward-compatability#53d65182a71cd053f17c1fd15d5eb0671e397ac2"
 dependencies = [
  "aes",
  "bitvec",
@@ -3285,9 +3284,10 @@ dependencies = [
  "incrementalmerkletree",
  "jubjub",
  "lazy_static",
+ "log",
  "memuse",
  "nonempty",
- "orchard 0.5.0 (git+https://github.com/QED-it/orchard?branch=orchardzsa-backward-compatability-ak)",
+ "orchard 0.5.0",
  "pprof",
  "proptest",
  "rand",

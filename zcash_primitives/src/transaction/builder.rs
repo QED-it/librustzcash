@@ -45,8 +45,11 @@ use crate::{
     },
 };
 
-use orchard::{note::AssetBase, note_encryption_vanilla::OrchardDomainVanilla};
+use orchard::{Bundle, note::AssetBase};
+use orchard::builder::{InProgress, Unproven};
 use orchard::issuance::{IssueBundle, Signed};
+use orchard::orchard_flavor::{OrchardVanilla, OrchardZSA};
+use crate::transaction::{OrchardBundle, UnprovenOrchardBundle};
 
 /// Since Blossom activation, the default transaction expiry delta should be 40 blocks.
 /// <https://zips.z.cash/zip-0203#changes-for-blossom>
@@ -509,9 +512,15 @@ impl<'a, P: consensus::Parameters, R: RngCore + CryptoRng> Builder<'a, P, R> {
             )
             .map_err(Error::SaplingBuild)?;
 
-        let orchard_bundle: Option<orchard::Bundle<_, Amount, OrchardDomainVanilla>> =
+        let unproven_orchard_bundle =
             if let Some(builder) = self.orchard_builder {
-                Some(builder.build(&mut rng).map_err(Error::OrchardBuild)?)
+                if version.has_zsa() {
+                    let bundle: Bundle<InProgress<Unproven<OrchardZSA>, orchard::builder::Unauthorized>, _, OrchardZSA> = builder.build(&mut rng).map_err(Error::OrchardBuild)?;
+                    Some(OrchardBundle::OrchardZSA(bundle))
+                } else {
+                    let bundle: Bundle<InProgress<Unproven<OrchardVanilla>, orchard::builder::Unauthorized>, _, OrchardVanilla> = builder.build(&mut rng).map_err(Error::OrchardBuild)?;
+                    Some(OrchardBundle::OrchardVanilla(bundle))
+                }
             } else {
                 None
             };
@@ -529,7 +538,7 @@ impl<'a, P: consensus::Parameters, R: RngCore + CryptoRng> Builder<'a, P, R> {
             transparent_bundle,
             sprout_bundle: None,
             sapling_bundle,
-            orchard_bundle,
+            orchard_bundle: unproven_orchard_bundle,
             issue_bundle,
             #[cfg(feature = "zfuture")]
             tze_bundle,
@@ -578,20 +587,43 @@ impl<'a, P: consensus::Parameters, R: RngCore + CryptoRng> Builder<'a, P, R> {
         let orchard_bundle = unauthed_tx
             .orchard_bundle
             .map(|b| {
-                b.create_proof(
-                    &orchard::circuit::ProvingKey::build::<OrchardDomainVanilla>(),
-                    &mut rng,
-                )
-                .and_then(|b| {
-                    b.apply_signatures(
-                        &mut rng,
-                        *shielded_sig_commitment.as_ref(),
-                        &self.orchard_saks,
-                    )
-                })
+                match b {
+                    OrchardBundle::OrchardVanilla(vanilla) => {
+                        vanilla.create_proof(
+                            &orchard::circuit::ProvingKey::build::<OrchardVanilla>(),
+                            &mut rng,
+                        ).and_then(|vanilla| {
+                            vanilla.apply_signatures(
+                                &mut rng,
+                                *shielded_sig_commitment.as_ref(),
+                                &self.orchard_saks,
+                            )
+                        })
+                    }
+                    OrchardBundle::OrchardZSA(zsa) => {
+                        zsa.create_proof(
+                            &orchard::circuit::ProvingKey::build::<OrchardZSA>(),
+                            &mut rng,
+                        ).and_then(|zsa| {
+                            zsa.apply_signatures(
+                                &mut rng,
+                                *shielded_sig_commitment.as_ref(),
+                                &self.orchard_saks,
+                            )
+                        })
+                    }
+                }
             })
             .transpose()
             .map_err(Error::OrchardBuild)?;
+
+        let orchard_bundle = orchard_bundle.map(|b|
+            if version.has_zsa() {
+                OrchardBundle::OrchardZSA(b)
+            } else {
+                OrchardBundle::OrchardVanilla(b)
+            }
+        );
 
         let issue_bundle = None; // TODO
 

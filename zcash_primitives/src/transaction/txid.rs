@@ -5,19 +5,15 @@ use std::io::Write;
 use blake2b_simd::{Hash as Blake2bHash, Params, State};
 use byteorder::{LittleEndian, WriteBytesExt};
 use ff::PrimeField;
-use orchard::{bundle, note_encryption_vanilla::OrchardDomainVanilla};
+use orchard::bundle;
 use orchard::issuance::{IssueBundle, Signed};
 
 use crate::consensus::{BlockHeight, BranchId};
 
-use super::{
-    components::{
-        amount::Amount,
-        sapling::{self, OutputDescription, SpendDescription},
-        transparent::{self, TxIn, TxOut},
-    },
-    Authorization, Authorized, TransactionDigest, TransparentDigests, TxDigests, TxId, TxVersion,
-};
+use super::{components::{
+    sapling::{self, OutputDescription, SpendDescription},
+    transparent::{self, TxIn, TxOut},
+}, Authorization, Authorized, TransactionDigest, TransparentDigests, TxDigests, TxId, TxVersion, OrchardBundle};
 
 #[cfg(feature = "zfuture")]
 use super::{
@@ -330,9 +326,14 @@ impl<A: Authorization> TransactionDigest<A> for TxIdDigester {
 
     fn digest_orchard(
         &self,
-        orchard_bundle: Option<&bundle::Bundle<A::OrchardAuth, Amount, OrchardDomainVanilla>>,
+        orchard_bundle: Option<&OrchardBundle<A::OrchardAuth>>,
     ) -> Self::OrchardDigest {
-        orchard_bundle.map(|b| b.commitment().0)
+        orchard_bundle.map(|b| {
+            match b {
+                OrchardBundle::OrchardVanilla(vanilla_bundle) => vanilla_bundle.commitment().0,
+                OrchardBundle::OrchardZSA(zsa_bundle) => zsa_bundle.commitment().0
+            }
+        })
     }
 
     fn digest_issue(&self, issue_bundle: Option<&IssueBundle<Signed>>) -> Self::IssueDigest {
@@ -503,10 +504,13 @@ impl TransactionDigest<Authorized> for BlockTxCommitmentDigester {
 
     fn digest_orchard(
         &self,
-        orchard_bundle: Option<&bundle::Bundle<bundle::Authorized, Amount, OrchardDomainVanilla>>,
+        orchard_bundle: Option<&OrchardBundle<bundle::Authorized>>,
     ) -> Self::OrchardDigest {
         orchard_bundle.map_or_else(bundle::commitments::hash_bundle_auth_empty, |b| {
-            b.authorizing_commitment().0
+            match b {
+                OrchardBundle::OrchardVanilla(vanilla_bundle) => vanilla_bundle.authorizing_commitment().0,
+                OrchardBundle::OrchardZSA(zsa_bundle) => zsa_bundle.authorizing_commitment().0
+            }
         })
     }
 
