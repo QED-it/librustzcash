@@ -21,6 +21,7 @@ use std::fmt::Debug;
 use std::io::{self, Read, Write};
 use std::ops::Deref;
 use orchard::issuance::{IssueBundle, Signed};
+use orchard::orchard_flavor::OrchardVanilla;
 use zcash_encoding::{Array, CompactSize, Vector};
 
 use crate::{
@@ -45,8 +46,6 @@ use self::{
 
 #[cfg(feature = "zfuture")]
 use self::components::tze::{self, TzeIn, TzeOut};
-
-use orchard::note_encryption_vanilla::OrchardDomainVanilla;
 
 const OVERWINTER_VERSION_GROUP_ID: u32 = 0x03C48270;
 const OVERWINTER_TX_VERSION: u32 = 3;
@@ -287,7 +286,7 @@ impl Authorization for Unauthorized {
     type TransparentAuth = transparent::builder::Unauthorized;
     type SaplingAuth = sapling::builder::Unauthorized;
     type OrchardAuth = orchard::builder::InProgress<
-        orchard::builder::Unproven<OrchardDomainVanilla>,
+        orchard::builder::Unproven<OrchardVanilla>,
         orchard::builder::Unauthorized,
     >;
 
@@ -325,7 +324,7 @@ pub struct TransactionData<A: Authorization> {
     transparent_bundle: Option<transparent::Bundle<A::TransparentAuth>>,
     sprout_bundle: Option<sprout::Bundle>,
     sapling_bundle: Option<sapling::Bundle<A::SaplingAuth>>,
-    orchard_bundle: Option<orchard::bundle::Bundle<A::OrchardAuth, Amount, OrchardDomainVanilla>>,
+    orchard_bundle: Option<orchard::bundle::Bundle<A::OrchardAuth, Amount, OrchardVanilla>>,
     issue_bundle: Option<IssueBundle<Signed>>,
     #[cfg(feature = "zfuture")]
     tze_bundle: Option<tze::Bundle<A::TzeAuth>>,
@@ -341,7 +340,7 @@ impl<A: Authorization> TransactionData<A> {
         transparent_bundle: Option<transparent::Bundle<A::TransparentAuth>>,
         sprout_bundle: Option<sprout::Bundle>,
         sapling_bundle: Option<sapling::Bundle<A::SaplingAuth>>,
-        orchard_bundle: Option<orchard::Bundle<A::OrchardAuth, Amount, OrchardDomainVanilla>>,
+        orchard_bundle: Option<orchard::Bundle<A::OrchardAuth, Amount, OrchardVanilla>>,
         issue_bundle: Option<IssueBundle<Signed>>,
     ) -> Self {
         TransactionData {
@@ -369,7 +368,7 @@ impl<A: Authorization> TransactionData<A> {
         transparent_bundle: Option<transparent::Bundle<A::TransparentAuth>>,
         sprout_bundle: Option<sprout::Bundle>,
         sapling_bundle: Option<sapling::Bundle<A::SaplingAuth>>,
-        orchard_bundle: Option<orchard::Bundle<A::OrchardAuth, Amount, OrchardDomainVanilla>>,
+        orchard_bundle: Option<orchard::Bundle<A::OrchardAuth, Amount, OrchardVanilla>>,
         issue_bundle: Option<IssueBundle<Signed>>,
         tze_bundle: Option<tze::Bundle<A::TzeAuth>>,
     ) -> Self {
@@ -417,7 +416,7 @@ impl<A: Authorization> TransactionData<A> {
 
     pub fn orchard_bundle(
         &self,
-    ) -> Option<&orchard::Bundle<A::OrchardAuth, Amount, OrchardDomainVanilla>> {
+    ) -> Option<&orchard::Bundle<A::OrchardAuth, Amount, OrchardVanilla>> {
         self.orchard_bundle.as_ref()
     }
 
@@ -490,9 +489,9 @@ impl<A: Authorization> TransactionData<A> {
             Option<sapling::Bundle<A::SaplingAuth>>,
         ) -> Option<sapling::Bundle<B::SaplingAuth>>,
         f_orchard: impl FnOnce(
-            Option<orchard::bundle::Bundle<A::OrchardAuth, Amount, OrchardDomainVanilla>>,
+            Option<orchard::bundle::Bundle<A::OrchardAuth, Amount, OrchardVanilla>>,
         ) -> Option<
-            orchard::bundle::Bundle<B::OrchardAuth, Amount, OrchardDomainVanilla>,
+            orchard::bundle::Bundle<B::OrchardAuth, Amount, OrchardVanilla>,
         >,
         #[cfg(feature = "zfuture")] f_tze: impl FnOnce(
             Option<tze::Bundle<A::TzeAuth>>,
@@ -1138,7 +1137,7 @@ pub trait TransactionDigest<A: Authorization> {
 
     fn digest_orchard(
         &self,
-        orchard_bundle: Option<&orchard::Bundle<A::OrchardAuth, Amount, OrchardDomainVanilla>>,
+        orchard_bundle: Option<&orchard::Bundle<A::OrchardAuth, Amount, OrchardVanilla>>,
     ) -> Self::OrchardDigest;
 
     fn digest_issue(&self, issue_bundle: Option<&IssueBundle<Signed>>) -> Self::IssueDigest;

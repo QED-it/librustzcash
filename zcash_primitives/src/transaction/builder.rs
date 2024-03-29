@@ -45,8 +45,9 @@ use crate::{
     },
 };
 
-use orchard::{note::AssetBase, note_encryption_vanilla::OrchardDomainVanilla};
+use orchard::note::AssetBase;
 use orchard::issuance::{IssueBundle, Signed};
+use orchard::orchard_flavor::OrchardVanilla;
 
 /// Since Blossom activation, the default transaction expiry delta should be 40 blocks.
 /// <https://zips.z.cash/zip-0203#changes-for-blossom>
@@ -509,7 +510,7 @@ impl<'a, P: consensus::Parameters, R: RngCore + CryptoRng> Builder<'a, P, R> {
             )
             .map_err(Error::SaplingBuild)?;
 
-        let orchard_bundle: Option<orchard::Bundle<_, Amount, OrchardDomainVanilla>> =
+        let orchard_bundle: Option<orchard::Bundle<_, Amount, OrchardVanilla>> =
             if let Some(builder) = self.orchard_builder {
                 Some(builder.build(&mut rng).map_err(Error::OrchardBuild)?)
             } else {
@@ -579,7 +580,7 @@ impl<'a, P: consensus::Parameters, R: RngCore + CryptoRng> Builder<'a, P, R> {
             .orchard_bundle
             .map(|b| {
                 b.create_proof(
-                    &orchard::circuit::ProvingKey::build::<OrchardDomainVanilla>(),
+                    &orchard::circuit::ProvingKey::build::<OrchardVanilla>(),
                     &mut rng,
                 )
                 .and_then(|b| {
