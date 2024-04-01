@@ -44,7 +44,7 @@ ff = "0.13"
 group = { version = "0.13", features = ["wnaf-memuse"] }
 jubjub = "0.10"
 nonempty = "0.7"
-orchard = { git = "https://github.com/QED-it/orchard", branch = "orchardzsa-backward-compatability-ak", default-features = false }
+orchard = { path = "/home/eee/IdeaProjects/QED-it/orchard", default-features = false }
 
 # - Note Commitment Trees
 incrementalmerkletree = { version = "0.5", features = ["legacy-api"] }
@@ -92,7 +92,7 @@ incrementalmerkletree = { version = "0.5", features = ["legacy-api", "test-depen
 proptest = "1.0.0"
 assert_matches = "1.3.0"
 rand_xorshift = "0.3"
-orchard = { git = "https://github.com/QED-it/orchard", branch = "orchardzsa-backward-compatability-ak", default-features = false, features = ["test-dependencies"] }
+orchard = { path = "/home/eee/IdeaProjects/QED-it/orchard", default-features = false, features = ["test-dependencies"] }
 
 [target.'cfg(unix)'.dev-dependencies]
 pprof = { version = "0.11", features = ["criterion", "flamegraph"] } # MSRV 1.56
