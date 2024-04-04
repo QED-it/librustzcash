@@ -513,6 +513,7 @@ mod tests {
                 NetworkUpgrade::Heartwood => Some(BlockHeight::from_u32(903_800)),
                 NetworkUpgrade::Canopy => Some(BlockHeight::from_u32(1_028_500)),
                 NetworkUpgrade::Nu5 => Some(BlockHeight::from_u32(1_200_000)),
+                NetworkUpgrade::V6 => Some(BlockHeight::from_u32(1_200_000)),
                 NetworkUpgrade::ZFuture => Some(BlockHeight::from_u32(1_400_000)),
             }
         }
@@ -693,6 +694,7 @@ mod tests {
             None,
             None,
             None,
+            None,
             Some(Bundle {
                 vin: vec![],
                 vout: vec![out_a],
@@ -724,6 +726,7 @@ mod tests {
             None,
             None,
             None,
+            None,
             Some(Bundle {
                 vin: vec![in_b],
                 vout: vec![out_b],
@@ -747,6 +750,7 @@ mod tests {
             BranchId::ZFuture,
             0,
             0u32.into(),
+            None,
             None,
             None,
             None,
