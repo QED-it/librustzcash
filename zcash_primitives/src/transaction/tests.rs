@@ -3,8 +3,8 @@ use std::ops::Deref;
 
 use proptest::prelude::*;
 
-use crate::{consensus::BranchId, legacy::Script};
 use crate::transaction::OrchardBundle::{OrchardVanilla, OrchardZSA};
+use crate::{consensus::BranchId, legacy::Script};
 
 use super::{
     components::Amount,
@@ -62,10 +62,7 @@ fn check_roundtrip(tx: Transaction) -> Result<(), TestCaseError> {
             OrchardZSA(b) => *b.value_balance(),
         })
     );
-    prop_assert_eq!(
-        tx.issue_bundle.as_ref(),
-        txo.issue_bundle.as_ref()
-    );
+    prop_assert_eq!(tx.issue_bundle.as_ref(), txo.issue_bundle.as_ref());
     Ok(())
 }
 

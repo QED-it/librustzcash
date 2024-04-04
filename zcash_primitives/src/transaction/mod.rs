@@ -15,12 +15,12 @@ use blake2b_simd::Hash as Blake2bHash;
 use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
 use ff::PrimeField;
 use memuse::DynamicUsage;
+use orchard::issuance::{IssueBundle, Signed};
 use std::convert::TryFrom;
 use std::fmt;
 use std::fmt::Debug;
 use std::io::{self, Read, Write};
 use std::ops::Deref;
-use orchard::issuance::{IssueBundle, Signed};
 use zcash_encoding::{Array, CompactSize, Vector};
 
 use crate::{
@@ -45,8 +45,8 @@ use self::{
 
 #[cfg(feature = "zfuture")]
 use self::components::tze::{self, TzeIn, TzeOut};
-use orchard::orchard_flavor::{OrchardVanilla, OrchardZSA};
 use crate::transaction::components::issuance;
+use orchard::orchard_flavor::{OrchardVanilla, OrchardZSA};
 
 const OVERWINTER_VERSION_GROUP_ID: u32 = 0x03C48270;
 const OVERWINTER_TX_VERSION: u32 = 3;
@@ -343,8 +343,12 @@ impl<A: orchard::bundle::Authorization> OrchardBundle<A> {
         step: impl FnOnce(&mut R, A) -> U,
     ) -> OrchardBundle<U> {
         match self {
-            OrchardBundle::OrchardVanilla(b) => OrchardBundle::OrchardVanilla(b.map_authorization(context, spend_auth, step)),
-            OrchardBundle::OrchardZSA(b) => OrchardBundle::OrchardZSA(b.map_authorization(context, spend_auth, step)),
+            OrchardBundle::OrchardVanilla(b) => {
+                OrchardBundle::OrchardVanilla(b.map_authorization(context, spend_auth, step))
+            }
+            OrchardBundle::OrchardZSA(b) => {
+                OrchardBundle::OrchardZSA(b.map_authorization(context, spend_auth, step))
+            }
         }
     }
 
@@ -355,8 +359,12 @@ impl<A: orchard::bundle::Authorization> OrchardBundle<A> {
         step: impl FnOnce(&mut R, A) -> U,
     ) -> OrchardBundle<U> {
         match self {
-            OrchardBundle::OrchardVanilla(b) => OrchardBundle::OrchardVanilla(b.map_authorization(context, spend_auth, step)),
-            OrchardBundle::OrchardZSA(b) => OrchardBundle::OrchardZSA(b.map_authorization(context, spend_auth, step)),
+            OrchardBundle::OrchardVanilla(b) => {
+                OrchardBundle::OrchardVanilla(b.map_authorization(context, spend_auth, step))
+            }
+            OrchardBundle::OrchardZSA(b) => {
+                OrchardBundle::OrchardZSA(b.map_authorization(context, spend_auth, step))
+            }
         }
     }
 }
@@ -460,9 +468,7 @@ impl<A: Authorization> TransactionData<A> {
         self.sapling_bundle.as_ref()
     }
 
-    pub fn orchard_bundle(
-        &self,
-    ) -> Option<&OrchardBundle<A::OrchardAuth>> {
+    pub fn orchard_bundle(&self) -> Option<&OrchardBundle<A::OrchardAuth>> {
         self.orchard_bundle.as_ref()
     }
 
@@ -888,7 +894,7 @@ impl Transaction {
         let issue_bundle = issuance::read_v6_bundle(&mut reader)?;
 
         #[cfg(feature = "zfuture")]
-            let tze_bundle = if version.has_tze() {
+        let tze_bundle = if version.has_tze() {
             Self::read_tze(&mut reader)?
         } else {
             None
@@ -1114,7 +1120,6 @@ impl Transaction {
     }
 
     pub fn write_v6<W: Write>(&self, mut writer: W) -> io::Result<()> {
-
         // Currently, the only difference between V5 and V6 is the Orchard bundle. TODO deduplicate?
         if self.sprout_bundle.is_some() {
             return Err(io::Error::new(

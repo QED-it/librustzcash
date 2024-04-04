@@ -1,4 +1,4 @@
-use crate::transaction::components::orchard::{read_nullifier};
+use crate::transaction::components::orchard::read_nullifier;
 use bitvec::macros::internal::funty::Fundamental;
 use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
 use nonempty::NonEmpty;
@@ -63,7 +63,7 @@ fn read_note<R: Read>(mut reader: R) -> io::Result<Note> {
         rho,
         rseed,
     ))
-        .unwrap())
+    .unwrap())
 }
 
 fn read_recipient<R: Read>(mut reader: R) -> io::Result<Address> {

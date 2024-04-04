@@ -45,12 +45,12 @@ use crate::{
     },
 };
 
-use orchard::{Bundle, note::AssetBase};
+use crate::transaction::OrchardBundle;
 use orchard::builder::{InProgress, Unproven};
 use orchard::bundle_enum_adapter::UnprovenEnum;
 use orchard::issuance::{IssueBundle, Signed};
 use orchard::orchard_flavor::{OrchardVanilla, OrchardZSA};
-use crate::transaction::{OrchardBundle};
+use orchard::{note::AssetBase, Bundle};
 
 /// Since Blossom activation, the default transaction expiry delta should be 40 blocks.
 /// <https://zips.z.cash/zip-0203#changes-for-blossom>
@@ -513,18 +513,25 @@ impl<'a, P: consensus::Parameters, R: RngCore + CryptoRng> Builder<'a, P, R> {
             )
             .map_err(Error::SaplingBuild)?;
 
-        let unproven_orchard_bundle =
-            if let Some(builder) = self.orchard_builder {
-                if version.has_zsa() {
-                    let bundle: Bundle<InProgress<UnprovenEnum, orchard::builder::Unauthorized>, _, OrchardZSA> = builder.build(&mut rng).map_err(Error::OrchardBuild)?.into();
-                    Some(OrchardBundle::OrchardZSA(bundle))
-                } else {
-                    let bundle: Bundle<InProgress<UnprovenEnum, orchard::builder::Unauthorized>, _, OrchardVanilla> = builder.build(&mut rng).map_err(Error::OrchardBuild)?.into();
-                    Some(OrchardBundle::OrchardVanilla(bundle))
-                }
+        let unproven_orchard_bundle = if let Some(builder) = self.orchard_builder {
+            if version.has_zsa() {
+                let bundle: Bundle<
+                    InProgress<UnprovenEnum, orchard::builder::Unauthorized>,
+                    _,
+                    OrchardZSA,
+                > = builder.build(&mut rng).map_err(Error::OrchardBuild)?.into();
+                Some(OrchardBundle::OrchardZSA(bundle))
             } else {
-                None
-            };
+                let bundle: Bundle<
+                    InProgress<UnprovenEnum, orchard::builder::Unauthorized>,
+                    _,
+                    OrchardVanilla,
+                > = builder.build(&mut rng).map_err(Error::OrchardBuild)?.into();
+                Some(OrchardBundle::OrchardVanilla(bundle))
+            }
+        } else {
+            None
+        };
 
         let issue_bundle: Option<IssueBundle<Signed>> = None; // TODO
 
@@ -587,34 +594,38 @@ impl<'a, P: consensus::Parameters, R: RngCore + CryptoRng> Builder<'a, P, R> {
 
         let orchard_bundle = unauthed_tx
             .orchard_bundle
-            .map(|b| {
-                match b {
-                    OrchardBundle::OrchardVanilla(vanilla) => {
-                        let vanilla: Bundle<InProgress<Unproven<OrchardVanilla>, _>, _, _> = vanilla.into();
-                        vanilla.create_proof(
+            .map(|b| match b {
+                OrchardBundle::OrchardVanilla(vanilla) => {
+                    let vanilla: Bundle<InProgress<Unproven<OrchardVanilla>, _>, _, _> =
+                        vanilla.into();
+                    vanilla
+                        .create_proof(
                             &orchard::circuit::ProvingKey::build::<OrchardVanilla>(),
                             &mut rng,
-                        ).and_then(|vanilla| {
+                        )
+                        .and_then(|vanilla| {
                             vanilla.apply_signatures(
                                 &mut rng,
                                 *shielded_sig_commitment.as_ref(),
                                 &self.orchard_saks,
                             )
-                        }).map(OrchardBundle::OrchardVanilla)
-                    }
-                    OrchardBundle::OrchardZSA(zsa) => {
-                        let zsa: Bundle<InProgress<Unproven<OrchardZSA>, _>, _, _> = zsa.into();
-                        zsa.create_proof(
-                            &orchard::circuit::ProvingKey::build::<OrchardZSA>(),
+                        })
+                        .map(OrchardBundle::OrchardVanilla)
+                }
+                OrchardBundle::OrchardZSA(zsa) => {
+                    let zsa: Bundle<InProgress<Unproven<OrchardZSA>, _>, _, _> = zsa.into();
+                    zsa.create_proof(
+                        &orchard::circuit::ProvingKey::build::<OrchardZSA>(),
+                        &mut rng,
+                    )
+                    .and_then(|zsa| {
+                        zsa.apply_signatures(
                             &mut rng,
-                        ).and_then(|zsa| {
-                            zsa.apply_signatures(
-                                &mut rng,
-                                *shielded_sig_commitment.as_ref(),
-                                &self.orchard_saks,
-                            )
-                        }).map(OrchardBundle::OrchardZSA)
-                    }
+                            *shielded_sig_commitment.as_ref(),
+                            &self.orchard_saks,
+                        )
+                    })
+                    .map(OrchardBundle::OrchardZSA)
                 }
             })
             .transpose()

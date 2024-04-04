@@ -4,16 +4,22 @@ use std::io::{self, Read, Write};
 
 use byteorder::{ReadBytesExt, WriteBytesExt};
 use nonempty::NonEmpty;
-use orchard::{bundle::{Authorization, Authorized, Flags}, note::{ExtractedNoteCommitment, Nullifier, TransmittedNoteCiphertext}, primitives::redpallas::{self, SigType, Signature, SpendAuth, VerificationKey}, value::ValueCommitment, Action, Anchor};
 use orchard::note::AssetBase;
 use orchard::note_encryption::OrchardDomain;
 pub use orchard::orchard_flavor::OrchardVanilla;
 use orchard::orchard_flavor::OrchardZSA;
+use orchard::{
+    bundle::{Authorization, Authorized, Flags},
+    note::{ExtractedNoteCommitment, Nullifier, TransmittedNoteCiphertext},
+    primitives::redpallas::{self, SigType, Signature, SpendAuth, VerificationKey},
+    value::ValueCommitment,
+    Action, Anchor,
+};
 use zcash_encoding::{Array, CompactSize, Vector};
 
-use crate::transaction::{OrchardBundle, Transaction};
-use crate::transaction::components::Amount;
 use crate::transaction::components::issuance::read_asset;
+use crate::transaction::components::Amount;
+use crate::transaction::{OrchardBundle, Transaction};
 
 pub const FLAG_SPENDS_ENABLED: u8 = 0b0000_0001;
 pub const FLAG_OUTPUTS_ENABLED: u8 = 0b0000_0010;
@@ -44,9 +50,7 @@ impl MapAuth<Authorized, Authorized> for () {
 }
 
 /// Reads an [`orchard::Bundle`] from a v5 transaction format.
-pub fn read_v5_bundle<R: Read>(
-    mut reader: R,
-) -> io::Result<Option<OrchardBundle<Authorized>>> {
+pub fn read_v5_bundle<R: Read>(mut reader: R) -> io::Result<Option<OrchardBundle<Authorized>>> {
     #[allow(clippy::redundant_closure)]
     let actions_without_auth = Vector::read(&mut reader, |r| read_action_without_auth(r))?;
     if actions_without_auth.is_empty() {
@@ -65,34 +69,26 @@ pub fn read_v5_bundle<R: Read>(
         .expect("A nonzero number of actions was read from the transaction data.");
         let binding_signature = read_signature::<_, redpallas::Binding>(&mut reader)?;
 
-        let authorization = Authorized::from_parts(
-            orchard::Proof::new(proof_bytes),
-            binding_signature,
-        );
+        let authorization =
+            Authorized::from_parts(orchard::Proof::new(proof_bytes), binding_signature);
 
-        Ok(
-            Some(
-                OrchardBundle::OrchardVanilla(
-                    orchard::Bundle::from_parts(
-                        actions,
-                        flags,
-                        value_balance,
-                        Default::default(),
-                        anchor,
-                        authorization,
-                    )
-                )
-            )
-        )
+        Ok(Some(OrchardBundle::OrchardVanilla(
+            orchard::Bundle::from_parts(
+                actions,
+                flags,
+                value_balance,
+                Default::default(),
+                anchor,
+                authorization,
+            ),
+        )))
     }
 }
 
 /// Reads an [`orchard::Bundle`] from a v5 transaction format.
-pub fn read_v6_bundle<R: Read>(
-    mut reader: R,
-) -> io::Result<Option<OrchardBundle<Authorized>>> {
+pub fn read_v6_bundle<R: Read>(mut reader: R) -> io::Result<Option<OrchardBundle<Authorized>>> {
     #[allow(clippy::redundant_closure)]
-        let actions_without_auth = Vector::read(&mut reader, |r| read_zsa_action_without_auth(r))?;
+    let actions_without_auth = Vector::read(&mut reader, |r| read_zsa_action_without_auth(r))?;
     if actions_without_auth.is_empty() {
         Ok(None)
     } else {
@@ -106,35 +102,22 @@ pub fn read_v6_bundle<R: Read>(
                 .map(|act| act.try_map(|_| read_signature::<_, redpallas::SpendAuth>(&mut reader)))
                 .collect::<Result<Vec<_>, _>>()?,
         )
-            .expect("A nonzero number of actions was read from the transaction data.");
+        .expect("A nonzero number of actions was read from the transaction data.");
 
-        let burn = Vector::read(&mut reader, |r| read_burn(r) )?;
+        let burn = Vector::read(&mut reader, |r| read_burn(r))?;
 
         let binding_signature = read_signature::<_, redpallas::Binding>(&mut reader)?;
 
-        let authorization = Authorized::from_parts(
-            orchard::Proof::new(proof_bytes),
-            binding_signature,
-        );
+        let authorization =
+            Authorized::from_parts(orchard::Proof::new(proof_bytes), binding_signature);
 
-        Ok(
-            Some(
-                OrchardBundle::OrchardZSA(
-                    orchard::Bundle::from_parts(
-                        actions,
-                        flags,
-                        value_balance,
-                        burn,
-                        anchor,
-                        authorization,
-                    )
-                )
-            )
-        )
+        Ok(Some(OrchardBundle::OrchardZSA(
+            orchard::Bundle::from_parts(actions, flags, value_balance, burn, anchor, authorization),
+        )))
     }
 }
 
-fn read_burn<R: Read>(reader: &mut R,) -> io::Result<(AssetBase, Amount)> {
+fn read_burn<R: Read>(reader: &mut R) -> io::Result<(AssetBase, Amount)> {
     Ok((read_asset(reader)?, Transaction::read_amount(reader)?))
 }
 
@@ -193,10 +176,11 @@ pub fn read_cmx<R: Read>(mut reader: R) -> io::Result<ExtractedNoteCommitment> {
 pub fn read_note_ciphertext<R: Read>(
     mut reader: R,
 ) -> io::Result<TransmittedNoteCiphertext<OrchardVanilla>> {
-
     let mut tnc = TransmittedNoteCiphertext::<OrchardVanilla> {
         epk_bytes: [0u8; 32],
-        enc_ciphertext: <OrchardVanilla as OrchardDomain>::NoteCiphertextBytes::from([0u8; OrchardVanilla::ENC_CIPHERTEXT_SIZE].as_ref()),
+        enc_ciphertext: <OrchardVanilla as OrchardDomain>::NoteCiphertextBytes::from(
+            [0u8; OrchardVanilla::ENC_CIPHERTEXT_SIZE].as_ref(),
+        ),
         out_ciphertext: [0u8; 80],
     };
 
@@ -210,10 +194,11 @@ pub fn read_note_ciphertext<R: Read>(
 pub fn read_zsa_note_ciphertext<R: Read>(
     mut reader: R,
 ) -> io::Result<TransmittedNoteCiphertext<OrchardZSA>> {
-
     let mut tnc = TransmittedNoteCiphertext::<OrchardZSA> {
         epk_bytes: [0u8; 32],
-        enc_ciphertext: <OrchardZSA as OrchardDomain>::NoteCiphertextBytes::from([0u8; OrchardZSA::ENC_CIPHERTEXT_SIZE].as_ref()),
+        enc_ciphertext: <OrchardZSA as OrchardDomain>::NoteCiphertextBytes::from(
+            [0u8; OrchardZSA::ENC_CIPHERTEXT_SIZE].as_ref(),
+        ),
         out_ciphertext: [0u8; 80],
     };
 
@@ -224,9 +209,7 @@ pub fn read_zsa_note_ciphertext<R: Read>(
     Ok(tnc)
 }
 
-pub fn read_action_without_auth<R: Read>(
-    mut reader: R,
-) -> io::Result<Action<(), OrchardVanilla>> {
+pub fn read_action_without_auth<R: Read>(mut reader: R) -> io::Result<Action<(), OrchardVanilla>> {
     let cv_net = read_value_commitment(&mut reader)?;
     let nf_old = read_nullifier(&mut reader)?;
     let rk = read_verification_key(&mut reader)?;
@@ -243,9 +226,7 @@ pub fn read_action_without_auth<R: Read>(
     ))
 }
 
-pub fn read_zsa_action_without_auth<R: Read>(
-    mut reader: R,
-) -> io::Result<Action<(), OrchardZSA>> {
+pub fn read_zsa_action_without_auth<R: Read>(mut reader: R) -> io::Result<Action<(), OrchardZSA>> {
     let cv_net = read_value_commitment(&mut reader)?;
     let nf_old = read_nullifier(&mut reader)?;
     let rk = read_verification_key(&mut reader)?;
@@ -328,7 +309,6 @@ pub fn write_v6_bundle<W: Write>(
     bundle: Option<&orchard::Bundle<Authorized, Amount, OrchardZSA>>,
     mut writer: W,
 ) -> io::Result<()> {
-
     // TODO deduplicate
     if let Some(bundle) = &bundle {
         Vector::write_nonempty(&mut writer, bundle.actions(), |w, a| {
@@ -349,15 +329,11 @@ pub fn write_v6_bundle<W: Write>(
             |w, auth| w.write_all(&<[u8; 64]>::from(*auth)),
         )?;
 
-        Vector::write(
-            &mut writer,
-            bundle.burn(),
-            |w, (asset, amount)| {
-                w.write_all(&asset.to_bytes())?;
-                w.write_all(&amount.to_i64_le_bytes())?;
-                Ok(())
-            }
-        )?;
+        Vector::write(&mut writer, bundle.burn(), |w, (asset, amount)| {
+            w.write_all(&asset.to_bytes())?;
+            w.write_all(&amount.to_i64_le_bytes())?;
+            Ok(())
+        })?;
 
         writer.write_all(&<[u8; 64]>::from(
             bundle.authorization().binding_signature(),
@@ -413,15 +389,13 @@ pub fn write_action_without_auth<W: Write, D: OrchardDomain>(
 pub mod testing {
     use proptest::prelude::*;
 
-    use orchard::{
-        bundle::{
-            testing::{self as t_orch},
-            Authorized,
-        },
+    use orchard::bundle::{
+        testing::{self as t_orch},
+        Authorized,
     };
 
-    use crate::transaction::{components::amount::{testing::arb_amount}, OrchardBundle, TxVersion};
     use crate::transaction::OrchardBundle::{OrchardVanilla, OrchardZSA};
+    use crate::transaction::{components::amount::testing::arb_amount, OrchardBundle, TxVersion};
 
     prop_compose! {
         pub fn arb_bundle(n_actions: usize)(
