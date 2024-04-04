@@ -72,7 +72,7 @@ fn read_recipient<R: Read>(mut reader: R) -> io::Result<Address> {
     Ok(Option::from(Address::from_raw_address_bytes(&bytes)).unwrap())
 }
 
-fn read_asset<R: Read>(mut reader: R) -> io::Result<AssetBase> {
+pub fn read_asset<R: Read>(reader: &mut R) -> io::Result<AssetBase> {
     let mut bytes = [0u8; 32];
     reader.read_exact(&mut bytes)?;
     Ok(Option::from(AssetBase::from_bytes(&bytes)).unwrap())
@@ -141,7 +141,7 @@ pub mod testing {
     pub fn arb_bundle_for_version(
         v: TxVersion,
     ) -> impl Strategy<Value = Option<IssueBundle<Signed>>> {
-        if v.has_orchard() {
+        if v.has_zsa() {
             Strategy::boxed((1usize..100).prop_flat_map(|n| prop::option::of(arb_issue_bundle(n))))
         } else {
             Strategy::boxed(Just(None))

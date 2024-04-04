@@ -47,9 +47,10 @@ use crate::{
 
 use orchard::{Bundle, note::AssetBase};
 use orchard::builder::{InProgress, Unproven};
+use orchard::bundle_enum_adapter::UnprovenEnum;
 use orchard::issuance::{IssueBundle, Signed};
 use orchard::orchard_flavor::{OrchardVanilla, OrchardZSA};
-use crate::transaction::{OrchardBundle, UnprovenOrchardBundle};
+use crate::transaction::{OrchardBundle};
 
 /// Since Blossom activation, the default transaction expiry delta should be 40 blocks.
 /// <https://zips.z.cash/zip-0203#changes-for-blossom>
@@ -515,10 +516,10 @@ impl<'a, P: consensus::Parameters, R: RngCore + CryptoRng> Builder<'a, P, R> {
         let unproven_orchard_bundle =
             if let Some(builder) = self.orchard_builder {
                 if version.has_zsa() {
-                    let bundle: Bundle<InProgress<Unproven<OrchardZSA>, orchard::builder::Unauthorized>, _, OrchardZSA> = builder.build(&mut rng).map_err(Error::OrchardBuild)?;
+                    let bundle: Bundle<InProgress<UnprovenEnum, orchard::builder::Unauthorized>, _, OrchardZSA> = builder.build(&mut rng).map_err(Error::OrchardBuild)?.into();
                     Some(OrchardBundle::OrchardZSA(bundle))
                 } else {
-                    let bundle: Bundle<InProgress<Unproven<OrchardVanilla>, orchard::builder::Unauthorized>, _, OrchardVanilla> = builder.build(&mut rng).map_err(Error::OrchardBuild)?;
+                    let bundle: Bundle<InProgress<UnprovenEnum, orchard::builder::Unauthorized>, _, OrchardVanilla> = builder.build(&mut rng).map_err(Error::OrchardBuild)?.into();
                     Some(OrchardBundle::OrchardVanilla(bundle))
                 }
             } else {
@@ -589,6 +590,7 @@ impl<'a, P: consensus::Parameters, R: RngCore + CryptoRng> Builder<'a, P, R> {
             .map(|b| {
                 match b {
                     OrchardBundle::OrchardVanilla(vanilla) => {
+                        let vanilla: Bundle<InProgress<Unproven<OrchardVanilla>, _>, _, _> = vanilla.into();
                         vanilla.create_proof(
                             &orchard::circuit::ProvingKey::build::<OrchardVanilla>(),
                             &mut rng,
@@ -598,9 +600,10 @@ impl<'a, P: consensus::Parameters, R: RngCore + CryptoRng> Builder<'a, P, R> {
                                 *shielded_sig_commitment.as_ref(),
                                 &self.orchard_saks,
                             )
-                        })
+                        }).map(OrchardBundle::OrchardVanilla)
                     }
                     OrchardBundle::OrchardZSA(zsa) => {
+                        let zsa: Bundle<InProgress<Unproven<OrchardZSA>, _>, _, _> = zsa.into();
                         zsa.create_proof(
                             &orchard::circuit::ProvingKey::build::<OrchardZSA>(),
                             &mut rng,
@@ -610,20 +613,20 @@ impl<'a, P: consensus::Parameters, R: RngCore + CryptoRng> Builder<'a, P, R> {
                                 *shielded_sig_commitment.as_ref(),
                                 &self.orchard_saks,
                             )
-                        })
+                        }).map(OrchardBundle::OrchardZSA)
                     }
                 }
             })
             .transpose()
             .map_err(Error::OrchardBuild)?;
-
-        let orchard_bundle = orchard_bundle.map(|b|
-            if version.has_zsa() {
-                OrchardBundle::OrchardZSA(b)
-            } else {
-                OrchardBundle::OrchardVanilla(b)
-            }
-        );
+        //
+        // let orchard_bundle = orchard_bundle.map(|b|
+        //     if version.has_zsa() {
+        //         OrchardBundle::OrchardZSA(b)
+        //     } else {
+        //         OrchardBundle::OrchardVanilla(b)
+        //     }
+        // );
 
         let issue_bundle = None; // TODO
 

@@ -367,7 +367,7 @@ impl<A: Authorization> TransactionDigest<A> for TxIdDigester {
 }
 
 pub(crate) fn to_hash(
-    _txversion: TxVersion,
+    txversion: TxVersion,
     consensus_branch_id: BranchId,
     header_digest: Blake2bHash,
     transparent_digest: Blake2bHash,
@@ -398,7 +398,7 @@ pub(crate) fn to_hash(
     )
     .unwrap();
 
-    if _txversion.has_zsa() {
+    if txversion.has_zsa() {
         h.write_all(
             issue_digest
                 .unwrap_or_else(bundle::commitments::hash_issue_bundle_txid_empty)
@@ -408,7 +408,7 @@ pub(crate) fn to_hash(
     }
 
     #[cfg(feature = "zfuture")]
-    if _txversion.has_tze() {
+    if txversion.has_tze() {
         h.write_all(hash_tze_txid_data(tze_digests).as_bytes())
             .unwrap();
     }

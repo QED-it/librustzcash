@@ -20,7 +20,6 @@ use std::fmt;
 use std::fmt::Debug;
 use std::io::{self, Read, Write};
 use std::ops::Deref;
-use orchard::builder::{InProgress, Unproven};
 use orchard::issuance::{IssueBundle, Signed};
 use zcash_encoding::{Array, CompactSize, Vector};
 
@@ -288,7 +287,7 @@ impl Authorization for Unauthorized {
     type TransparentAuth = transparent::builder::Unauthorized;
     type SaplingAuth = sapling::builder::Unauthorized;
     type OrchardAuth = orchard::builder::InProgress<
-        orchard::builder::Unproven<OrchardVanilla>,
+        orchard::bundle_enum_adapter::UnprovenEnum,
         orchard::builder::Unauthorized,
     >;
 

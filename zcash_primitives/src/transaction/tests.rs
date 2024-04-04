@@ -62,6 +62,10 @@ fn check_roundtrip(tx: Transaction) -> Result<(), TestCaseError> {
             OrchardZSA(b) => *b.value_balance(),
         })
     );
+    prop_assert_eq!(
+        tx.issue_bundle.as_ref(),
+        txo.issue_bundle.as_ref()
+    );
     Ok(())
 }
 
