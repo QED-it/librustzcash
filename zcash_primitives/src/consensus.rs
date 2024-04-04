@@ -397,7 +397,7 @@ pub enum NetworkUpgrade {
     Nu5,
     /// The [V6] network upgrade.
     ///
-    /// [V6]: TODO https://z.cash/upgrade/v6
+    /// [V6]: https://z.cash/upgrade/v6/
     V6,
     /// The ZFUTURE network upgrade.
     ///
