@@ -11,9 +11,86 @@ use rand_core::RngCore;
 use zcash_note_encryption::{
     try_compact_note_decryption, try_note_decryption, try_output_recovery_with_ock,
     try_output_recovery_with_ovk, BatchDomain, Domain, EphemeralKeyBytes, NoteEncryption,
-    NotePlaintextBytes, OutPlaintextBytes, OutgoingCipherKey, ShieldedOutput, COMPACT_NOTE_SIZE,
-    ENC_CIPHERTEXT_SIZE, NOTE_PLAINTEXT_SIZE, OUT_PLAINTEXT_SIZE,
+    OutPlaintextBytes, OutgoingCipherKey, ShieldedOutput, AEAD_TAG_SIZE, MEMO_SIZE,
+    OUT_PLAINTEXT_SIZE,
 };
+
+/// The size of a compact note.
+pub const COMPACT_NOTE_SIZE: usize = 1 + // version
+    11 + // diversifier
+    8  + // value
+    32; // rseed (or rcm prior to ZIP 212)
+/// The size of [`NotePlaintextBytes`] for V2.
+pub const NOTE_PLAINTEXT_SIZE: usize = COMPACT_NOTE_SIZE + MEMO_SIZE;
+/// The size of an encrypted note plaintext.
+pub const ENC_CIPHERTEXT_SIZE: usize = NOTE_PLAINTEXT_SIZE + AEAD_TAG_SIZE;
+
+/// a type to represent the raw bytes of a note plaintext.
+#[derive(Clone, Debug)]
+pub struct NotePlaintextBytes(pub [u8; NOTE_PLAINTEXT_SIZE]);
+
+/// a type to represent the raw bytes of an encrypted note plaintext.
+#[derive(Clone, Debug)]
+pub struct NoteCiphertextBytes(pub [u8; ENC_CIPHERTEXT_SIZE]);
+
+/// a type to represent the raw bytes of a compact note.
+#[derive(Clone, Debug)]
+pub struct CompactNotePlaintextBytes(pub [u8; COMPACT_NOTE_SIZE]);
+
+/// a type to represent the raw bytes of an encrypted compact note.
+#[derive(Clone, Debug)]
+pub struct CompactNoteCiphertextBytes(pub [u8; COMPACT_NOTE_SIZE]);
+
+impl AsMut<[u8]> for NotePlaintextBytes {
+    fn as_mut(&mut self) -> &mut [u8] {
+        self.0.as_mut()
+    }
+}
+
+impl From<&[u8]> for NotePlaintextBytes {
+    fn from(s: &[u8]) -> Self
+    where
+        Self: Sized,
+    {
+        NotePlaintextBytes(s.try_into().unwrap())
+    }
+}
+
+impl AsRef<[u8]> for NoteCiphertextBytes {
+    fn as_ref(&self) -> &[u8] {
+        self.0.as_ref()
+    }
+}
+
+impl From<&[u8]> for NoteCiphertextBytes {
+    fn from(s: &[u8]) -> Self
+    where
+        Self: Sized,
+    {
+        NoteCiphertextBytes(s.try_into().unwrap())
+    }
+}
+
+impl AsMut<[u8]> for CompactNotePlaintextBytes {
+    fn as_mut(&mut self) -> &mut [u8] {
+        self.0.as_mut()
+    }
+}
+
+impl From<&[u8]> for CompactNotePlaintextBytes {
+    fn from(s: &[u8]) -> Self
+    where
+        Self: Sized,
+    {
+        CompactNotePlaintextBytes(s.try_into().unwrap())
+    }
+}
+
+impl AsRef<[u8]> for CompactNoteCiphertextBytes {
+    fn as_ref(&self) -> &[u8] {
+        self.0.as_ref()
+    }
+}
 
 use crate::{
     consensus::{self, BlockHeight, NetworkUpgrade::Canopy, ZIP212_GRACE_PERIOD},
@@ -146,6 +223,11 @@ impl<P: consensus::Parameters> Domain for SaplingDomain<P> {
     type ExtractedCommitmentBytes = [u8; 32];
     type Memo = MemoBytes;
 
+    type NotePlaintextBytes = NotePlaintextBytes;
+    type NoteCiphertextBytes = NoteCiphertextBytes;
+    type CompactNotePlaintextBytes = CompactNotePlaintextBytes;
+    type CompactNoteCiphertextBytes = CompactNoteCiphertextBytes;
+
     fn derive_esk(note: &Self::Note) -> Option<Self::EphemeralSecretKey> {
         note.derive_esk()
     }
@@ -247,9 +329,9 @@ impl<P: consensus::Parameters> Domain for SaplingDomain<P> {
     fn parse_note_plaintext_without_memo_ivk(
         &self,
         ivk: &Self::IncomingViewingKey,
-        plaintext: &[u8],
+        plaintext: &CompactNotePlaintextBytes,
     ) -> Option<(Self::Note, Self::Recipient)> {
-        sapling_parse_note_plaintext_without_memo(self, plaintext, |diversifier| {
+        sapling_parse_note_plaintext_without_memo(self, &plaintext.0, |diversifier| {
             DiversifiedTransmissionKey::derive(ivk, diversifier)
         })
     }
@@ -257,7 +339,7 @@ impl<P: consensus::Parameters> Domain for SaplingDomain<P> {
     fn parse_note_plaintext_without_memo_ovk(
         &self,
         pk_d: &Self::DiversifiedTransmissionKey,
-        plaintext: &NotePlaintextBytes,
+        plaintext: &CompactNotePlaintextBytes,
     ) -> Option<(Self::Note, Self::Recipient)> {
         sapling_parse_note_plaintext_without_memo(self, &plaintext.0, |diversifier| {
             diversifier.g_d().map(|_| *pk_d)
@@ -284,8 +366,15 @@ impl<P: consensus::Parameters> Domain for SaplingDomain<P> {
         .into()
     }
 
-    fn extract_memo(&self, plaintext: &NotePlaintextBytes) -> Self::Memo {
-        MemoBytes::from_bytes(&plaintext.0[COMPACT_NOTE_SIZE..NOTE_PLAINTEXT_SIZE]).unwrap()
+    fn extract_memo(
+        &self,
+        plaintext: &NotePlaintextBytes,
+    ) -> (Self::CompactNotePlaintextBytes, Self::Memo) {
+        let (compact, memo) = plaintext.0.split_at(COMPACT_NOTE_SIZE);
+        (
+            compact.try_into().unwrap(),
+            MemoBytes::from_bytes(memo).unwrap(),
+        )
     }
 }
 
@@ -403,7 +492,7 @@ pub fn plaintext_version_is_valid<P: consensus::Parameters>(
 
 pub fn try_sapling_note_decryption<
     P: consensus::Parameters,
-    Output: ShieldedOutput<SaplingDomain<P>, ENC_CIPHERTEXT_SIZE>,
+    Output: ShieldedOutput<SaplingDomain<P>>,
 >(
     params: &P,
     height: BlockHeight,
@@ -419,7 +508,7 @@ pub fn try_sapling_note_decryption<
 
 pub fn try_sapling_compact_note_decryption<
     P: consensus::Parameters,
-    Output: ShieldedOutput<SaplingDomain<P>, COMPACT_NOTE_SIZE>,
+    Output: ShieldedOutput<SaplingDomain<P>>,
 >(
     params: &P,
     height: BlockHeight,
@@ -491,8 +580,8 @@ mod tests {
     use rand_core::{CryptoRng, RngCore};
 
     use zcash_note_encryption::{
-        batch, EphemeralKeyBytes, NoteEncryption, OutgoingCipherKey, ENC_CIPHERTEXT_SIZE,
-        NOTE_PLAINTEXT_SIZE, OUT_CIPHERTEXT_SIZE, OUT_PLAINTEXT_SIZE,
+        batch, EphemeralKeyBytes, NoteEncryption, OutgoingCipherKey, OUT_CIPHERTEXT_SIZE,
+        OUT_PLAINTEXT_SIZE,
     };
 
     use super::{
@@ -513,6 +602,7 @@ mod tests {
             keys::{DiversifiedTransmissionKey, EphemeralSecretKey},
             note::ExtractedNoteCommitment,
             note_encryption::PreparedIncomingViewingKey,
+            note_encryption::{ENC_CIPHERTEXT_SIZE, NOTE_PLAINTEXT_SIZE},
             util::generate_random_rseed,
             value::{NoteValue, ValueCommitTrapdoor, ValueCommitment},
             Diversifier, PaymentAddress, Rseed, SaplingIvk,
@@ -596,7 +686,7 @@ mod tests {
             cv,
             cmu,
             epk.to_bytes(),
-            ne.encrypt_note_plaintext(),
+            ne.encrypt_note_plaintext().0,
             out_ciphertext,
             [0u8; GROTH_PROOF_SIZE],
         );

@@ -5,15 +5,15 @@ use memuse::DynamicUsage;
 
 use std::io::{self, Read, Write};
 
-use zcash_note_encryption::{
-    EphemeralKeyBytes, ShieldedOutput, COMPACT_NOTE_SIZE, ENC_CIPHERTEXT_SIZE,
-};
+use zcash_note_encryption::{EphemeralKeyBytes, ShieldedOutput};
 
 use crate::{
     consensus,
     sapling::{
         note::ExtractedNoteCommitment,
-        note_encryption::SaplingDomain,
+        note_encryption::{
+            CompactNoteCiphertextBytes, NoteCiphertextBytes, SaplingDomain, COMPACT_NOTE_SIZE,
+        },
         redjubjub::{self, PublicKey, Signature},
         value::ValueCommitment,
         Nullifier,
@@ -542,9 +542,7 @@ impl<Proof: DynamicUsage> DynamicUsage for OutputDescription<Proof> {
     }
 }
 
-impl<P: consensus::Parameters, A> ShieldedOutput<SaplingDomain<P>, ENC_CIPHERTEXT_SIZE>
-    for OutputDescription<A>
-{
+impl<P: consensus::Parameters, A> ShieldedOutput<SaplingDomain<P>> for OutputDescription<A> {
     fn ephemeral_key(&self) -> EphemeralKeyBytes {
         self.ephemeral_key.clone()
     }
@@ -553,8 +551,16 @@ impl<P: consensus::Parameters, A> ShieldedOutput<SaplingDomain<P>, ENC_CIPHERTEX
         self.cmu.to_bytes()
     }
 
-    fn enc_ciphertext(&self) -> &[u8; ENC_CIPHERTEXT_SIZE] {
-        &self.enc_ciphertext
+    fn enc_ciphertext(&self) -> Option<NoteCiphertextBytes> {
+        Some(NoteCiphertextBytes(self.enc_ciphertext))
+    }
+
+    fn enc_ciphertext_compact(&self) -> CompactNoteCiphertextBytes {
+        CompactNoteCiphertextBytes(
+            self.enc_ciphertext[0..COMPACT_NOTE_SIZE]
+                .try_into()
+                .unwrap(),
+        )
     }
 }
 
@@ -690,9 +696,7 @@ impl<A> From<OutputDescription<A>> for CompactOutputDescription {
     }
 }
 
-impl<P: consensus::Parameters> ShieldedOutput<SaplingDomain<P>, COMPACT_NOTE_SIZE>
-    for CompactOutputDescription
-{
+impl<P: consensus::Parameters> ShieldedOutput<SaplingDomain<P>> for CompactOutputDescription {
     fn ephemeral_key(&self) -> EphemeralKeyBytes {
         self.ephemeral_key.clone()
     }
@@ -701,8 +705,12 @@ impl<P: consensus::Parameters> ShieldedOutput<SaplingDomain<P>, COMPACT_NOTE_SIZ
         self.cmu.to_bytes()
     }
 
-    fn enc_ciphertext(&self) -> &[u8; COMPACT_NOTE_SIZE] {
-        &self.enc_ciphertext
+    fn enc_ciphertext(&self) -> Option<NoteCiphertextBytes> {
+        None
+    }
+
+    fn enc_ciphertext_compact(&self) -> CompactNoteCiphertextBytes {
+        CompactNoteCiphertextBytes(self.enc_ciphertext)
     }
 }
 

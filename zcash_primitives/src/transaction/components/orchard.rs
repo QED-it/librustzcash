@@ -75,6 +75,7 @@ pub fn read_v5_bundle<R: Read>(
             actions,
             flags,
             value_balance,
+            vec![], // TODO implement "burn" reading and writing
             anchor,
             authorization,
         )))
@@ -136,7 +137,7 @@ pub fn read_cmx<R: Read>(mut reader: R) -> io::Result<ExtractedNoteCommitment> {
 pub fn read_note_ciphertext<R: Read>(mut reader: R) -> io::Result<TransmittedNoteCiphertext> {
     let mut tnc = TransmittedNoteCiphertext {
         epk_bytes: [0u8; 32],
-        enc_ciphertext: [0u8; 580],
+        enc_ciphertext: [0u8; 612],
         out_ciphertext: [0u8; 80],
     };
 
