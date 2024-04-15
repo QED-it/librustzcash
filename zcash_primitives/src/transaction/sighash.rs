@@ -1,4 +1,5 @@
 use blake2b_simd::Hash as Blake2bHash;
+use orchard::issuance::IssueAuth;
 
 use super::{
     components::{amount::NonNegativeAmount, transparent},
@@ -14,6 +15,7 @@ use crate::{
 use crate::transaction::sighash_v5::v6_signature_hash;
 #[cfg(zcash_unstable = "zfuture")]
 use {super::components::Amount, crate::extensions::transparent::Precondition};
+use crate::transaction::sighash_v6::v6_signature_hash;
 
 pub const SIGHASH_ALL: u8 = 0x01;
 pub const SIGHASH_NONE: u8 = 0x02;
@@ -81,8 +83,9 @@ pub fn signature_hash<
     TA: TransparentAuthorizingContext,
     SA: sapling::bundle::Authorization<SpendProof = GrothProofBytes, OutputProof = GrothProofBytes>,
     A: Authorization<SaplingAuth = SA, TransparentAuth = TA>,
+    IA: IssueAuth,
 >(
-    tx: &TransactionData<A>,
+    tx: &TransactionData<A, IA>,
     signable_input: &SignableInput<'a>,
     txid_parts: &TxDigests<Blake2bHash>,
 ) -> SignatureHash {
