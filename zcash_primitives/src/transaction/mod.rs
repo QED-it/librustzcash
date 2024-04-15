@@ -16,18 +16,21 @@ use blake2b_simd::Hash as Blake2bHash;
 use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
 use ff::PrimeField;
 use memuse::DynamicUsage;
+use orchard::issuance::{IssueAuth, IssueBundle, Signed};
+use orchard::note_encryption::OrchardDomain;
+use orchard::orchard_flavor::{OrchardVanilla, OrchardZSA};
 use std::convert::TryFrom;
 use std::fmt;
 use std::fmt::Debug;
 use std::io::{self, Read, Write};
 use std::ops::Deref;
-use orchard::issuance::{IssueAuth, IssueBundle, Signed};
-use orchard::note_encryption::OrchardDomain;
-use orchard::orchard_flavor::{OrchardVanilla, OrchardZSA};
 use zcash_encoding::{Array, CompactSize, Vector};
 
-use crate::{consensus::{BlockHeight, BranchId}, sapling::redjubjub};
 use crate::transaction::components::issuance;
+use crate::{
+    consensus::{BlockHeight, BranchId},
+    sapling::redjubjub,
+};
 
 use self::{
     components::{
@@ -227,7 +230,9 @@ impl TxVersion {
 
     pub fn has_orchard(&self) -> bool {
         match self {
-            TxVersion::Sprout(_) | TxVersion::Overwinter | TxVersion::Sapling | TxVersion::Zsa => false,
+            TxVersion::Sprout(_) | TxVersion::Overwinter | TxVersion::Sapling | TxVersion::Zsa => {
+                false
+            }
             TxVersion::Zip225 => true,
             #[cfg(feature = "zfuture")]
             TxVersion::ZFuture => true,
@@ -879,7 +884,7 @@ impl Transaction {
         let issue_bundle = issuance::read_v6_bundle(&mut reader)?;
 
         #[cfg(feature = "zfuture")]
-            let tze_bundle = if version.has_tze() {
+        let tze_bundle = if version.has_tze() {
             Self::read_tze(&mut reader)?
         } else {
             None
