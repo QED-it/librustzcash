@@ -18,6 +18,7 @@ use crate::transaction::{
 
 #[cfg(feature = "zfuture")]
 use byteorder::WriteBytesExt;
+use orchard::issuance::IssueAuth;
 
 #[cfg(feature = "zfuture")]
 use zcash_encoding::{CompactSize, Vector};
@@ -37,7 +38,7 @@ fn hasher(personal: &[u8; 16]) -> State {
 }
 
 /// Implements [ZIP 244 section S.2](https://zips.z.cash/zip-0244#s-2-transparent-sig-digest).
-fn transparent_sig_digest<A: TransparentAuthorizingContext>(
+pub fn transparent_sig_digest<A: TransparentAuthorizingContext>(
     tx_data: Option<(&transparent::Bundle<A>, &TransparentDigests<Blake2bHash>)>,
     input: &SignableInput<'_>,
 ) -> Blake2bHash {
@@ -141,7 +142,7 @@ fn transparent_sig_digest<A: TransparentAuthorizingContext>(
 }
 
 #[cfg(feature = "zfuture")]
-fn tze_input_sigdigests<A: tze::Authorization>(
+pub fn tze_input_sigdigests<A: tze::Authorization>(
     bundle: &tze::Bundle<A>,
     input: &SignableInput<'_>,
     txid_digests: &TzeDigests<Blake2bHash>,
@@ -173,8 +174,9 @@ fn tze_input_sigdigests<A: tze::Authorization>(
 pub fn v5_signature_hash<
     TA: TransparentAuthorizingContext,
     A: Authorization<TransparentAuth = TA>,
+    IA: IssueAuth,
 >(
-    tx: &TransactionData<A>,
+    tx: &TransactionData<A, IA>,
     signable_input: &SignableInput<'_>,
     txid_parts: &TxDigests<Blake2bHash>,
 ) -> Blake2bHash {
@@ -200,45 +202,6 @@ pub fn v5_signature_hash<
         txid_parts.issue_digest,
         #[cfg(feature = "zfuture")]
         tx.tze_bundle
-            .as_ref()
-            .zip(txid_parts.tze_digests.as_ref())
-            .map(|(bundle, tze_digests)| tze_input_sigdigests(bundle, signable_input, tze_digests))
-            .as_ref(),
-    )
-}
-
-pub fn v6_signature_hash<
-    TA: TransparentAuthorizingContext,
-    A: Authorization<TransparentAuth = TA>,
->(
-    tx: &TransactionData<A>,
-    signable_input: &SignableInput<'_>,
-    txid_parts: &TxDigests<Blake2bHash>,
-) -> Blake2bHash {
-    // The caller must provide the transparent digests if and only if the transaction has a
-    // transparent component.
-    assert_eq!(
-        tx.transparent_bundle.is_some(),
-        txid_parts.transparent_digests.is_some()
-    );
-
-    // TODO add ZSA support
-
-    to_hash(
-        tx.version,
-        tx.consensus_branch_id,
-        txid_parts.header_digest,
-        transparent_sig_digest(
-            tx.transparent_bundle
-                .as_ref()
-                .zip(txid_parts.transparent_digests.as_ref()),
-            signable_input,
-        ),
-        txid_parts.sapling_digest,
-        txid_parts.orchard_digest,
-        txid_parts.issue_digest,
-        #[cfg(feature = "zfuture")]
-            tx.tze_bundle
             .as_ref()
             .zip(txid_parts.tze_digests.as_ref())
             .map(|(bundle, tze_digests)| tze_input_sigdigests(bundle, signable_input, tze_digests))

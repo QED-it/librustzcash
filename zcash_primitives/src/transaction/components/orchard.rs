@@ -79,7 +79,7 @@ pub fn read_v5_bundle<R: Read>(
             actions,
             flags,
             value_balance,
-            Default::default(), // FIXME: pass burns here for ZSA
+            Default::default(),
             anchor,
             authorization,
         )))

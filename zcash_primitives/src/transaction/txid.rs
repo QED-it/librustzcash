@@ -6,8 +6,8 @@ use blake2b_simd::{Hash as Blake2bHash, Params, State};
 use byteorder::{LittleEndian, WriteBytesExt};
 use ff::PrimeField;
 use orchard::bundle;
-use orchard::issuance::{IssueBundle, Signed};
-use orchard::orchard_flavor::OrchardVanilla;
+use orchard::issuance::{IssueAuth, IssueBundle, Signed};
+use orchard::note_encryption::OrchardDomain;
 
 use crate::consensus::{BlockHeight, BranchId};
 
@@ -293,7 +293,7 @@ fn hash_tze_txid_data(tze_digests: Option<&TzeDigests<Blake2bHash>>) -> Blake2bH
 /// This implements the [TxId Digest section of ZIP 244](https://zips.z.cash/zip-0244#txid-digest)
 pub struct TxIdDigester;
 
-impl<A: Authorization> TransactionDigest<A> for TxIdDigester {
+impl<A: Authorization, IA: IssueAuth> TransactionDigest<A, IA> for TxIdDigester {
     type HeaderDigest = Blake2bHash;
     type TransparentDigest = Option<TransparentDigests<Blake2bHash>>;
     type SaplingDigest = Option<Blake2bHash>;
@@ -329,14 +329,14 @@ impl<A: Authorization> TransactionDigest<A> for TxIdDigester {
         sapling_bundle.map(hash_sapling_txid_data)
     }
 
-    fn digest_orchard(
+    fn digest_orchard<O: OrchardDomain>(
         &self,
-        orchard_bundle: Option<&bundle::Bundle<A::OrchardAuth, Amount, OrchardVanilla>>,
+        orchard_bundle: Option<&bundle::Bundle<A::OrchardAuth, Amount, O>>,
     ) -> Self::OrchardDigest {
         orchard_bundle.map(|b| b.commitment().0)
     }
 
-    fn digest_issue(&self, issue_bundle: Option<&IssueBundle<Signed>>) -> Self::IssueDigest {
+    fn digest_issue(&self, issue_bundle: Option<&IssueBundle<IA>>) -> Self::IssueDigest {
         issue_bundle.map(|b| b.commitment().0)
     }
 
@@ -442,7 +442,7 @@ pub fn to_txid(
 /// function.
 pub struct BlockTxCommitmentDigester;
 
-impl TransactionDigest<Authorized> for BlockTxCommitmentDigester {
+impl TransactionDigest<Authorized, Signed> for BlockTxCommitmentDigester {
     /// We use the header digest to pass the transaction ID into
     /// where it needs to be used for personalization string construction.
     type HeaderDigest = BranchId;
@@ -502,9 +502,9 @@ impl TransactionDigest<Authorized> for BlockTxCommitmentDigester {
         h.finalize()
     }
 
-    fn digest_orchard(
+    fn digest_orchard<O: OrchardDomain>(
         &self,
-        orchard_bundle: Option<&bundle::Bundle<bundle::Authorized, Amount, OrchardVanilla>>,
+        orchard_bundle: Option<&bundle::Bundle<bundle::Authorized, Amount, O>>,
     ) -> Self::OrchardDigest {
         orchard_bundle.map_or_else(bundle::commitments::hash_bundle_auth_empty, |b| {
             b.authorizing_commitment().0
@@ -538,7 +538,11 @@ impl TransactionDigest<Authorized> for BlockTxCommitmentDigester {
         issue_digest: Self::IssueDigest,
         #[cfg(feature = "zfuture")] tze_digest: Self::TzeDigest,
     ) -> Self::Digest {
-        let digests = [transparent_digest, sapling_digest, orchard_digest];
+        let digests = [
+            transparent_digest,
+            sapling_digest,
+            orchard_digest,
+        ];
 
         let mut personal = [0; 16];
         personal[..12].copy_from_slice(ZCASH_AUTH_PERSONALIZATION_PREFIX);

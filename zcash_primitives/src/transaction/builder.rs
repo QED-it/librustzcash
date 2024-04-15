@@ -4,7 +4,7 @@ use std::cmp::Ordering;
 use std::error;
 use std::fmt;
 use std::sync::mpsc::Sender;
-use orchard::Address;
+use orchard::{Address, issuance};
 use orchard::builder::{InProgress, Unproven};
 
 use rand::{rngs::OsRng, CryptoRng, RngCore};
@@ -48,7 +48,8 @@ use crate::{
 };
 
 use orchard::note::AssetBase;
-use orchard::issuance::{IssueBundle, Signed};
+use orchard::issuance::{IssueBundle, IssueInfo};
+use orchard::keys::{IssuanceAuthorizingKey, IssuanceValidatingKey};
 use orchard::orchard_flavor::{OrchardVanilla, OrchardZSA};
 
 /// Since Blossom activation, the default transaction expiry delta should be 40 blocks.
@@ -74,6 +75,8 @@ pub enum Error<FeeError> {
     SaplingBuild(sapling_builder::Error),
     /// An error occurred in constructing the Orchard parts of a transaction.
     OrchardBuild(orchard::builder::BuildError),
+    /// An error occurred in constructing the Orchard parts of a transaction.
+    IssuanceBuild(orchard::issuance::Error),
     /// An error occurred in adding an Orchard Spend to a transaction.
     OrchardSpend(orchard::builder::SpendError),
     /// An error occurred in adding an Orchard Output to a transaction.
@@ -104,6 +107,7 @@ impl<FE: fmt::Display> fmt::Display for Error<FE> {
             Error::TransparentBuild(err) => err.fmt(f),
             Error::SaplingBuild(err) => err.fmt(f),
             Error::OrchardBuild(err) => write!(f, "{:?}", err),
+            Error::IssuanceBuild(err) => write!(f, "{:?}", err),
             Error::OrchardSpend(err) => write!(f, "Could not add Orchard spend: {}", err),
             Error::OrchardRecipient(err) => write!(f, "Could not add Orchard recipient: {}", err),
             Error::OrchardAnchorNotAvailable => write!(
@@ -162,13 +166,15 @@ pub struct Builder<'a, P, R> {
     transparent_builder: TransparentBuilder,
     sapling_builder: SaplingBuilder<P>,
     orchard_builder: Option<orchard::builder::Builder>,
+    issuance_builder: Option<IssueBundle<issuance::Unauthorized>>,
+    issuance_key: Option<orchard::keys::IssuanceAuthorizingKey>,
     // TODO: In the future, instead of taking the spending keys as arguments when calling
     // `add_sapling_spend` or `add_orchard_spend`, we will build an unauthorized, unproven
     // transaction, and then the caller will be responsible for using the spending keys or their
     // derivatives for proving and signing to complete transaction creation.
     orchard_saks: Vec<orchard::keys::SpendAuthorizingKey>,
     #[cfg(feature = "zfuture")]
-    tze_builder: TzeBuilder<'a, TransactionData<Unauthorized>>,
+    tze_builder: TzeBuilder<'a, TransactionData<Unauthorized, issuance::Unauthorized>>,
     #[cfg(not(feature = "zfuture"))]
     tze_builder: std::marker::PhantomData<&'a ()>,
     progress_notifier: Option<Sender<Progress>>,
@@ -274,6 +280,8 @@ impl<'a, P: consensus::Parameters, R: RngCore + CryptoRng> Builder<'a, P, R> {
             transparent_builder: TransparentBuilder::empty(),
             sapling_builder: SaplingBuilder::new(params, target_height),
             orchard_builder,
+            issuance_builder: None,
+            issuance_key: None,
             orchard_saks: Vec::new(),
             #[cfg(feature = "zfuture")]
             tze_builder: TzeBuilder::empty(),
@@ -282,6 +290,29 @@ impl<'a, P: consensus::Parameters, R: RngCore + CryptoRng> Builder<'a, P, R> {
             progress_notifier: None,
         }
     }
+
+    /// Adds an Issuance action to the transaction.
+    pub fn add_issuance<FeeError>(
+        &mut self,
+        ik: IssuanceAuthorizingKey,
+        asset_desc: String,
+        recipient: Address,
+        value: orchard::value::NoteValue,
+    ) -> Result<(), Error<FeeError>> {
+        if self.issuance_builder.is_none() {
+            self.issuance_builder = Some(
+                IssueBundle::new(IssuanceValidatingKey::from(&ik), asset_desc, Some(IssueInfo { recipient, value }), OsRng)
+                    .map_err(Error::IssuanceBuild)?.0
+            );
+            self.issuance_key = Some(ik);
+        } else {
+            // TODO Here we ignore provided 'ik', probably might want to check if it corresponds to the one we already have
+            self.issuance_builder.as_mut().unwrap().add_recipient(asset_desc, recipient, value, OsRng).map_err(Error::IssuanceBuild)?;
+        };
+
+        Ok(())
+    }
+
 
     pub fn add_burn<FeeError>(
         &mut self,
@@ -546,6 +577,8 @@ impl<'a, P: consensus::Parameters, R: RngCore + CryptoRng> Builder<'a, P, R> {
         // Consistency checks
         //
 
+        // TODO we need to check balance per AssetBase including burns, but only take fees into account for native asset
+
         // After fees are accounted for, the value balance of the transaction must be zero.
         let balance_after_fees = (self.value_balance()? - fee).ok_or(BalanceError::Underflow)?;
 
@@ -584,12 +617,12 @@ impl<'a, P: consensus::Parameters, R: RngCore + CryptoRng> Builder<'a, P, R> {
             (None, None)
         };
 
-        let issue_bundle: Option<IssueBundle<Signed>> = None; // TODO
+        let unauthorized_issue_bundle = self.issuance_builder;
 
         #[cfg(feature = "zfuture")]
         let (tze_bundle, tze_signers) = self.tze_builder.build();
 
-        let unauthed_tx: TransactionData<Unauthorized> = TransactionData {
+        let unauthed_tx: TransactionData<Unauthorized, issuance::Unauthorized> = TransactionData {
             version,
             consensus_branch_id: BranchId::for_height(&self.params, self.target_height),
             lock_time: 0,
@@ -599,7 +632,7 @@ impl<'a, P: consensus::Parameters, R: RngCore + CryptoRng> Builder<'a, P, R> {
             sapling_bundle,
             orchard_bundle: unproven_orchard_bundle,
             orchard_zsa_bundle: unproven_orchard_zsa_bundle,
-            issue_bundle,
+            issue_bundle: unauthorized_issue_bundle,
             #[cfg(feature = "zfuture")]
             tze_bundle,
         };
@@ -682,7 +715,11 @@ impl<'a, P: consensus::Parameters, R: RngCore + CryptoRng> Builder<'a, P, R> {
             .transpose()
             .map_err(Error::OrchardBuild)?;
 
-        let issue_bundle = None; // TODO
+        let issue_bundle = unauthed_tx
+            .issue_bundle
+            .map(|b| b.prepare(*shielded_sig_commitment.as_ref()))
+            .map(|b| b.sign(self.issuance_key.as_ref().unwrap()))
+            .map(|b| b.unwrap());
 
         let authorized_tx = TransactionData {
             version: unauthed_tx.version,
@@ -709,7 +746,7 @@ impl<'a, P: consensus::Parameters, R: RngCore + CryptoRng> Builder<'a, P, R> {
 impl<'a, P: consensus::Parameters, R: RngCore + CryptoRng> ExtensionTxBuilder<'a>
     for Builder<'a, P, R>
 {
-    type BuildCtx = TransactionData<Unauthorized>;
+    type BuildCtx = TransactionData<Unauthorized, issuance::Unauthorized>;
     type BuildError = tze::builder::Error;
 
     fn add_tze_input<WBuilder, W: ToPayload>(
@@ -882,6 +919,8 @@ mod tests {
             tze_builder: std::marker::PhantomData,
             progress_notifier: None,
             orchard_builder: None,
+            issuance_builder: None,
+            issuance_key: None,
             orchard_saks: Vec::new(),
         };
 
