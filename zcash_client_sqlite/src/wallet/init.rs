@@ -841,6 +841,8 @@ mod tests {
                 None,
                 None,
                 None,
+                None,
+                None,
             )
             .freeze()
             .unwrap();

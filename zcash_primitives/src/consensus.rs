@@ -397,7 +397,7 @@ pub enum NetworkUpgrade {
     Nu5,
     /// The [V6] network upgrade.
     ///
-    /// [V6]: TODO https://z.cash/upgrade/v6
+    /// [V6]: https://z.cash/upgrade/v6/
     V6,
     /// The ZFUTURE network upgrade.
     ///
@@ -601,9 +601,9 @@ impl BranchId {
             }),
             BranchId::V6 => params.activation_height(NetworkUpgrade::V6).map(|lower| {
                 #[cfg(feature = "zfuture")]
-                    let upper = params.activation_height(NetworkUpgrade::ZFuture);
+                let upper = params.activation_height(NetworkUpgrade::ZFuture);
                 #[cfg(not(feature = "zfuture"))]
-                    let upper = None;
+                let upper = None;
                 (lower, upper)
             }),
             #[cfg(feature = "zfuture")]
