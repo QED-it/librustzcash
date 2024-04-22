@@ -44,7 +44,7 @@ tracing = "0.1"
 
 # - Protobuf interfaces and gRPC bindings
 hex = "0.4"
-prost = "0.12"
+prost = "=0.12.3" # Pinned: 0.12.4 requires Rust 1.70
 tonic = { version = "0.10", optional = true }
 
 # - Secret management
@@ -54,7 +54,7 @@ subtle = "2.2.3"
 # - Shielded protocols
 bls12_381 = "0.8"
 group = "0.13"
-orchard = { git = "https://github.com/QED-it/orchard", branch = "orchardzsa-backward-compatability", default-features = false }
+orchard = { git = "https://github.com/QED-it/orchard", branch = "orchardzsa-backward-compatability-new-ak", default-features = false }
 
 # - Note commitment trees
 incrementalmerkletree = "0.5"

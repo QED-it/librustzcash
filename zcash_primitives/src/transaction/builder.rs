@@ -1,6 +1,5 @@
 //! Structs for building transactions.
 
-use orchard::builder::{InProgress, Unproven};
 use orchard::{issuance, Address};
 use std::cmp::Ordering;
 use std::error;
@@ -47,6 +46,7 @@ use crate::{
     },
 };
 
+use crate::transaction::builder::Error::{IssuanceBuilder, IssuanceBundle};
 use orchard::issuance::{IssueBundle, IssueInfo};
 use orchard::keys::{IssuanceAuthorizingKey, IssuanceValidatingKey};
 use orchard::note::AssetBase;
@@ -75,8 +75,10 @@ pub enum Error<FeeError> {
     SaplingBuild(sapling_builder::Error),
     /// An error occurred in constructing the Orchard parts of a transaction.
     OrchardBuild(orchard::builder::BuildError),
-    /// An error occurred in constructing the Orchard parts of a transaction.
-    IssuanceBuild(orchard::issuance::Error),
+    /// An error occurred in constructing the Issuance bundle.
+    IssuanceBundle(issuance::Error),
+    /// An error occurred in constructing the Issuance builder.
+    IssuanceBuilder(&'static str),
     /// An error occurred in adding an Orchard Spend to a transaction.
     OrchardSpend(orchard::builder::SpendError),
     /// An error occurred in adding an Orchard Output to a transaction.
@@ -107,7 +109,8 @@ impl<FE: fmt::Display> fmt::Display for Error<FE> {
             Error::TransparentBuild(err) => err.fmt(f),
             Error::SaplingBuild(err) => err.fmt(f),
             Error::OrchardBuild(err) => write!(f, "{:?}", err),
-            Error::IssuanceBuild(err) => write!(f, "{:?}", err),
+            Error::IssuanceBundle(err) => write!(f, "{:?}", err),
+            Error::IssuanceBuilder(err) => write!(f, "{:?}", err),
             Error::OrchardSpend(err) => write!(f, "Could not add Orchard spend: {}", err),
             Error::OrchardRecipient(err) => write!(f, "Could not add Orchard recipient: {}", err),
             Error::OrchardAnchorNotAvailable => write!(
@@ -292,33 +295,47 @@ impl<'a, P: consensus::Parameters, R: RngCore + CryptoRng> Builder<'a, P, R> {
     }
 
     /// Adds an Issuance action to the transaction.
-    pub fn add_issuance<FeeError>(
+    pub fn init_issue_bundle<FeeError>(
         &mut self,
         ik: IssuanceAuthorizingKey,
         asset_desc: String,
         recipient: Address,
         value: orchard::value::NoteValue,
     ) -> Result<(), Error<FeeError>> {
+        if self.issuance_builder.is_some() {
+            return Err(IssuanceBuilder("Issuance bundle already initialized"));
+        }
+
+        self.issuance_builder = Some(
+            IssueBundle::new(
+                IssuanceValidatingKey::from(&ik),
+                asset_desc,
+                Some(IssueInfo { recipient, value }),
+                OsRng,
+            )
+            .map_err(IssuanceBundle)?
+            .0,
+        );
+        self.issuance_key = Some(ik);
+
+        Ok(())
+    }
+
+    /// Adds an Issuance action to the transaction.
+    pub fn add_issuance<FeeError>(
+        &mut self,
+        asset_desc: String,
+        recipient: Address,
+        value: orchard::value::NoteValue,
+    ) -> Result<(), Error<FeeError>> {
         if self.issuance_builder.is_none() {
-            self.issuance_builder = Some(
-                IssueBundle::new(
-                    IssuanceValidatingKey::from(&ik),
-                    asset_desc,
-                    Some(IssueInfo { recipient, value }),
-                    OsRng,
-                )
-                .map_err(Error::IssuanceBuild)?
-                .0,
-            );
-            self.issuance_key = Some(ik);
-        } else {
-            // TODO Here we ignore provided 'ik', probably might want to check if it corresponds to the one we already have
-            self.issuance_builder
-                .as_mut()
-                .unwrap()
-                .add_recipient(asset_desc, recipient, value, OsRng)
-                .map_err(Error::IssuanceBuild)?;
-        };
+            return Err(IssuanceBuilder("Issuance bundle not initialized"));
+        }
+        self.issuance_builder
+            .as_mut()
+            .unwrap()
+            .add_recipient(asset_desc, recipient, value, OsRng)
+            .map_err(IssuanceBundle)?;
 
         Ok(())
     }
@@ -332,7 +349,7 @@ impl<'a, P: consensus::Parameters, R: RngCore + CryptoRng> Builder<'a, P, R> {
             .as_mut()
             .ok_or(Error::OrchardAnchorNotAvailable)?
             .add_burn(asset, orchard::value::NoteValue::from_raw(value))
-            .unwrap(); // TODO   .map_err(Error::OrchardBuild)?; or new error type
+            .map_err(Error::OrchardBuild)?;
 
         Ok(())
     }
@@ -586,8 +603,6 @@ impl<'a, P: consensus::Parameters, R: RngCore + CryptoRng> Builder<'a, P, R> {
         // Consistency checks
         //
 
-        // TODO we need to check balance per AssetBase including burns, but only take fees into account for native asset
-
         // After fees are accounted for, the value balance of the transaction must be zero.
         let balance_after_fees = (self.value_balance()? - fee).ok_or(BalanceError::Underflow)?;
 
@@ -621,11 +636,11 @@ impl<'a, P: consensus::Parameters, R: RngCore + CryptoRng> Builder<'a, P, R> {
                 if version.has_zsa() {
                     (
                         None,
-                        Some(builder.build(&mut rng).map_err(Error::OrchardBuild)?.into()),
+                        Some(builder.build(&mut rng).map_err(Error::OrchardBuild)?),
                     )
                 } else {
                     (
-                        Some(builder.build(&mut rng).map_err(Error::OrchardBuild)?.into()),
+                        Some(builder.build(&mut rng).map_err(Error::OrchardBuild)?),
                         None,
                     )
                 }
@@ -696,20 +711,17 @@ impl<'a, P: consensus::Parameters, R: RngCore + CryptoRng> Builder<'a, P, R> {
         let orchard_bundle = unauthed_tx
             .orchard_bundle
             .map(|b| {
-                let vanilla: orchard::Bundle<InProgress<Unproven<OrchardVanilla>, _>, _, _> =
-                    b.into();
-                vanilla
-                    .create_proof(
-                        &orchard::circuit::ProvingKey::build::<OrchardVanilla>(),
+                b.create_proof(
+                    &orchard::circuit::ProvingKey::build::<OrchardVanilla>(),
+                    &mut rng,
+                )
+                .and_then(|b| {
+                    b.apply_signatures(
                         &mut rng,
+                        *shielded_sig_commitment.as_ref(),
+                        &self.orchard_saks,
                     )
-                    .and_then(|b| {
-                        b.apply_signatures(
-                            &mut rng,
-                            *shielded_sig_commitment.as_ref(),
-                            &self.orchard_saks,
-                        )
-                    })
+                })
             })
             .transpose()
             .map_err(Error::OrchardBuild)?;
@@ -717,8 +729,7 @@ impl<'a, P: consensus::Parameters, R: RngCore + CryptoRng> Builder<'a, P, R> {
         let orchard_zsa_bundle = unauthed_tx
             .orchard_zsa_bundle
             .map(|b| {
-                let zsa: orchard::Bundle<InProgress<Unproven<OrchardZSA>, _>, _, _> = b.into();
-                zsa.create_proof(
+                b.create_proof(
                     &orchard::circuit::ProvingKey::build::<OrchardZSA>(),
                     &mut rng,
                 )

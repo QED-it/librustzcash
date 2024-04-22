@@ -2,7 +2,6 @@
 
 pub mod amount;
 pub mod issuance;
-pub mod note;
 pub mod orchard;
 pub mod sapling;
 pub mod sprout;
