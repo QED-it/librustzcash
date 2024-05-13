@@ -34,6 +34,7 @@ use crate::transaction::components::transparent::builder::TransparentInputInfo;
 
 #[cfg(not(feature = "transparent-inputs"))]
 use std::convert::Infallible;
+use orchard::note::AssetBase;
 
 #[cfg(zcash_unstable = "zfuture")]
 use crate::{
@@ -231,7 +232,7 @@ impl BuildConfig {
         match self {
             BuildConfig::Standard { orchard_anchor, .. } => orchard_anchor
                 .as_ref()
-                .map(|a| (orchard::builder::BundleType::DEFAULT, *a)),
+                .map(|a| (orchard::builder::BundleType::DEFAULT_VANILLA, *a)),
             BuildConfig::Coinbase => Some((
                 orchard::builder::BundleType::Coinbase,
                 orchard::Anchor::empty_tree(),
@@ -441,6 +442,7 @@ impl<'a, P: consensus::Parameters, U: sapling::builder::ProverProgress> Builder<
                 ovk,
                 recipient,
                 orchard::value::NoteValue::from_raw(value),
+                AssetBase::native(),
                 Some(*memo.as_array()),
             )
             .map_err(Error::OrchardRecipient)
