@@ -35,6 +35,7 @@ use crate::transaction::components::transparent::builder::TransparentInputInfo;
 #[cfg(not(feature = "transparent-inputs"))]
 use std::convert::Infallible;
 use orchard::note::AssetBase;
+use orchard::orchard_flavor::OrchardVanilla;
 
 #[cfg(zcash_unstable = "zfuture")]
 use crate::{
@@ -47,8 +48,8 @@ use crate::{
         fees::FutureFeeRule,
     },
 };
-
-use orchard::{note::AssetBase, note_encryption_vanilla::OrchardDomainVanilla};
+use crate::transaction::components::amount::NonNegativeAmount;
+use crate::transaction::components::sapling::zip212_enforcement;
 
 /// Since Blossom activation, the default transaction expiry delta should be 40 blocks.
 /// <https://zips.z.cash/zip-0203#changes-for-blossom>
@@ -795,7 +796,7 @@ impl<'a, P: consensus::Parameters, U: sapling::builder::ProverProgress> Builder<
             .orchard_bundle
             .map(|b| {
                 b.create_proof(
-                    &orchard::circuit::ProvingKey::build::<OrchardDomainVanilla>(),
+                    &orchard::circuit::ProvingKey::build::<OrchardVanilla>(),
                     &mut rng,
                 )
                 .and_then(|b| {
