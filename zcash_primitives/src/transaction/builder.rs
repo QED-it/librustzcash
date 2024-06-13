@@ -32,9 +32,9 @@ use crate::{
 #[cfg(feature = "transparent-inputs")]
 use crate::transaction::components::transparent::builder::TransparentInputInfo;
 
+use orchard::note::AssetBase;
 #[cfg(not(feature = "transparent-inputs"))]
 use std::convert::Infallible;
-use orchard::note::AssetBase;
 
 #[cfg(zcash_unstable = "zfuture")]
 use crate::{
