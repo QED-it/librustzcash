@@ -29,6 +29,7 @@ runs:
         download-params
         temporary-zcashd
         transparent-inputs
+        sapling
         unstable
         ${{ inputs.extra-features }}
         ${{ steps.test.outputs.feature }}
