@@ -27,13 +27,13 @@ runs:
         echo "flags=--features '
         bundled-prover
         download-params
-        lightwalletd-tonic
-        sync
+#        lightwalletd-tonic
+#        sync
         temporary-zcashd
         transparent-inputs
         unstable
-        unstable-serialization
-        unstable-spanning-tree
+#        unstable-serialization
+#        unstable-spanning-tree
         ${{ inputs.extra-features }}
         ${{ steps.test.outputs.feature }}
         '" >> $GITHUB_OUTPUT
