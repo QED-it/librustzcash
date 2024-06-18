@@ -5,6 +5,7 @@ use orchard::{
     keys::Diversifier,
     note::{Note, Nullifier, RandomSeed, Rho},
 };
+use orchard::note::AssetBase;
 use rusqlite::{named_params, types::Value, Connection, Row, Transaction};
 
 use zcash_client_backend::{
@@ -166,6 +167,7 @@ fn to_spendable_note<P: consensus::Parameters>(
             let note = Option::from(Note::from_parts(
                 recipient,
                 orchard::value::NoteValue::from_raw(note_value),
+                AssetBase::native(),
                 rho,
                 rseed,
             ))
@@ -393,6 +395,7 @@ pub(crate) mod tests {
         note_encryption::OrchardDomain,
         tree::MerkleHashOrchard,
     };
+    use orchard::note_encryption::OrchardDomainBase;
     use shardtree::error::ShardTreeError;
     use zcash_client_backend::{
         data_api::{
@@ -534,7 +537,7 @@ pub(crate) mod tests {
             for action in tx.orchard_bundle().unwrap().actions() {
                 // Find the output that decrypts with the external OVK
                 let result = try_output_recovery_with_ovk(
-                    &OrchardDomain::for_action(action),
+                    &OrchardDomainBase::for_action(action),
                     &fvk.to_ovk(zip32::Scope::External),
                     action,
                     action.cv_net(),

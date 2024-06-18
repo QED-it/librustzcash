@@ -14,6 +14,7 @@ use crate::{data_api::DecryptedTransaction, keys::UnifiedFullViewingKey};
 
 #[cfg(feature = "orchard")]
 use orchard::note_encryption::OrchardDomain;
+use orchard::note_encryption::OrchardDomainBase;
 
 /// An enumeration of the possible relationships a TXO can have to the wallet.
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
@@ -181,7 +182,7 @@ pub fn decrypt_transaction<'a, P: consensus::Parameters, AccountId: Copy>(
                         .iter()
                         .enumerate()
                         .flat_map(move |(index, action)| {
-                            let domain = OrchardDomain::for_action(action);
+                            let domain = OrchardDomainBase::for_action(action);
                             let account = account;
                             try_note_decryption(&domain, &ivk_external, action)
                                 .map(|ret| (ret, TransferType::Incoming))

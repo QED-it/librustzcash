@@ -285,6 +285,7 @@ mod tests {
         iter::{IndexedParallelIterator, ParallelIterator},
         slice::ParallelSliceMut,
     };
+    use orchard::orchard_flavors::OrchardVanilla;
     use rand_core::OsRng;
     use rusqlite::{named_params, params, Connection};
     use tempfile::NamedTempFile;
@@ -604,7 +605,7 @@ mod tests {
             ..Default::default()
         };
         block.vtx.push(compact_tx);
-        let scanning_keys = ScanningKeys::from_account_ufvks([(AccountId(0), ufvk0)]);
+        let scanning_keys: ScanningKeys<AccountId, (AccountId, zip32::Scope), OrchardVanilla> = ScanningKeys::from_account_ufvks([(AccountId(0), ufvk0)]);
 
         let scanned_block = scan_block(
             &params,

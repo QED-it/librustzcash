@@ -31,12 +31,15 @@ use crate::{
 
 #[cfg(feature = "orchard")]
 use orchard::{
-    note_encryption::{CompactAction, OrchardDomain},
+    note_encryption::OrchardDomain,
     tree::MerkleHashOrchard,
 };
 
 #[cfg(not(feature = "orchard"))]
 use std::marker::PhantomData;
+use orchard::note_encryption::action::CompactAction;
+use orchard::note_encryption::OrchardDomainBase;
+use orchard::orchard_flavors::OrchardVanilla;
 
 /// A key that can be used to perform trial decryption and nullifier
 /// computation for a [`CompactSaplingOutput`] or [`CompactOrchardAction`].
@@ -161,7 +164,7 @@ impl<AccountId> ScanningKeyOps<SaplingDomain, AccountId, sapling::Nullifier>
 }
 
 #[cfg(feature = "orchard")]
-impl<AccountId> ScanningKeyOps<OrchardDomain, AccountId, orchard::note::Nullifier>
+impl<AccountId, D: OrchardDomain> ScanningKeyOps<OrchardDomainBase<D>, AccountId, orchard::note::Nullifier>
     for ScanningKey<orchard::keys::IncomingViewingKey, orchard::keys::FullViewingKey, AccountId>
 {
     fn prepare(&self) -> orchard::keys::PreparedIncomingViewingKey {
@@ -186,16 +189,16 @@ impl<AccountId> ScanningKeyOps<OrchardDomain, AccountId, orchard::note::Nullifie
 }
 
 /// A set of keys to be used in scanning for decryptable transaction outputs.
-pub struct ScanningKeys<AccountId, IvkTag> {
+pub struct ScanningKeys<AccountId, IvkTag, D: OrchardDomain> {
     sapling: HashMap<IvkTag, Box<dyn ScanningKeyOps<SaplingDomain, AccountId, sapling::Nullifier>>>,
     #[cfg(feature = "orchard")]
     orchard: HashMap<
         IvkTag,
-        Box<dyn ScanningKeyOps<OrchardDomain, AccountId, orchard::note::Nullifier>>,
+        Box<dyn ScanningKeyOps<OrchardDomainBase<D>, AccountId, orchard::note::Nullifier>>,
     >,
 }
 
-impl<AccountId, IvkTag> ScanningKeys<AccountId, IvkTag> {
+impl<AccountId, IvkTag, D: OrchardDomain> ScanningKeys<AccountId, IvkTag, D> {
     /// Constructs a new set of scanning keys.
     pub fn new(
         sapling: HashMap<
@@ -204,7 +207,7 @@ impl<AccountId, IvkTag> ScanningKeys<AccountId, IvkTag> {
         >,
         #[cfg(feature = "orchard")] orchard: HashMap<
             IvkTag,
-            Box<dyn ScanningKeyOps<OrchardDomain, AccountId, orchard::note::Nullifier>>,
+            Box<dyn ScanningKeyOps<OrchardDomainBase<D>, AccountId, orchard::note::Nullifier>>,
         >,
     ) -> Self {
         Self {
@@ -235,13 +238,13 @@ impl<AccountId, IvkTag> ScanningKeys<AccountId, IvkTag> {
     #[cfg(feature = "orchard")]
     pub fn orchard(
         &self,
-    ) -> &HashMap<IvkTag, Box<dyn ScanningKeyOps<OrchardDomain, AccountId, orchard::note::Nullifier>>>
+    ) -> &HashMap<IvkTag, Box<dyn ScanningKeyOps<OrchardDomainBase<D>, AccountId, orchard::note::Nullifier>>>
     {
         &self.orchard
     }
 }
 
-impl<AccountId: Copy + Eq + Hash + 'static> ScanningKeys<AccountId, (AccountId, Scope)> {
+impl<AccountId: Copy + Eq + Hash + 'static, D: OrchardDomain> ScanningKeys<AccountId, (AccountId, Scope), D> {
     /// Constructs a [`ScanningKeys`] from an iterator of [`UnifiedFullViewingKey`]s,
     /// along with the account identifiers corresponding to those UFVKs.
     pub fn from_account_ufvks(
@@ -256,7 +259,7 @@ impl<AccountId: Copy + Eq + Hash + 'static> ScanningKeys<AccountId, (AccountId, 
         #[cfg(feature = "orchard")]
         let mut orchard: HashMap<
             (AccountId, Scope),
-            Box<dyn ScanningKeyOps<OrchardDomain, AccountId, orchard::note::Nullifier>>,
+            Box<dyn ScanningKeyOps<OrchardDomainBase<D>, AccountId, orchard::note::Nullifier>>,
         > = HashMap::new();
 
         for (account_id, ufvk) in ufvks {
@@ -482,10 +485,10 @@ impl fmt::Display for ScanError {
 ///
 /// [`CompactBlock`]: crate::proto::compact_formats::CompactBlock
 /// [`WalletTx`]: crate::wallet::WalletTx
-pub fn scan_block<P, AccountId, IvkTag>(
+pub fn scan_block<P, AccountId, IvkTag, D: OrchardDomain + 'static>(
     params: &P,
     block: CompactBlock,
-    scanning_keys: &ScanningKeys<AccountId, IvkTag>,
+    scanning_keys: &ScanningKeys<AccountId, IvkTag, D>,
     nullifiers: &Nullifiers<AccountId>,
     prior_block_metadata: Option<&BlockMetadata>,
 ) -> Result<ScannedBlock<AccountId>, ScanError>
@@ -494,7 +497,7 @@ where
     AccountId: Default + Eq + Hash + ConditionallySelectable + Send + 'static,
     IvkTag: Copy + std::hash::Hash + Eq + Send + 'static,
 {
-    scan_block_with_runners::<_, _, _, (), ()>(
+    scan_block_with_runners::<_, _, _, (), (), D>(
         params,
         block,
         scanning_keys,
@@ -519,13 +522,13 @@ type TaggedSaplingBatchRunner<IvkTag, Tasks> = BatchRunner<
 >;
 
 #[cfg(feature = "orchard")]
-type TaggedOrchardBatch<IvkTag> =
-    Batch<IvkTag, OrchardDomain, orchard::note_encryption::CompactAction, CompactDecryptor>;
+type TaggedOrchardBatch<IvkTag, D: OrchardDomain> =
+    Batch<IvkTag, OrchardDomainBase<D>, CompactAction<D>, CompactDecryptor>;
 #[cfg(feature = "orchard")]
-type TaggedOrchardBatchRunner<IvkTag, Tasks> = BatchRunner<
+type TaggedOrchardBatchRunner<IvkTag, Tasks, D: OrchardDomain> = BatchRunner<
     IvkTag,
-    OrchardDomain,
-    orchard::note_encryption::CompactAction,
+    OrchardDomainBase<D>,
+    CompactAction<D>,
     CompactDecryptor,
     Tasks,
 >;
@@ -539,27 +542,27 @@ pub(crate) trait OrchardTasks<IvkTag> {}
 impl<IvkTag, T> OrchardTasks<IvkTag> for T {}
 
 #[cfg(feature = "orchard")]
-pub(crate) trait OrchardTasks<IvkTag>: Tasks<TaggedOrchardBatch<IvkTag>> {}
+pub(crate) trait OrchardTasks<IvkTag, D: OrchardDomain>: Tasks<TaggedOrchardBatch<IvkTag, D>> {}
 #[cfg(feature = "orchard")]
-impl<IvkTag, T: Tasks<TaggedOrchardBatch<IvkTag>>> OrchardTasks<IvkTag> for T {}
+impl<IvkTag, T: Tasks<TaggedOrchardBatch<IvkTag, D>>, D: OrchardDomain> OrchardTasks<IvkTag, D> for T {}
 
-pub(crate) struct BatchRunners<IvkTag, TS: SaplingTasks<IvkTag>, TO: OrchardTasks<IvkTag>> {
+pub(crate) struct BatchRunners<IvkTag, TS: SaplingTasks<IvkTag>, TO: OrchardTasks<IvkTag, D>, D: OrchardDomain> {
     sapling: TaggedSaplingBatchRunner<IvkTag, TS>,
     #[cfg(feature = "orchard")]
-    orchard: TaggedOrchardBatchRunner<IvkTag, TO>,
+    orchard: TaggedOrchardBatchRunner<IvkTag, TO, D>,
     #[cfg(not(feature = "orchard"))]
     orchard: PhantomData<TO>,
 }
 
-impl<IvkTag, TS, TO> BatchRunners<IvkTag, TS, TO>
+impl<IvkTag, TS, TO, D: OrchardDomain + 'static> BatchRunners<IvkTag, TS, TO, D>
 where
     IvkTag: Clone + Send + 'static,
     TS: SaplingTasks<IvkTag>,
-    TO: OrchardTasks<IvkTag>,
+    TO: OrchardTasks<IvkTag, D>,
 {
     pub(crate) fn for_keys<AccountId>(
         batch_size_threshold: usize,
-        scanning_keys: &ScanningKeys<AccountId, IvkTag>,
+        scanning_keys: &ScanningKeys<AccountId, IvkTag, D>,
     ) -> Self {
         BatchRunners {
             sapling: BatchRunner::new(
@@ -618,14 +621,14 @@ where
                             }
                         })
                     })
-                    .collect::<Result<Vec<_>, _>>()?,
+                    .collect::<Result<Vec<_>, _>>()?[..],
             );
 
             #[cfg(feature = "orchard")]
             self.orchard.add_outputs(
                 block_hash,
                 txid,
-                OrchardDomain::for_compact_action,
+                OrchardDomainBase::for_compact_action,
                 &tx.actions
                     .iter()
                     .enumerate()
@@ -637,7 +640,7 @@ where
                             index: i,
                         })
                     })
-                    .collect::<Result<Vec<_>, _>>()?,
+                    .collect::<Result<Vec<_>, _>>()?[..],
             );
         }
 
@@ -646,20 +649,20 @@ where
 }
 
 #[tracing::instrument(skip_all, fields(height = block.height))]
-pub(crate) fn scan_block_with_runners<P, AccountId, IvkTag, TS, TO>(
+pub(crate) fn scan_block_with_runners<P, AccountId, IvkTag, TS, TO, D: OrchardDomain + 'static>(
     params: &P,
     block: CompactBlock,
-    scanning_keys: &ScanningKeys<AccountId, IvkTag>,
+    scanning_keys: &ScanningKeys<AccountId, IvkTag, D>,
     nullifiers: &Nullifiers<AccountId>,
     prior_block_metadata: Option<&BlockMetadata>,
-    mut batch_runners: Option<&mut BatchRunners<IvkTag, TS, TO>>,
+    mut batch_runners: Option<&mut BatchRunners<IvkTag, TS, TO, D>>,
 ) -> Result<ScannedBlock<AccountId>, ScanError>
 where
     P: consensus::Parameters + Send + 'static,
     AccountId: Default + Eq + Hash + ConditionallySelectable + Send + 'static,
     IvkTag: Copy + std::hash::Hash + Eq + Send + 'static,
     TS: SaplingTasks<IvkTag> + Sync,
-    TO: OrchardTasks<IvkTag> + Sync,
+    TO: OrchardTasks<IvkTag, D> + Sync,
 {
     fn check_hash_continuity(
         block: &CompactBlock,
@@ -909,7 +912,7 @@ where
                             index: i,
                         }
                     })?;
-                    Ok((OrchardDomain::for_compact_action(&action), action))
+                    Ok((OrchardDomainBase::for_compact_action(&action), action))
                 })
                 .collect::<Result<Vec<_>, _>>()?,
             batch_runners
@@ -1298,6 +1301,7 @@ mod tests {
     use std::convert::Infallible;
 
     use incrementalmerkletree::{Position, Retention};
+    use orchard::orchard_flavors::OrchardVanilla;
     use sapling::Nullifier;
     use zcash_keys::keys::UnifiedSpendingKey;
     use zcash_primitives::{
@@ -1337,7 +1341,7 @@ mod tests {
             assert_eq!(cb.vtx.len(), 2);
 
             let mut batch_runners = if scan_multithreaded {
-                let mut runners = BatchRunners::<_, (), ()>::for_keys(10, &scanning_keys);
+                let mut runners = BatchRunners::<_, (), (), OrchardVanilla>::for_keys(10, &scanning_keys);
                 runners
                     .add_block(&Network::TestNetwork, cb.clone())
                     .unwrap();
@@ -1423,7 +1427,7 @@ mod tests {
             assert_eq!(cb.vtx.len(), 3);
 
             let mut batch_runners = if scan_multithreaded {
-                let mut runners = BatchRunners::<_, (), ()>::for_keys(10, &scanning_keys);
+                let mut runners = BatchRunners::<_, (), (), OrchardVanilla>::for_keys(10, &scanning_keys);
                 runners
                     .add_block(&Network::TestNetwork, cb.clone())
                     .unwrap();
@@ -1482,7 +1486,7 @@ mod tests {
         let account = AccountId::try_from(12).unwrap();
         let usk = UnifiedSpendingKey::from_seed(&network, &[0u8; 32], account).expect("Valid USK");
         let ufvk = usk.to_unified_full_viewing_key();
-        let scanning_keys = ScanningKeys::<AccountId, Infallible>::empty();
+        let scanning_keys = ScanningKeys::<AccountId, Infallible, OrchardVanilla>::empty();
 
         let nf = Nullifier([7; 32]);
         let nullifiers = Nullifiers::new(

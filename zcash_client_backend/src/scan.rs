@@ -12,6 +12,7 @@ use zcash_note_encryption::{
     batch, BatchDomain, Domain, ShieldedOutput,
 };
 use zcash_primitives::{block::BlockHash, transaction::TxId};
+use orchard::note_encryption::domain;
 
 /// A decrypted transaction output.
 pub(crate) struct DecryptedOutput<IvkTag, D: Domain, M> {

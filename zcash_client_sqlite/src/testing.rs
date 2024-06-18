@@ -8,6 +8,9 @@ use std::fs::File;
 use group::ff::Field;
 use incrementalmerkletree::{Position, Retention};
 use nonempty::NonEmpty;
+use orchard::note_encryption::action::CompactAction;
+use orchard::note_encryption::OrchardDomain;
+use orchard::orchard_flavors::OrchardVanilla;
 use prost::Message;
 use rand_chacha::ChaChaRng;
 use rand_core::{CryptoRng, RngCore, SeedableRng};
@@ -54,7 +57,7 @@ use zcash_client_backend::{
     fees::{standard, DustOutputPolicy},
     ShieldedProtocol,
 };
-use zcash_note_encryption::Domain;
+use zcash_note_encryption::{Domain, ShieldedOutput};
 use zcash_primitives::{
     block::BlockHash,
     consensus::{self, BlockHeight, NetworkUpgrade, Parameters},
@@ -1540,7 +1543,9 @@ fn compact_orchard_action<R: RngCore + CryptoRng>(
 ) -> (CompactOrchardAction, orchard::Note) {
     use zcash_note_encryption::ShieldedOutput;
 
-    let (compact_action, note) = orchard::note_encryption::testing::fake_compact_action(
+    let compact_action: CompactAction<OrchardVanilla>;
+    let note: orchard::Note;
+    (compact_action, note) = orchard::note_encryption::action::testing::fake_compact_action(
         rng,
         nf_old,
         recipient,
@@ -1553,7 +1558,7 @@ fn compact_orchard_action<R: RngCore + CryptoRng>(
             nullifier: compact_action.nullifier().to_bytes().to_vec(),
             cmx: compact_action.cmx().to_bytes().to_vec(),
             ephemeral_key: compact_action.ephemeral_key().0.to_vec(),
-            ciphertext: compact_action.enc_ciphertext().as_ref()[..52].to_vec(),
+            ciphertext: compact_action.enc_ciphertext_compact().as_ref().to_vec(),
         },
         note,
     )

@@ -296,7 +296,7 @@ impl TxVersion {
             BranchId::Nu5 => TxVersion::Zip225,
             #[cfg(zcash_unstable = "nu6")]
             BranchId::Nu6 => TxVersion::Zip225,
-            #[cfg(zcash_unstable = "nu7")]
+            #[cfg(zcash_unstable = "nu6")] // TODO replace with nu7
             BranchId::Nu7 => TxVersion::Zsa,
             #[cfg(zcash_unstable = "zfuture")]
             BranchId::ZFuture => TxVersion::ZFuture,
