@@ -50,11 +50,12 @@ use crate::{
     },
 };
 
-use orchard::note::AssetBase;
-use orchard::orchard_flavors::{OrchardVanilla, OrchardZSA};
-
 #[cfg(zcash_unstable = "nu7")]
 use crate::transaction::builder::Error::{IssuanceBuilder, IssuanceBundle};
+use orchard::note::AssetBase;
+use orchard::orchard_flavors::OrchardVanilla;
+#[cfg(zcash_unstable = "nu7")]
+use orchard::orchard_flavors::OrchardZSA;
 #[cfg(zcash_unstable = "nu7")]
 use orchard::{
     issuance::{IssueBundle, IssueInfo},
@@ -62,7 +63,6 @@ use orchard::{
 };
 #[cfg(zcash_unstable = "nu7")]
 use rand_core::OsRng;
-use zcash_protocol::value::ZatBalance;
 
 /// Since Blossom activation, the default transaction expiry delta should be 40 blocks.
 /// <https://zips.z.cash/zip-0203#changes-for-blossom>
@@ -868,6 +868,7 @@ impl<'a, P: consensus::Parameters, U: sapling::builder::ProverProgress> Builder<
         };
 
         let mut unproven_orchard_bundle = None;
+        #[cfg(zcash_unstable = "nu7")]
         let mut unproven_orchard_zsa_bundle: Option<
             orchard::Bundle<
                 orchard::builder::InProgress<
@@ -882,12 +883,16 @@ impl<'a, P: consensus::Parameters, U: sapling::builder::ProverProgress> Builder<
 
         if let Some(builder) = self.orchard_builder {
             if version.has_zsa() {
-                let (bundle, meta) = builder
-                    .build(&mut rng)
-                    .map_err(Error::OrchardBuild)?
-                    .unwrap();
-                unproven_orchard_zsa_bundle = Some(bundle);
-                orchard_meta = meta;
+                #[cfg(zcash_unstable = "nu7")]
+                {
+                    let (bundle, meta) = builder
+                        .build(&mut rng)
+                        .map_err(Error::OrchardBuild)?
+                        .unwrap();
+
+                    unproven_orchard_zsa_bundle = Some(bundle);
+                    orchard_meta = meta;
+                }
             } else {
                 let (bundle, meta) = builder
                     .build(&mut rng)
