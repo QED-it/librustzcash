@@ -124,4 +124,4 @@ panic = 'abort'
 codegen-units = 1
 
 [patch.crates-io]
-orchard = { version = "0.8.0", path = "/home/eee/IdeaProjects/QED-it/orchard" }
+orchard = { version = "0.8.0", git = "https://github.com/QED-it/orchard", branch = "zsa1" }
