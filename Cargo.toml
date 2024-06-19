@@ -95,7 +95,7 @@ maybe-rayon = { version = "0.1.0", default-features = false }
 rayon = "1.5"
 
 # Protobuf and gRPC
-prost = "0.12.3"
+prost = "=0.12.3"
 tonic = { version = "0.10", default-features = false }
 tonic-build = { version = "0.10", default-features = false }
 
@@ -124,4 +124,4 @@ panic = 'abort'
 codegen-units = 1
 
 [patch.crates-io]
-orchard = { version = "0.8.0", git = "https://github.com/QED-it/orchard", branch = "zsa1" }
+orchard = { version = "0.8.0", path = "/home/eee/IdeaProjects/QED-it/orchard" }
