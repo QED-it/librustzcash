@@ -58,7 +58,7 @@ const V5_VERSION_GROUP_ID: u32 = 0x26A7270A;
 #[cfg(zcash_unstable = "nu6")] /* TODO nu7 */
 const V7_TX_VERSION: u32 = 7;
 #[cfg(zcash_unstable = "nu6")] /* TODO nu7 */
-const V7_VERSION_GROUP_ID: u32 = 0x26A7270C; // TODO ???
+const V7_VERSION_GROUP_ID: u32 = 0x124A69F8; // TODO ???
 
 /// These versions are used exclusively for in-development transaction
 /// serialization, and will never be active under the consensus rules.
