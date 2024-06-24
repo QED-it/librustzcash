@@ -930,7 +930,7 @@ impl Transaction {
             Self::read_v5_header_fragment(&mut reader)?;
         let transparent_bundle = Self::read_transparent(&mut reader)?;
         let sapling_bundle = sapling_serialization::read_v5_bundle(&mut reader)?;
-        let orchard_zsa_bundle = orchard_serialization::read_v6_bundle(&mut reader)?;
+        let orchard_zsa_bundle = orchard_serialization::read_v7_bundle(&mut reader)?;
         let issue_bundle = issuance::read_v7_bundle(&mut reader)?;
 
         #[cfg(zcash_unstable = "zfuture")]

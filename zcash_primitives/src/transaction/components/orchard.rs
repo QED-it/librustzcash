@@ -86,8 +86,8 @@ pub fn read_v5_bundle<R: Read>(
     }
 }
 
-/// Reads an [`orchard::Bundle`] from a v5 transaction format.
-pub fn read_v6_bundle<R: Read>(
+/// Reads an [`orchard::Bundle`] from a v7 transaction format.
+pub fn read_v7_bundle<R: Read>(
     mut reader: R,
 ) -> io::Result<Option<orchard::Bundle<Authorized, Amount, OrchardZSA>>> {
     #[allow(clippy::redundant_closure)]
