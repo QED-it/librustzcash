@@ -26,11 +26,11 @@ jobs:
 
         include:
           - target: Linux
-            os: ubuntu-latest-8cores
+            os: ubuntu-latest-8-cores
           - target: macOS
             os: macOS-latest
           - target: Windows
-            os: windows-latest-8cores
+            os: windows-latest-8-cores
 
           - state: Orchard
             extra_flags: orchard
