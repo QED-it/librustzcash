@@ -312,8 +312,8 @@ pub fn write_v5_bundle<W: Write>(
     Ok(())
 }
 
-/// Writes an [`orchard::Bundle`] in the v6 transaction format.
-pub fn write_v6_bundle<W: Write>(
+/// Writes an [`orchard::Bundle`] in the v7 transaction format.
+pub fn write_v7_bundle<W: Write>(
     bundle: Option<&orchard::Bundle<Authorized, Amount, OrchardZSA>>,
     mut writer: W,
 ) -> io::Result<()> {

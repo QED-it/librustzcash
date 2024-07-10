@@ -1085,7 +1085,7 @@ impl Transaction {
         self.write_v5_header(&mut writer)?;
         self.write_transparent(&mut writer)?;
         self.write_v5_sapling(&mut writer)?;
-        orchard_serialization::write_v6_bundle(self.orchard_zsa_bundle.as_ref(), &mut writer)?;
+        orchard_serialization::write_v7_bundle(self.orchard_zsa_bundle.as_ref(), &mut writer)?;
         issuance::write_v7_bundle(self.issue_bundle.as_ref(), &mut writer)?;
         #[cfg(zcash_unstable = "zfuture")]
         self.write_tze(&mut writer)?;
