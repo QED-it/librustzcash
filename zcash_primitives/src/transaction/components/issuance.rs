@@ -57,10 +57,10 @@ fn read_authorization<R: Read>(mut reader: R) -> io::Result<Signed> {
 }
 
 fn read_action<R: Read>(mut reader: R) -> io::Result<IssueAction> {
-    let finalize = reader.read_u8()? != 0;
-    let notes = Vector::read(&mut reader, |r| read_note(r))?;
     let asset_descr_bytes = Vector::read(&mut reader, |r| r.read_u8())?;
     let asset_descr: String = String::from_utf8(asset_descr_bytes).unwrap();
+    let notes = Vector::read(&mut reader, |r| read_note(r))?;
+    let finalize = reader.read_u8()? != 0;
     Ok(IssueAction::from_parts(asset_descr, notes, finalize))
 }
 
