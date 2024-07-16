@@ -1229,7 +1229,7 @@ checksum = "624a8340c38c1b80fd549087862da4ba43e08858af025b236e509b6649fc13d5"
 [[package]]
 name = "orchard"
 version = "0.8.0"
-source = "git+https://github.com/QED-it/orchard?branch=orchardzsa-backward-compatability-0.8.0#c4baaa7c09f76c3a396f41c9b40b03039c6b18a8"
+source = "git+https://github.com/QED-it/orchard?branch=zsa1#39b479ea81045e5c5ac719821fe2feb2bfce5f36"
 dependencies = [
  "aes",
  "bitvec",
