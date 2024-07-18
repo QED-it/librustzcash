@@ -5703,6 +5703,7 @@ pub mod zip_0244 {
     }
 
     // From https://github.com/zcash-hackworks/zcash-test-vectors/blob/master/zip_0244.py
+    // and https://github.com/zcash-hackworks/zcash-test-vectors/blob/master/zip_0244_zsa.py
     pub fn make_test_vectors() -> Vec<TestVector> {
         vec![
             TestVector {
