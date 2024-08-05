@@ -297,6 +297,57 @@ impl Parameters for TestNetwork {
     }
 }
 
+/// Marker struct for the regtest network.
+#[derive(PartialEq, Eq, Copy, Clone, Debug)]
+pub struct RegtestNetwork;
+
+memuse::impl_no_dynamic_usage!(RegtestNetwork);
+
+pub const REGTEST_NETWORK: RegtestNetwork = RegtestNetwork;
+
+impl Parameters for RegtestNetwork {
+    fn activation_height(&self, nu: NetworkUpgrade) -> Option<BlockHeight> {
+        match nu {
+            NetworkUpgrade::Overwinter => Some(BlockHeight(1)),
+            NetworkUpgrade::Sapling => Some(BlockHeight(1)),
+            NetworkUpgrade::Blossom => Some(BlockHeight(1)),
+            NetworkUpgrade::Heartwood => Some(BlockHeight(1)),
+            NetworkUpgrade::Canopy => Some(BlockHeight(1)),
+            NetworkUpgrade::Nu5 => Some(BlockHeight(1)),
+            #[cfg(feature = "zfuture")]
+            NetworkUpgrade::ZFuture => None,
+        }
+    }
+
+    fn coin_type(&self) -> u32 {
+        constants::regtest::COIN_TYPE
+    }
+
+    fn address_network(&self) -> Option<zcash_address::Network> {
+        Some(zcash_address::Network::Regtest)
+    }
+
+    fn hrp_sapling_extended_spending_key(&self) -> &str {
+        constants::regtest::HRP_SAPLING_EXTENDED_SPENDING_KEY
+    }
+
+    fn hrp_sapling_extended_full_viewing_key(&self) -> &str {
+        constants::regtest::HRP_SAPLING_EXTENDED_FULL_VIEWING_KEY
+    }
+
+    fn hrp_sapling_payment_address(&self) -> &str {
+        constants::regtest::HRP_SAPLING_PAYMENT_ADDRESS
+    }
+
+    fn b58_pubkey_address_prefix(&self) -> [u8; 2] {
+        constants::regtest::B58_PUBKEY_ADDRESS_PREFIX
+    }
+
+    fn b58_script_address_prefix(&self) -> [u8; 2] {
+        constants::regtest::B58_SCRIPT_ADDRESS_PREFIX
+    }
+}
+
 #[derive(PartialEq, Eq, Copy, Clone, Debug)]
 pub enum Network {
     MainNetwork,
