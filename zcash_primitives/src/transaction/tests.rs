@@ -231,6 +231,7 @@ impl Authorization for TestUnauthorized {
     type TzeAuth = tze::Authorized;
 }
 
+mod data_v6;
 #[test]
 fn zip_0244() {
     fn to_test_txdata(
