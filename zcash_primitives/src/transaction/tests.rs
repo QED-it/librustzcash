@@ -314,7 +314,11 @@ fn zip_0244() {
         (tdata, txdata.digest(TxIdDigester))
     }
 
-    for tv in self::data::zip_0244::make_test_vectors() {
+    let mut test_vectors = self::data::zip_0244::make_test_vectors();
+    #[cfg(zcash_unstable = "nu6" /* TODO nu7 */ )]
+    test_vectors.extend(data_v6::orchard_zsa_digests::make_test_vectors());
+
+    for tv in test_vectors {
         let (txdata, txid_parts) = to_test_txdata(&tv);
 
         if let Some(index) = tv.transparent_input {
