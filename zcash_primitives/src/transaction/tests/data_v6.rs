@@ -1,6 +1,7 @@
 pub mod orchard_zsa_digests {
     use crate::transaction::tests::data::zip_0244::TestVector;
     // From https://github.com/QED-it/zcash-test-vectors/blob/zsa1/zcash_test_vectors/transaction_zsa.py
+    #[allow(dead_code)] // used only for V6 tests that are flagged off by default
     pub fn make_test_vectors() -> Vec<TestVector> {
         vec![
             TestVector {
