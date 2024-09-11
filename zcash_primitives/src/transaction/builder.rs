@@ -481,7 +481,7 @@ impl<'a, P: consensus::Parameters> Builder<'a, P, ()> {
     pub fn init_issuance_bundle<FE>(
         &mut self,
         ik: IssuanceAuthorizingKey,
-        asset_desc: String,
+        asset_desc: Vec<u8>,
         issue_info: Option<IssueInfo>,
     ) -> Result<(), Error<FE>> {
         if self.issuance_builder.is_some() {
@@ -509,7 +509,7 @@ impl<'a, P: consensus::Parameters> Builder<'a, P, ()> {
     #[cfg(zcash_unstable = "nu6" /* TODO nu7 */ )]
     pub fn add_recipient<FE>(
         &mut self,
-        asset_desc: String,
+        asset_desc: Vec<u8>,
         recipient: Address,
         value: orchard::value::NoteValue,
     ) -> Result<(), Error<FE>> {
@@ -524,7 +524,7 @@ impl<'a, P: consensus::Parameters> Builder<'a, P, ()> {
 
     /// Finalizes a given asset
     #[cfg(zcash_unstable = "nu6" /* TODO nu7 */ )]
-    pub fn finalize_asset<FE>(&mut self, asset_desc: String) -> Result<(), Error<FE>> {
+    pub fn finalize_asset<FE>(&mut self, asset_desc: Vec<u8>) -> Result<(), Error<FE>> {
         self.issuance_builder
             .as_mut()
             .ok_or(Error::IssuanceBuilderNotAvailable)?
@@ -1444,7 +1444,7 @@ mod tests {
     fn init_issuance_bundle_with_finalization() {
         let (mut builder, iak, _) = prepare_zsa_test();
 
-        let asset = "asset_desc".to_string();
+        let asset: Vec<u8> = "asset_desc".into();
 
         builder
             .init_issuance_bundle::<FeeError>(iak, asset.clone(), None)
@@ -1466,7 +1466,7 @@ mod tests {
     fn init_issuance_bundle_without_finalization() {
         let (mut builder, iak, address) = prepare_zsa_test();
 
-        let asset = "asset_desc".to_string();
+        let asset: Vec<u8> = "asset_desc".into();
 
         builder
             .init_issuance_bundle::<FeeError>(
@@ -1504,7 +1504,7 @@ mod tests {
     fn add_issuance_same_asset() {
         let (mut builder, iak, address) = prepare_zsa_test();
 
-        let asset = "asset_desc".to_string();
+        let asset: Vec<u8> = "asset_desc".into();
 
         builder
             .init_issuance_bundle::<FeeError>(
@@ -1549,8 +1549,8 @@ mod tests {
     fn add_issuance_different_asset() {
         let (mut builder, iak, address) = prepare_zsa_test();
 
-        let asset1 = "asset_desc".to_string();
-        let asset2 = "asset_desc_2".to_string();
+        let asset1: Vec<u8> = "asset_desc".into();
+        let asset2: Vec<u8> = "asset_desc_2".into();
 
         builder
             .init_issuance_bundle::<FeeError>(
