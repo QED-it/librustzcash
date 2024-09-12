@@ -19,7 +19,8 @@ use crate::{
     },
     transaction::{
         components::{
-            amount::{Amount, BalanceError},
+            amount::{Amount, BalanceError, NonNegativeAmount},
+            sapling::zip212_enforcement,
             transparent::{self, builder::TransparentBuilder, TxOut},
         },
         fees::FeeRule,
@@ -30,6 +31,8 @@ use crate::{
 };
 
 use orchard::builder::BundleType;
+use orchard::note::AssetBase;
+use orchard::orchard_flavor::OrchardVanilla;
 use orchard::Address;
 
 #[cfg(feature = "transparent-inputs")]
@@ -37,9 +40,6 @@ use crate::transaction::components::transparent::builder::TransparentInputInfo;
 
 #[cfg(not(feature = "transparent-inputs"))]
 use std::convert::Infallible;
-
-use crate::transaction::components::amount::NonNegativeAmount;
-use crate::transaction::components::sapling::zip212_enforcement;
 
 #[cfg(zcash_unstable = "nu6" /* TODO nu7 */ )]
 use orchard::{
@@ -62,9 +62,6 @@ use crate::{
         fees::FutureFeeRule,
     },
 };
-
-use orchard::note::AssetBase;
-use orchard::orchard_flavor::OrchardVanilla;
 
 /// Since Blossom activation, the default transaction expiry delta should be 40 blocks.
 /// <https://zips.z.cash/zip-0203#changes-for-blossom>
@@ -112,9 +109,13 @@ pub enum Error<FE> {
     /// The builder was constructed without support for the Sapling pool, but a Sapling
     /// spend or output was added.
     SaplingBuilderNotAvailable,
+    /// The Orchard support is disabled.
+    OrchardIsDisabled,
     /// The builder was constructed with a target height before NU5 activation, but an Orchard
     /// spend or output was added.
     OrchardBuilderNotAvailable,
+    /// The builder was constructed without support for the Orchard
+    OrchardBuilderConfigNotAvailable,
     ///  The issuance bundle not initialized.
     #[cfg(zcash_unstable = "nu6" /* TODO nu7 */ )]
     IssuanceBuilderNotAvailable,
@@ -156,6 +157,11 @@ impl<FE: fmt::Display> fmt::Display for Error<FE> {
             Error::OrchardBuilderNotAvailable => write!(
                 f,
                 "Cannot create Orchard transactions without an Orchard anchor, or before NU5 activation"
+            ),
+            Error::OrchardIsDisabled =>  write!(f, "Orchard support is disabled"),
+            Error::OrchardBuilderConfigNotAvailable => write!(
+                f,
+                "Orchard builder configuration not available"
             ),
             #[cfg(zcash_unstable = "nu6" /* TODO nu7 */ )]
             Error::IssuanceBuilderNotAvailable => write!(
@@ -282,6 +288,13 @@ impl BuildConfig {
             BuildConfig::Coinbase => Some((BundleType::Coinbase, orchard::Anchor::empty_tree())),
         }
     }
+
+    pub fn orchard_bundle_type<FE>(&self) -> Result<BundleType, Error<FE>> {
+        let (bundle_type, _) = self
+            .orchard_builder_config()
+            .ok_or(Error::OrchardBuilderNotAvailable)?;
+        Ok(bundle_type)
+    }
 }
 
 /// The result of a transaction build operation, which includes the resulting transaction along
@@ -312,7 +325,7 @@ impl BuildResult {
         &self.orchard_meta
     }
 
-    /// Consumes BuildResult and returns the transaction that was constructed by the builder.
+    /// Creates the transaction that was constructed by the builder.
     pub fn into_transaction(self) -> Transaction {
         self.transaction
     }
@@ -469,27 +482,6 @@ impl<'a, P: consensus::Parameters> Builder<'a, P, ()> {
         &mut self,
         ik: IssuanceAuthorizingKey,
         asset_desc: String,
-        recipient: Address,
-        value: orchard::value::NoteValue,
-    ) -> Result<(), Error<FE>> {
-        self.init_issuance_bundle_impl(ik, asset_desc, Some(IssueInfo { recipient, value }))
-    }
-
-    /// Creates IssuanceBundle and adds a finalization action to the transaction.
-    #[cfg(zcash_unstable = "nu6" /* TODO nu7 */ )]
-    pub fn init_finalizing_issuance_bundle<FE>(
-        &mut self,
-        ik: IssuanceAuthorizingKey,
-        asset_desc: String,
-    ) -> Result<(), Error<FE>> {
-        self.init_issuance_bundle_impl(ik, asset_desc, None)
-    }
-
-    #[cfg(zcash_unstable = "nu6" /* TODO nu7 */ )]
-    fn init_issuance_bundle_impl<FE>(
-        &mut self,
-        ik: IssuanceAuthorizingKey,
-        asset_desc: String,
         issue_info: Option<IssueInfo>,
     ) -> Result<(), Error<FE>> {
         if self.issuance_builder.is_some() {
@@ -515,7 +507,7 @@ impl<'a, P: consensus::Parameters> Builder<'a, P, ()> {
 
     /// Adds an Issuance action to the transaction.
     #[cfg(zcash_unstable = "nu6" /* TODO nu7 */ )]
-    pub fn add_issuance<FE>(
+    pub fn add_recipient<FE>(
         &mut self,
         asset_desc: String,
         recipient: Address,
@@ -566,10 +558,7 @@ impl<'a, P: consensus::Parameters, U: sapling::builder::ProverProgress> Builder<
         note: orchard::Note,
         merkle_path: orchard::tree::MerklePath,
     ) -> Result<(), Error<FE>> {
-        let (bundle_type, _) = self
-            .build_config
-            .orchard_builder_config()
-            .ok_or(Error::OrchardBuilderNotAvailable)?;
+        let bundle_type = self.build_config.orchard_bundle_type()?;
         if bundle_type == BundleType::DEFAULT_VANILLA {
             assert_eq!(note.asset().is_native().unwrap_u8(), 1);
         }
@@ -594,12 +583,9 @@ impl<'a, P: consensus::Parameters, U: sapling::builder::ProverProgress> Builder<
         asset: AssetBase,
         memo: MemoBytes,
     ) -> Result<(), Error<FE>> {
-        let (bundle_type, _) = self
-            .build_config
-            .orchard_builder_config()
-            .ok_or(Error::OrchardBuilderNotAvailable)?;
+        let bundle_type = self.build_config.orchard_bundle_type()?;
         if bundle_type == BundleType::DEFAULT_VANILLA {
-            assert_eq!(asset.is_native().unwrap_u8(), 1);
+            assert_eq!(asset, AssetBase::native());
         }
         self.orchard_builder
             .as_mut()
@@ -890,23 +876,11 @@ impl<'a, P: consensus::Parameters, U: sapling::builder::ProverProgress> Builder<
 
         let mut unproven_orchard_bundle = None;
         #[cfg(zcash_unstable = "nu6" /* TODO nu7 */ )]
-        let mut unproven_orchard_zsa_bundle: Option<
-            orchard::Bundle<
-                orchard::builder::InProgress<
-                    orchard::builder::Unproven<OrchardZSA>,
-                    orchard::builder::Unauthorized,
-                >,
-                Amount,
-                OrchardZSA,
-            >,
-        > = None;
+        let mut unproven_orchard_zsa_bundle = None;
         let mut orchard_meta = orchard::builder::BundleMetadata::empty();
 
         if let Some(builder) = self.orchard_builder {
-            let (bundle_type, _) = self
-                .build_config
-                .orchard_builder_config()
-                .ok_or(Error::OrchardBuilderNotAvailable)?;
+            let bundle_type = self.build_config.orchard_bundle_type()?;
             if bundle_type == BundleType::DEFAULT_ZSA {
                 #[cfg(zcash_unstable = "nu6" /* TODO nu7 */ )]
                 {
@@ -1168,6 +1142,7 @@ mod tests {
     #[cfg(zcash_unstable = "nu6" /* TODO nu7 */ )]
     use {
         crate::transaction::fees::zip317::FeeError,
+        orchard::issuance::IssueInfo,
         orchard::keys::{FullViewingKey, IssuanceAuthorizingKey, SpendingKey},
         orchard::value::NoteValue,
         orchard::Address,
@@ -1472,7 +1447,7 @@ mod tests {
         let asset = "asset_desc".to_string();
 
         builder
-            .init_finalizing_issuance_bundle::<FeeError>(iak, asset.clone())
+            .init_issuance_bundle::<FeeError>(iak, asset.clone(), None)
             .unwrap();
 
         let issuance_builder = builder.issuance_builder.clone().unwrap();
@@ -1494,7 +1469,14 @@ mod tests {
         let asset = "asset_desc".to_string();
 
         builder
-            .init_issuance_bundle::<FeeError>(iak, asset.clone(), address, NoteValue::from_raw(42))
+            .init_issuance_bundle::<FeeError>(
+                iak,
+                asset.clone(),
+                Some(IssueInfo {
+                    recipient: address,
+                    value: NoteValue::from_raw(42),
+                }),
+            )
             .unwrap();
 
         let issuance_builder = builder.issuance_builder.unwrap();
@@ -1525,10 +1507,17 @@ mod tests {
         let asset = "asset_desc".to_string();
 
         builder
-            .init_issuance_bundle::<FeeError>(iak, asset.clone(), address, NoteValue::from_raw(42))
+            .init_issuance_bundle::<FeeError>(
+                iak,
+                asset.clone(),
+                Some(IssueInfo {
+                    recipient: address,
+                    value: NoteValue::from_raw(42),
+                }),
+            )
             .unwrap();
         builder
-            .add_issuance::<FeeError>(asset.clone(), address, NoteValue::from_raw(21))
+            .add_recipient::<FeeError>(asset.clone(), address, NoteValue::from_raw(21))
             .unwrap();
 
         let issuance_builder = builder.issuance_builder.unwrap();
@@ -1564,10 +1553,17 @@ mod tests {
         let asset2 = "asset_desc_2".to_string();
 
         builder
-            .init_issuance_bundle::<FeeError>(iak, asset1.clone(), address, NoteValue::from_raw(42))
+            .init_issuance_bundle::<FeeError>(
+                iak,
+                asset1.clone(),
+                Some(IssueInfo {
+                    recipient: address,
+                    value: NoteValue::from_raw(42),
+                }),
+            )
             .unwrap();
         builder
-            .add_issuance::<FeeError>(asset2.clone(), address, NoteValue::from_raw(21))
+            .add_recipient::<FeeError>(asset2.clone(), address, NoteValue::from_raw(21))
             .unwrap();
 
         let issuance_builder = builder.issuance_builder.unwrap();

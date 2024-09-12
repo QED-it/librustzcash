@@ -56,9 +56,9 @@ const V5_TX_VERSION: u32 = 5;
 const V5_VERSION_GROUP_ID: u32 = 0x26A7270A;
 
 #[cfg(zcash_unstable = "nu6" /* TODO nu7 */ )]
-const V7_TX_VERSION: u32 = 7;
+const V6_TX_VERSION: u32 = 6;
 #[cfg(zcash_unstable = "nu6" /* TODO nu7 */ )]
-const V7_VERSION_GROUP_ID: u32 = 0x124A69F8; // TODO ???
+const V6_VERSION_GROUP_ID: u32 = 0x124A69F8; // TODO ???
 
 /// These versions are used exclusively for in-development transaction
 /// serialization, and will never be active under the consensus rules.
@@ -160,7 +160,7 @@ impl TxVersion {
                 (SAPLING_TX_VERSION, SAPLING_VERSION_GROUP_ID) => Ok(TxVersion::Sapling),
                 (V5_TX_VERSION, V5_VERSION_GROUP_ID) => Ok(TxVersion::Zip225),
                 #[cfg(zcash_unstable = "nu6" /* TODO nu7 */ )]
-                (V7_TX_VERSION, V7_VERSION_GROUP_ID) => Ok(TxVersion::Zsa),
+                (V6_TX_VERSION, V6_VERSION_GROUP_ID) => Ok(TxVersion::Zsa),
                 #[cfg(zcash_unstable = "zfuture")]
                 (ZFUTURE_TX_VERSION, ZFUTURE_VERSION_GROUP_ID) => Ok(TxVersion::ZFuture),
                 _ => Err(io::Error::new(
@@ -192,7 +192,7 @@ impl TxVersion {
                 TxVersion::Sapling => SAPLING_TX_VERSION,
                 TxVersion::Zip225 => V5_TX_VERSION,
                 #[cfg(zcash_unstable = "nu6" /* TODO nu7 */ )]
-                TxVersion::Zsa => V7_TX_VERSION,
+                TxVersion::Zsa => V6_TX_VERSION,
                 #[cfg(zcash_unstable = "zfuture")]
                 TxVersion::ZFuture => ZFUTURE_TX_VERSION,
             }
@@ -205,7 +205,7 @@ impl TxVersion {
             TxVersion::Sapling => SAPLING_VERSION_GROUP_ID,
             TxVersion::Zip225 => V5_VERSION_GROUP_ID,
             #[cfg(zcash_unstable = "nu6" /* TODO nu7 */ )]
-            TxVersion::Zsa => V7_VERSION_GROUP_ID,
+            TxVersion::Zsa => V6_VERSION_GROUP_ID,
             #[cfg(zcash_unstable = "zfuture")]
             TxVersion::ZFuture => ZFUTURE_VERSION_GROUP_ID,
         }
@@ -627,8 +627,7 @@ impl<A: Authorization> TransactionData<A> {
         f_transparent: impl transparent::MapAuth<A::TransparentAuth, B::TransparentAuth>,
         mut f_sapling: impl sapling_serialization::MapAuth<A::SaplingAuth, B::SaplingAuth>,
         mut f_orchard: impl orchard_serialization::MapAuth<A::OrchardAuth, B::OrchardAuth>,
-        #[cfg(zcash_unstable = "nu6")]
-        /* TODO nu7 */
+        #[cfg(zcash_unstable = "nu6" /* TODO nu7 */ )]
         mut f_orchard_zsa: impl orchard_serialization::MapAuth<
             A::OrchardZsaAuth,
             B::OrchardZsaAuth,
@@ -704,7 +703,7 @@ impl Transaction {
             }
             TxVersion::Zip225 => Ok(Self::from_data_v5(data)),
             #[cfg(zcash_unstable = "nu6" /* TODO nu7 */ )]
-            TxVersion::Zsa => Ok(Self::from_data_v7(data)),
+            TxVersion::Zsa => Ok(Self::from_data_v6(data)),
             #[cfg(zcash_unstable = "zfuture")]
             TxVersion::ZFuture => Ok(Self::from_data_v5(data)),
         }
@@ -732,7 +731,7 @@ impl Transaction {
     }
 
     #[cfg(zcash_unstable = "nu6" /* TODO nu7 */ )]
-    fn from_data_v7(data: TransactionData<Authorized>) -> Self {
+    fn from_data_v6(data: TransactionData<Authorized>) -> Self {
         Self::from_data_v5(data)
     }
 
@@ -754,7 +753,7 @@ impl Transaction {
             }
             TxVersion::Zip225 => Self::read_v5(reader.into_base_reader(), version),
             #[cfg(zcash_unstable = "nu6" /* TODO nu7 */ )]
-            TxVersion::Zsa => Self::read_v7(reader.into_base_reader(), version),
+            TxVersion::Zsa => Self::read_v6(reader.into_base_reader(), version),
             #[cfg(zcash_unstable = "zfuture")]
             TxVersion::ZFuture => Self::read_v5(reader.into_base_reader(), version),
         }
@@ -920,13 +919,13 @@ impl Transaction {
     }
 
     #[cfg(zcash_unstable = "nu6" /* TODO nu7 */ )]
-    fn read_v7<R: Read>(mut reader: R, version: TxVersion) -> io::Result<Self> {
+    fn read_v6<R: Read>(mut reader: R, version: TxVersion) -> io::Result<Self> {
         let (consensus_branch_id, lock_time, expiry_height) =
             Self::read_v5_header_fragment(&mut reader)?;
         let transparent_bundle = Self::read_transparent(&mut reader)?;
         let sapling_bundle = sapling_serialization::read_v5_bundle(&mut reader)?;
-        let orchard_zsa_bundle = orchard_serialization::read_v7_bundle(&mut reader)?;
-        let issue_bundle = issuance::read_v7_bundle(&mut reader)?;
+        let orchard_zsa_bundle = orchard_serialization::read_v6_bundle(&mut reader)?;
+        let issue_bundle = issuance::read_v6_bundle(&mut reader)?;
 
         #[cfg(zcash_unstable = "zfuture")]
         let tze_bundle = if version.has_tze() {
@@ -950,7 +949,7 @@ impl Transaction {
             tze_bundle,
         };
 
-        Ok(Self::from_data_v7(data))
+        Ok(Self::from_data_v6(data))
     }
 
     #[cfg(zcash_unstable = "zfuture")]
@@ -975,7 +974,7 @@ impl Transaction {
             }
             TxVersion::Zip225 => self.write_v5(writer),
             #[cfg(zcash_unstable = "nu6" /* TODO nu7 */ )]
-            TxVersion::Zsa => self.write_v7(writer),
+            TxVersion::Zsa => self.write_v6(writer),
             #[cfg(zcash_unstable = "zfuture")]
             TxVersion::ZFuture => self.write_v5(writer),
         }
@@ -1041,16 +1040,16 @@ impl Transaction {
                 "Sprout components cannot be present when serializing to the V5 transaction format.",
             ));
         }
-        self.write_v5_header(&mut writer)?;
+        self.write_header(&mut writer)?;
         self.write_transparent(&mut writer)?;
-        self.write_v5_sapling(&mut writer)?;
+        self.write_sapling(&mut writer)?;
         orchard_serialization::write_v5_bundle(self.orchard_bundle.as_ref(), &mut writer)?;
         #[cfg(zcash_unstable = "zfuture")]
         self.write_tze(&mut writer)?;
         Ok(())
     }
 
-    pub fn write_v5_header<W: Write>(&self, mut writer: W) -> io::Result<()> {
+    pub fn write_header<W: Write>(&self, mut writer: W) -> io::Result<()> {
         self.version.write(&mut writer)?;
         writer.write_u32::<LittleEndian>(u32::from(self.consensus_branch_id))?;
         writer.write_u32::<LittleEndian>(self.lock_time)?;
@@ -1066,23 +1065,23 @@ impl Transaction {
         sapling_serialization::write_v5_bundle(writer, sapling_bundle)
     }
 
-    pub fn write_v5_sapling<W: Write>(&self, writer: W) -> io::Result<()> {
+    pub fn write_sapling<W: Write>(&self, writer: W) -> io::Result<()> {
         sapling_serialization::write_v5_bundle(writer, self.sapling_bundle.as_ref())
     }
 
     #[cfg(zcash_unstable = "nu6" /* TODO nu7 */ )]
-    pub fn write_v7<W: Write>(&self, mut writer: W) -> io::Result<()> {
+    pub fn write_v6<W: Write>(&self, mut writer: W) -> io::Result<()> {
         if self.sprout_bundle.is_some() {
             return Err(io::Error::new(
                 io::ErrorKind::InvalidInput,
-                "Sprout components cannot be present when serializing to the V7 transaction format.",
+                "Sprout components cannot be present when serializing to the V6 transaction format.",
             ));
         }
-        self.write_v5_header(&mut writer)?;
+        self.write_header(&mut writer)?;
         self.write_transparent(&mut writer)?;
-        self.write_v5_sapling(&mut writer)?;
-        orchard_serialization::write_v7_bundle(self.orchard_zsa_bundle.as_ref(), &mut writer)?;
-        issuance::write_v7_bundle(self.issue_bundle.as_ref(), &mut writer)?;
+        self.write_sapling(&mut writer)?;
+        orchard_serialization::write_v6_bundle(self.orchard_zsa_bundle.as_ref(), &mut writer)?;
+        issuance::write_v6_bundle(self.issue_bundle.as_ref(), &mut writer)?;
         #[cfg(zcash_unstable = "zfuture")]
         self.write_tze(&mut writer)?;
         Ok(())

@@ -11,7 +11,7 @@ use std::io::{Error, ErrorKind, Read, Write};
 use zcash_encoding::{CompactSize, Vector};
 
 /// Reads an [`orchard::Bundle`] from a v6 transaction format.
-pub fn read_v7_bundle<R: Read>(mut reader: R) -> io::Result<Option<IssueBundle<Signed>>> {
+pub fn read_v6_bundle<R: Read>(mut reader: R) -> io::Result<Option<IssueBundle<Signed>>> {
     let actions = Vector::read(&mut reader, |r| read_action(r))?;
 
     if actions.is_empty() {
@@ -50,7 +50,9 @@ fn read_authorization<R: Read>(mut reader: R) -> io::Result<Signed> {
 
 fn read_action<R: Read>(mut reader: R) -> io::Result<IssueAction> {
     let asset_descr_bytes = Vector::read(&mut reader, |r| r.read_u8())?;
-    let asset_descr: String = String::from_utf8(asset_descr_bytes).unwrap();
+    //TODO: Properly handle non-valid UTF-8 encodings.
+    let asset_descr: String = String::from_utf8(asset_descr_bytes)
+        .map_err(|_| Error::new(ErrorKind::InvalidData, "Asset Description not valid UTF-8"))?;
     let notes = Vector::read(&mut reader, |r| read_note(r))?;
     let finalize = reader.read_u8()? != 0;
     Ok(IssueAction::from_parts(asset_descr, notes, finalize))
@@ -110,7 +112,7 @@ fn read_rseed<R: Read>(mut reader: R, nullifier: &Rho) -> io::Result<RandomSeed>
 }
 
 /// Writes an [`IssueBundle`] in the v5 transaction format.
-pub fn write_v7_bundle<W: Write>(
+pub fn write_v6_bundle<W: Write>(
     bundle: Option<&IssueBundle<Signed>>,
     mut writer: W,
 ) -> io::Result<()> {
