@@ -509,7 +509,7 @@ impl<'a, P: consensus::Parameters> Builder<'a, P, ()> {
     #[cfg(zcash_unstable = "nu6" /* TODO nu7 */ )]
     pub fn add_recipient<FE>(
         &mut self,
-        asset_desc: Vec<u8>,
+        asset_desc: &Vec<u8>,
         recipient: Address,
         value: orchard::value::NoteValue,
     ) -> Result<(), Error<FE>> {
@@ -524,7 +524,7 @@ impl<'a, P: consensus::Parameters> Builder<'a, P, ()> {
 
     /// Finalizes a given asset
     #[cfg(zcash_unstable = "nu6" /* TODO nu7 */ )]
-    pub fn finalize_asset<FE>(&mut self, asset_desc: Vec<u8>) -> Result<(), Error<FE>> {
+    pub fn finalize_asset<FE>(&mut self, asset_desc: &Vec<u8>) -> Result<(), Error<FE>> {
         self.issuance_builder
             .as_mut()
             .ok_or(Error::IssuanceBuilderNotAvailable)?
@@ -1444,10 +1444,10 @@ mod tests {
     fn init_issuance_bundle_with_finalization() {
         let (mut builder, iak, _) = prepare_zsa_test();
 
-        let asset: Vec<u8> = "asset_desc".into();
+        let asset_desc = &b"asset_desc".to_vec();
 
         builder
-            .init_issuance_bundle::<FeeError>(iak, asset.clone(), None)
+            .init_issuance_bundle::<FeeError>(iak, asset_desc.clone(), None)
             .unwrap();
 
         let issuance_builder = builder.issuance_builder.clone().unwrap();
@@ -1456,7 +1456,7 @@ mod tests {
             1,
             "There should be only one action"
         );
-        let action = issuance_builder.get_action(asset).unwrap();
+        let action = issuance_builder.get_action(asset_desc).unwrap();
         assert!(action.is_finalized(), "Action should be finalized");
         assert_eq!(action.notes().len(), 0, "Action should have zero notes");
     }
@@ -1466,12 +1466,12 @@ mod tests {
     fn init_issuance_bundle_without_finalization() {
         let (mut builder, iak, address) = prepare_zsa_test();
 
-        let asset: Vec<u8> = "asset_desc".into();
+        let asset_desc = &b"asset_desc".to_vec();
 
         builder
             .init_issuance_bundle::<FeeError>(
                 iak,
-                asset.clone(),
+                asset_desc.clone(),
                 Some(IssueInfo {
                     recipient: address,
                     value: NoteValue::from_raw(42),
@@ -1485,10 +1485,9 @@ mod tests {
             1,
             "There should be only one action"
         );
-        let action = issuance_builder.get_action(asset).unwrap();
-        assert_eq!(
-            action.is_finalized(),
-            false,
+        let action = issuance_builder.get_action(asset_desc).unwrap();
+        assert!(
+            !action.is_finalized(),
             "Action should not be finalized"
         );
         assert_eq!(action.notes().len(), 1, "Action should have 1 note");
@@ -1504,12 +1503,12 @@ mod tests {
     fn add_issuance_same_asset() {
         let (mut builder, iak, address) = prepare_zsa_test();
 
-        let asset: Vec<u8> = "asset_desc".into();
+        let asset_desc = &b"asset_desc".to_vec();
 
         builder
             .init_issuance_bundle::<FeeError>(
                 iak,
-                asset.clone(),
+                asset_desc.clone(),
                 Some(IssueInfo {
                     recipient: address,
                     value: NoteValue::from_raw(42),
@@ -1517,7 +1516,7 @@ mod tests {
             )
             .unwrap();
         builder
-            .add_recipient::<FeeError>(asset.clone(), address, NoteValue::from_raw(21))
+            .add_recipient::<FeeError>(asset_desc, address, NoteValue::from_raw(21))
             .unwrap();
 
         let issuance_builder = builder.issuance_builder.unwrap();
@@ -1526,10 +1525,9 @@ mod tests {
             1,
             "There should be only one action"
         );
-        let action = issuance_builder.get_action(asset).unwrap();
-        assert_eq!(
-            action.is_finalized(),
-            false,
+        let action = issuance_builder.get_action(asset_desc).unwrap();
+        assert!(
+            !action.is_finalized(),
             "Action should not be finalized"
         );
         assert_eq!(action.notes().len(), 2, "Action should have 2 notes");
@@ -1549,13 +1547,13 @@ mod tests {
     fn add_issuance_different_asset() {
         let (mut builder, iak, address) = prepare_zsa_test();
 
-        let asset1: Vec<u8> = "asset_desc".into();
-        let asset2: Vec<u8> = "asset_desc_2".into();
+        let asset_desc_1 = &b"asset_desc".to_vec();
+        let asset_desc_2 = &b"asset_desc_2".to_vec();
 
         builder
             .init_issuance_bundle::<FeeError>(
                 iak,
-                asset1.clone(),
+                asset_desc_1.clone(),
                 Some(IssueInfo {
                     recipient: address,
                     value: NoteValue::from_raw(42),
@@ -1563,7 +1561,7 @@ mod tests {
             )
             .unwrap();
         builder
-            .add_recipient::<FeeError>(asset2.clone(), address, NoteValue::from_raw(21))
+            .add_recipient::<FeeError>(asset_desc_2, address, NoteValue::from_raw(21))
             .unwrap();
 
         let issuance_builder = builder.issuance_builder.unwrap();
@@ -1573,10 +1571,9 @@ mod tests {
             "There should be 2 actions"
         );
 
-        let action = issuance_builder.get_action(asset1).unwrap();
-        assert_eq!(
-            action.is_finalized(),
-            false,
+        let action = issuance_builder.get_action(asset_desc_1).unwrap();
+        assert!(
+            !action.is_finalized(),
             "Action should not be finalized"
         );
         assert_eq!(action.notes().len(), 1, "Action should have 1 note");
@@ -1590,10 +1587,9 @@ mod tests {
             "Incorrect notes sum"
         );
 
-        let action2 = issuance_builder.get_action(asset2).unwrap();
-        assert_eq!(
-            action2.is_finalized(),
-            false,
+        let action2 = issuance_builder.get_action(asset_desc_2).unwrap();
+        assert!(
+            !action2.is_finalized(),
             "Action should not be finalized"
         );
         assert_eq!(action2.notes().len(), 1, "Action should have 1 note");
