@@ -1486,10 +1486,7 @@ mod tests {
             "There should be only one action"
         );
         let action = issuance_builder.get_action(asset_desc).unwrap();
-        assert!(
-            !action.is_finalized(),
-            "Action should not be finalized"
-        );
+        assert!(!action.is_finalized(), "Action should not be finalized");
         assert_eq!(action.notes().len(), 1, "Action should have 1 note");
         assert_eq!(
             action.notes().first().unwrap().value().inner(),
@@ -1526,10 +1523,7 @@ mod tests {
             "There should be only one action"
         );
         let action = issuance_builder.get_action(asset_desc).unwrap();
-        assert!(
-            !action.is_finalized(),
-            "Action should not be finalized"
-        );
+        assert!(!action.is_finalized(), "Action should not be finalized");
         assert_eq!(action.notes().len(), 2, "Action should have 2 notes");
         assert_eq!(
             action
@@ -1572,10 +1566,7 @@ mod tests {
         );
 
         let action = issuance_builder.get_action(asset_desc_1).unwrap();
-        assert!(
-            !action.is_finalized(),
-            "Action should not be finalized"
-        );
+        assert!(!action.is_finalized(), "Action should not be finalized");
         assert_eq!(action.notes().len(), 1, "Action should have 1 note");
         assert_eq!(
             action
@@ -1588,10 +1579,7 @@ mod tests {
         );
 
         let action2 = issuance_builder.get_action(asset_desc_2).unwrap();
-        assert!(
-            !action2.is_finalized(),
-            "Action should not be finalized"
-        );
+        assert!(!action2.is_finalized(), "Action should not be finalized");
         assert_eq!(action2.notes().len(), 1, "Action should have 1 note");
         assert_eq!(
             action2
