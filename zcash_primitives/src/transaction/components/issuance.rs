@@ -128,9 +128,7 @@ pub fn write_v6_bundle<W: Write>(
 }
 
 fn write_action<W: Write>(mut writer: &mut W, action: &IssueAction) -> io::Result<()> {
-    Vector::write(&mut writer, action.asset_desc(), |w, b| {
-        w.write_u8(*b)
-    })?;
+    Vector::write(&mut writer, action.asset_desc(), |w, b| w.write_u8(*b))?;
     Vector::write(&mut writer, action.notes(), write_note)?;
     writer.write_u8(action.is_finalized() as u8)?;
     Ok(())

@@ -1229,7 +1229,7 @@ checksum = "624a8340c38c1b80fd549087862da4ba43e08858af025b236e509b6649fc13d5"
 [[package]]
 name = "orchard"
 version = "0.8.0"
-source = "git+https://github.com/QED-it/orchard?branch=asset_desc_as_bytes#a34464bfac171d5dfeca90fec3a2025382f16fc8"
+source = "git+https://github.com/QED-it/orchard?branch=asset_desc_as_bytes#d0258a8e49a7a843b90cce7501e1a5ae5861fa00"
 dependencies = [
  "aes",
  "bitvec",

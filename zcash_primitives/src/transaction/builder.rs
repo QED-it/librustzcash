@@ -1465,7 +1465,13 @@ mod tests {
         let bundle = tx.issue_bundle().unwrap();
 
         assert_eq!(bundle.actions().len(), 1, "There should be only one action");
-        let action = bundle.get_action(asset_desc).unwrap();
+        let actions_vec = bundle.get_actions_by_desc(asset_desc);
+        assert_eq!(
+            actions_vec.len(),
+            1,
+            "The one action should correspond to asset_desc"
+        );
+        let action = actions_vec[0];
         assert!(action.is_finalized(), "Action should be finalized");
         assert_eq!(action.notes().len(), 0, "Action should have zero notes");
     }
@@ -1492,7 +1498,13 @@ mod tests {
         let bundle = binding.issue_bundle().unwrap();
 
         assert_eq!(bundle.actions().len(), 1, "There should be only one action");
-        let action = bundle.get_action(asset_desc).unwrap();
+        let actions_vec = bundle.get_actions_by_desc(asset_desc);
+        assert_eq!(
+            actions_vec.len(),
+            1,
+            "The one action should correspond to asset_desc"
+        );
+        let action = actions_vec[0];
         assert!(!action.is_finalized(), "Action should not be finalized");
         assert_eq!(action.notes().len(), 1, "Action should have 1 note");
         assert_eq!(
@@ -1527,7 +1539,13 @@ mod tests {
         let bundle = binding.issue_bundle().unwrap();
 
         assert_eq!(bundle.actions().len(), 1, "There should be only one action");
-        let action = bundle.get_action(asset_desc).unwrap();
+        let actions_vec = bundle.get_actions_by_desc(asset_desc);
+        assert_eq!(
+            actions_vec.len(),
+            1,
+            "The one action should correspond to asset_desc"
+        );
+        let action = actions_vec[0];
         assert!(!action.is_finalized(), "Action should not be finalized");
         assert_eq!(action.notes().len(), 2, "Action should have 2 notes");
         assert_eq!(
@@ -1568,7 +1586,13 @@ mod tests {
 
         assert_eq!(bundle.actions().len(), 2, "There should be 2 actions");
 
-        let action = bundle.get_action(asset_desc_1).unwrap();
+        let actions_vec = bundle.get_actions_by_desc(asset_desc_1);
+        assert_eq!(
+            actions_vec.len(),
+            1,
+            "Only one action should correspond to asset_desc_1"
+        );
+        let action = actions_vec[0];
         assert!(!action.is_finalized(), "Action should not be finalized");
         assert_eq!(action.notes().len(), 1, "Action should have 1 note");
         assert_eq!(
@@ -1581,7 +1605,13 @@ mod tests {
             "Incorrect notes sum"
         );
 
-        let action2 = bundle.get_action(asset_desc_2).unwrap();
+        let actions_vec_2 = bundle.get_actions_by_desc(asset_desc_2);
+        assert_eq!(
+            actions_vec_2.len(),
+            1,
+            "Only one action should correspond to asset_desc_2"
+        );
+        let action2 = actions_vec_2[0];
         assert!(!action2.is_finalized(), "Action should not be finalized");
         assert_eq!(action2.notes().len(), 1, "Action should have 1 note");
         assert_eq!(
