@@ -109,22 +109,18 @@ pub enum Error<FE> {
     /// The builder was constructed without support for the Sapling pool, but a Sapling
     /// spend or output was added.
     SaplingBuilderNotAvailable,
-    /// The Orchard support is disabled.
-    OrchardIsDisabled,
     /// The builder was constructed with a target height before NU5 activation, but an Orchard
     /// spend or output was added.
-    OrchardBuilderNotAvailable,
-    /// The builder was constructed without support for the Orchard
-    OrchardBuilderConfigNotAvailable,
-    ///  The issuance bundle not initialized.
+    OrchardBundleNotAvailable,
+    /// The issuance bundle not initialized.
     #[cfg(zcash_unstable = "nu6" /* TODO nu7 */ )]
     IssuanceBuilderNotAvailable,
     /// An error occurred in constructing the Issuance bundle.
     #[cfg(zcash_unstable = "nu6" /* TODO nu7 */ )]
     IssuanceBundle(issuance::Error),
-    /// An error occurred in constructing the Issuance builder.
+    /// Issuance bundle already initialized.
     #[cfg(zcash_unstable = "nu6" /* TODO nu7 */ )]
-    IssuanceBuilder(&'static str),
+    IssuanceBundleAlreadyInitialized,
     /// An error occurred in constructing the TZE parts of a transaction.
     #[cfg(zcash_unstable = "zfuture")]
     TzeBuild(tze::builder::Error),
@@ -154,14 +150,9 @@ impl<FE: fmt::Display> fmt::Display for Error<FE> {
                 f,
                 "Cannot create Sapling transactions without a Sapling anchor"
             ),
-            Error::OrchardBuilderNotAvailable => write!(
+            Error::OrchardBundleNotAvailable => write!(
                 f,
-                "Cannot create Orchard transactions without an Orchard anchor, or before NU5 activation"
-            ),
-            Error::OrchardIsDisabled =>  write!(f, "Orchard support is disabled"),
-            Error::OrchardBuilderConfigNotAvailable => write!(
-                f,
-                "Orchard builder configuration not available"
+                "The builder was constructed with a target height before NU5 activation, but an Orchard spend or output was added"
             ),
             #[cfg(zcash_unstable = "nu6" /* TODO nu7 */ )]
             Error::IssuanceBuilderNotAvailable => write!(
@@ -171,7 +162,10 @@ impl<FE: fmt::Display> fmt::Display for Error<FE> {
             #[cfg(zcash_unstable = "nu6" /* TODO nu7 */ )]
             Error::IssuanceBundle(err) => write!(f, "{:?}", err),
             #[cfg(zcash_unstable = "nu6" /* TODO nu7 */ )]
-            Error::IssuanceBuilder(err) => write!(f, "{:?}", err),
+            Error::IssuanceBundleAlreadyInitialized => write!(
+                f,
+                "Issuance bundle already initialized"
+            ),
             #[cfg(zcash_unstable = "zfuture")]
             Error::TzeBuild(err) => err.fmt(f),
         }
@@ -201,13 +195,6 @@ impl<FE> From<sapling::builder::Error> for Error<FE> {
 impl<FE> From<orchard::builder::SpendError> for Error<FE> {
     fn from(e: orchard::builder::SpendError) -> Self {
         Error::OrchardSpend(e)
-    }
-}
-
-#[cfg(zcash_unstable = "nu6" /* TODO nu7 */ )]
-impl<FE> From<issuance::Error> for Error<FE> {
-    fn from(e: issuance::Error) -> Self {
-        Error::IssuanceBundle(e)
     }
 }
 
@@ -248,11 +235,11 @@ impl Progress {
 /// Rules for how the builder should be configured for each shielded pool.
 #[derive(Clone, Copy)]
 pub enum BuildConfig {
-    Zsa {
+    Standard {
         sapling_anchor: Option<sapling::Anchor>,
         orchard_anchor: Option<orchard::Anchor>,
     },
-    Standard {
+    Zsa {
         sapling_anchor: Option<sapling::Anchor>,
         orchard_anchor: Option<orchard::Anchor>,
     },
@@ -292,7 +279,7 @@ impl BuildConfig {
     pub fn orchard_bundle_type<FE>(&self) -> Result<BundleType, Error<FE>> {
         let (bundle_type, _) = self
             .orchard_builder_config()
-            .ok_or(Error::OrchardBuilderNotAvailable)?;
+            .ok_or(Error::OrchardBundleNotAvailable)?;
         Ok(bundle_type)
     }
 }
@@ -484,10 +471,10 @@ impl<'a, P: consensus::Parameters> Builder<'a, P, ()> {
         asset_desc: Vec<u8>,
         issue_info: Option<IssueInfo>,
     ) -> Result<(), Error<FE>> {
+        assert!(self.build_config.orchard_bundle_type()? == BundleType::DEFAULT_ZSA);
+
         if self.issuance_builder.is_some() {
-            return Err(Error::IssuanceBuilder(
-                "Issuance bundle already initialized",
-            ));
+            return Err(Error::IssuanceBundleAlreadyInitialized);
         }
 
         self.issuance_builder = Some(
@@ -513,6 +500,7 @@ impl<'a, P: consensus::Parameters> Builder<'a, P, ()> {
         recipient: Address,
         value: orchard::value::NoteValue,
     ) -> Result<(), Error<FE>> {
+        assert!(self.build_config.orchard_bundle_type()? == BundleType::DEFAULT_ZSA);
         self.issuance_builder
             .as_mut()
             .ok_or(Error::IssuanceBuilderNotAvailable)?
@@ -525,6 +513,7 @@ impl<'a, P: consensus::Parameters> Builder<'a, P, ()> {
     /// Finalizes a given asset
     #[cfg(zcash_unstable = "nu6" /* TODO nu7 */ )]
     pub fn finalize_asset<FE>(&mut self, asset_desc: &Vec<u8>) -> Result<(), Error<FE>> {
+        assert!(self.build_config.orchard_bundle_type()? == BundleType::DEFAULT_ZSA);
         self.issuance_builder
             .as_mut()
             .ok_or(Error::IssuanceBuilderNotAvailable)?
@@ -537,9 +526,10 @@ impl<'a, P: consensus::Parameters> Builder<'a, P, ()> {
     /// Adds a Burn action to the transaction.
     #[cfg(zcash_unstable = "nu6" /* TODO nu7 */ )]
     pub fn add_burn<FE>(&mut self, value: u64, asset: AssetBase) -> Result<(), Error<FE>> {
+        assert!(self.build_config.orchard_bundle_type()? == BundleType::DEFAULT_ZSA);
         self.orchard_builder
             .as_mut()
-            .ok_or(Error::OrchardBuilderNotAvailable)?
+            .ok_or(Error::OrchardBundleNotAvailable)?
             .add_burn(asset, orchard::value::NoteValue::from_raw(value))
             .map_err(Error::OrchardBuild)?;
 
@@ -560,11 +550,11 @@ impl<'a, P: consensus::Parameters, U: sapling::builder::ProverProgress> Builder<
     ) -> Result<(), Error<FE>> {
         let bundle_type = self.build_config.orchard_bundle_type()?;
         if bundle_type == BundleType::DEFAULT_VANILLA {
-            assert_eq!(note.asset().is_native().unwrap_u8(), 1);
+            assert!(bool::from(note.asset().is_native()));
         }
         self.orchard_builder
             .as_mut()
-            .ok_or(Error::OrchardBuilderNotAvailable)?
+            .ok_or(Error::OrchardBundleNotAvailable)?
             .add_spend(orchard::keys::FullViewingKey::from(sk), note, merkle_path)
             .map_err(Error::OrchardSpend)?;
 
@@ -585,11 +575,11 @@ impl<'a, P: consensus::Parameters, U: sapling::builder::ProverProgress> Builder<
     ) -> Result<(), Error<FE>> {
         let bundle_type = self.build_config.orchard_bundle_type()?;
         if bundle_type == BundleType::DEFAULT_VANILLA {
-            assert_eq!(asset, AssetBase::native());
+            assert!(bool::from(asset.is_native()));
         }
         self.orchard_builder
             .as_mut()
-            .ok_or(Error::OrchardBuilderNotAvailable)?
+            .ok_or(Error::OrchardBundleNotAvailable)?
             .add_output(
                 ovk,
                 recipient,
@@ -1068,10 +1058,6 @@ impl<'a, P: consensus::Parameters, U: sapling::builder::ProverProgress> Extensio
 
 #[cfg(any(test, feature = "test-dependencies"))]
 mod testing {
-    use rand::RngCore;
-    use rand_core::CryptoRng;
-    use std::convert::Infallible;
-
     use super::{BuildResult, Builder, Error};
     use crate::{
         consensus,
@@ -1079,13 +1065,36 @@ mod testing {
             self,
             prover::mock::{MockOutputProver, MockSpendProver},
         },
-        transaction::fees::fixed,
+        transaction::fees::fixed::FeeRule,
     };
+    use rand::RngCore;
+    use rand_core::CryptoRng;
+    use std::convert::Infallible;
+    use zcash_protocol::value::Zatoshis;
 
     impl<'a, P: consensus::Parameters, U: sapling::builder::ProverProgress> Builder<'a, P, U> {
         /// Build the transaction using mocked randomness and proving capabilities.
         /// DO NOT USE EXCEPT FOR UNIT TESTING.
         pub fn mock_build<R: RngCore>(self, rng: R) -> Result<BuildResult, Error<Infallible>> {
+            #[allow(deprecated)]
+            self.mock_build_internal(rng, &FeeRule::standard())
+        }
+
+        /// Build the transaction using mocked randomness and proving capabilities.
+        /// DO NOT USE EXCEPT FOR UNIT TESTING.
+        pub fn mock_build_no_fee<R: RngCore>(
+            self,
+            rng: R,
+        ) -> Result<BuildResult, Error<Infallible>> {
+            #[allow(deprecated)]
+            self.mock_build_internal(rng, &FeeRule::non_standard(Zatoshis::from_u64(0)?))
+        }
+
+        fn mock_build_internal<R: RngCore>(
+            self,
+            rng: R,
+            fee_rule: &FeeRule,
+        ) -> Result<BuildResult, Error<Infallible>> {
             struct FakeCryptoRng<R: RngCore>(R);
             impl<R: RngCore> CryptoRng for FakeCryptoRng<R> {}
             impl<R: RngCore> RngCore for FakeCryptoRng<R> {
@@ -1106,12 +1115,11 @@ mod testing {
                 }
             }
 
-            #[allow(deprecated)]
             self.build(
                 FakeCryptoRng(rng),
                 &MockSpendProver,
                 &MockOutputProver,
-                &fixed::FeeRule::standard(),
+                fee_rule,
             )
         }
     }
@@ -1143,7 +1151,10 @@ mod tests {
     use {
         crate::transaction::fees::zip317::FeeError,
         orchard::issuance::IssueInfo,
-        orchard::keys::{FullViewingKey, IssuanceAuthorizingKey, SpendingKey},
+        orchard::keys::{
+            FullViewingKey, IssuanceAuthorizingKey, IssuanceValidatingKey, SpendingKey,
+        },
+        orchard::note::AssetBase,
         orchard::value::NoteValue,
         orchard::Address,
         zcash_protocol::consensus::TestNetwork,
@@ -1450,13 +1461,11 @@ mod tests {
             .init_issuance_bundle::<FeeError>(iak, asset_desc.clone(), None)
             .unwrap();
 
-        let issuance_builder = builder.issuance_builder.clone().unwrap();
-        assert_eq!(
-            issuance_builder.actions().len(),
-            1,
-            "There should be only one action"
-        );
-        let action = issuance_builder.get_action(asset_desc).unwrap();
+        let tx = builder.mock_build_no_fee(OsRng).unwrap().into_transaction();
+        let bundle = tx.issue_bundle().unwrap();
+
+        assert_eq!(bundle.actions().len(), 1, "There should be only one action");
+        let action = bundle.get_action(asset_desc).unwrap();
         assert!(action.is_finalized(), "Action should be finalized");
         assert_eq!(action.notes().len(), 0, "Action should have zero notes");
     }
@@ -1479,13 +1488,11 @@ mod tests {
             )
             .unwrap();
 
-        let issuance_builder = builder.issuance_builder.unwrap();
-        assert_eq!(
-            issuance_builder.actions().len(),
-            1,
-            "There should be only one action"
-        );
-        let action = issuance_builder.get_action(asset_desc).unwrap();
+        let binding = builder.mock_build_no_fee(OsRng).unwrap().into_transaction();
+        let bundle = binding.issue_bundle().unwrap();
+
+        assert_eq!(bundle.actions().len(), 1, "There should be only one action");
+        let action = bundle.get_action(asset_desc).unwrap();
         assert!(!action.is_finalized(), "Action should not be finalized");
         assert_eq!(action.notes().len(), 1, "Action should have 1 note");
         assert_eq!(
@@ -1516,13 +1523,11 @@ mod tests {
             .add_recipient::<FeeError>(asset_desc, address, NoteValue::from_raw(21))
             .unwrap();
 
-        let issuance_builder = builder.issuance_builder.unwrap();
-        assert_eq!(
-            issuance_builder.actions().len(),
-            1,
-            "There should be only one action"
-        );
-        let action = issuance_builder.get_action(asset_desc).unwrap();
+        let binding = builder.mock_build_no_fee(OsRng).unwrap().into_transaction();
+        let bundle = binding.issue_bundle().unwrap();
+
+        assert_eq!(bundle.actions().len(), 1, "There should be only one action");
+        let action = bundle.get_action(asset_desc).unwrap();
         assert!(!action.is_finalized(), "Action should not be finalized");
         assert_eq!(action.notes().len(), 2, "Action should have 2 notes");
         assert_eq!(
@@ -1558,14 +1563,12 @@ mod tests {
             .add_recipient::<FeeError>(asset_desc_2, address, NoteValue::from_raw(21))
             .unwrap();
 
-        let issuance_builder = builder.issuance_builder.unwrap();
-        assert_eq!(
-            issuance_builder.actions().len(),
-            2,
-            "There should be 2 actions"
-        );
+        let binding = builder.mock_build_no_fee(OsRng).unwrap().into_transaction();
+        let bundle = binding.issue_bundle().unwrap();
 
-        let action = issuance_builder.get_action(asset_desc_1).unwrap();
+        assert_eq!(bundle.actions().len(), 2, "There should be 2 actions");
+
+        let action = bundle.get_action(asset_desc_1).unwrap();
         assert!(!action.is_finalized(), "Action should not be finalized");
         assert_eq!(action.notes().len(), 1, "Action should have 1 note");
         assert_eq!(
@@ -1578,7 +1581,7 @@ mod tests {
             "Incorrect notes sum"
         );
 
-        let action2 = issuance_builder.get_action(asset_desc_2).unwrap();
+        let action2 = bundle.get_action(asset_desc_2).unwrap();
         assert!(!action2.is_finalized(), "Action should not be finalized");
         assert_eq!(action2.notes().len(), 1, "Action should have 1 note");
         assert_eq!(
@@ -1592,6 +1595,20 @@ mod tests {
         );
     }
 
+    #[test]
+    #[should_panic]
+    #[cfg(zcash_unstable = "nu6" /* TODO nu7 */ )]
+    fn fails_on_add_burn_without_input() {
+        let (mut builder, iak, _) = prepare_zsa_test();
+
+        let asset_desc = &b"asset_desc".to_vec();
+        let asset_base = AssetBase::derive(&IssuanceValidatingKey::from(&iak), asset_desc);
+
+        builder.add_burn::<FeeError>(42, asset_base).unwrap();
+
+        builder.mock_build_no_fee(OsRng).unwrap();
+    }
+
     #[cfg(zcash_unstable = "nu6" /* TODO nu7 */ )]
     fn prepare_zsa_test() -> (
         Builder<'static, TestNetwork, ()>,
@@ -1603,7 +1620,7 @@ mod tests {
         let iak = IssuanceAuthorizingKey::from_zip32_seed(seed, COIN_TYPE, 0).unwrap();
         let tx_height = TEST_NETWORK.activation_height(NetworkUpgrade::Nu7).unwrap();
 
-        let build_config = BuildConfig::Standard {
+        let build_config = BuildConfig::Zsa {
             sapling_anchor: None,
             orchard_anchor: Some(orchard::Anchor::empty_tree()),
         };
