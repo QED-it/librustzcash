@@ -253,7 +253,6 @@ impl<SpendAuth> From<&orchard::Action<SpendAuth>> for compact_formats::CompactOr
             nullifier: action.nullifier().to_bytes().to_vec(),
             cmx: action.cmx().to_bytes().to_vec(),
             ephemeral_key: action.encrypted_note().epk_bytes.to_vec(),
-            // FIXME: use COMPACT_NOTE_SIZE depending on Orchard flavor
             ciphertext: action.encrypted_note().enc_ciphertext[..COMPACT_NOTE_SIZE].to_vec(),
         }
     }
