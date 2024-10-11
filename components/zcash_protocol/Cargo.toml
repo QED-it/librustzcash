@@ -15,9 +15,6 @@ rust-version.workspace = true
 categories = ["cryptography::cryptocurrencies"]
 keywords = ["zcash"]
 
-# FIXME: Enable zcash_unstable="nu6". Remove when no longer needed.
-build = "build.rs"
-
 [package.metadata.docs.rs]
 all-features = true
 rustdoc-args = ["--cfg", "docsrs"]

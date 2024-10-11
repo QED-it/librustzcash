@@ -14,9 +14,6 @@ edition.workspace = true
 rust-version.workspace = true
 categories.workspace = true
 
-# FIXME: Enable zcash_unstable="nu6". Remove when no longer needed.
-build = "build.rs"
-
 [package.metadata.docs.rs]
 # Manually specify features while `orchard` is not in the public API.
 #all-features = true
