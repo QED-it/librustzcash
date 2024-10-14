@@ -496,7 +496,7 @@ impl<'a, P: consensus::Parameters> Builder<'a, P, ()> {
     #[cfg(zcash_unstable = "nu6" /* TODO nu7 */ )]
     pub fn add_recipient<FE>(
         &mut self,
-        asset_desc: &Vec<u8>,
+        asset_desc: &[u8],
         recipient: Address,
         value: orchard::value::NoteValue,
     ) -> Result<(), Error<FE>> {
@@ -512,7 +512,7 @@ impl<'a, P: consensus::Parameters> Builder<'a, P, ()> {
 
     /// Finalizes a given asset
     #[cfg(zcash_unstable = "nu6" /* TODO nu7 */ )]
-    pub fn finalize_asset<FE>(&mut self, asset_desc: &Vec<u8>) -> Result<(), Error<FE>> {
+    pub fn finalize_asset<FE>(&mut self, asset_desc: &[u8]) -> Result<(), Error<FE>> {
         assert!(self.build_config.orchard_bundle_type()? == BundleType::DEFAULT_ZSA);
         self.issuance_builder
             .as_mut()
@@ -1455,10 +1455,10 @@ mod tests {
     fn init_issuance_bundle_with_finalization() {
         let (mut builder, iak, _) = prepare_zsa_test();
 
-        let asset_desc = &b"asset_desc".to_vec();
+        let asset_desc: &[u8] = b"asset_desc";
 
         builder
-            .init_issuance_bundle::<FeeError>(iak, asset_desc.clone(), None)
+            .init_issuance_bundle::<FeeError>(iak, Vec::from(asset_desc), None)
             .unwrap();
 
         let tx = builder.mock_build_no_fee(OsRng).unwrap().into_transaction();
@@ -1481,12 +1481,12 @@ mod tests {
     fn init_issuance_bundle_without_finalization() {
         let (mut builder, iak, address) = prepare_zsa_test();
 
-        let asset_desc = &b"asset_desc".to_vec();
+        let asset_desc: &[u8] = b"asset_desc";
 
         builder
             .init_issuance_bundle::<FeeError>(
                 iak,
-                asset_desc.clone(),
+                Vec::from(asset_desc),
                 Some(IssueInfo {
                     recipient: address,
                     value: NoteValue::from_raw(42),
@@ -1519,12 +1519,12 @@ mod tests {
     fn add_issuance_same_asset() {
         let (mut builder, iak, address) = prepare_zsa_test();
 
-        let asset_desc = &b"asset_desc".to_vec();
+        let asset_desc: &[u8] = b"asset_desc";
 
         builder
             .init_issuance_bundle::<FeeError>(
                 iak,
-                asset_desc.clone(),
+                Vec::from(asset_desc),
                 Some(IssueInfo {
                     recipient: address,
                     value: NoteValue::from_raw(42),
@@ -1564,13 +1564,13 @@ mod tests {
     fn add_issuance_different_asset() {
         let (mut builder, iak, address) = prepare_zsa_test();
 
-        let asset_desc_1 = &b"asset_desc".to_vec();
-        let asset_desc_2 = &b"asset_desc_2".to_vec();
+        let asset_desc_1: &[u8] = b"asset_desc";
+        let asset_desc_2: &[u8] = b"asset_desc_2";
 
         builder
             .init_issuance_bundle::<FeeError>(
                 iak,
-                asset_desc_1.clone(),
+                Vec::from(asset_desc_1),
                 Some(IssueInfo {
                     recipient: address,
                     value: NoteValue::from_raw(42),
@@ -1631,7 +1631,7 @@ mod tests {
     fn fails_on_add_burn_without_input() {
         let (mut builder, iak, _) = prepare_zsa_test();
 
-        let asset_desc = &b"asset_desc".to_vec();
+        let asset_desc: &[u8] = b"asset_desc";
         let asset_base = AssetBase::derive(&IssuanceValidatingKey::from(&iak), asset_desc);
 
         builder.add_burn::<FeeError>(42, asset_base).unwrap();
