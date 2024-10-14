@@ -1455,17 +1455,17 @@ mod tests {
     fn init_issuance_bundle_with_finalization() {
         let (mut builder, iak, _) = prepare_zsa_test();
 
-        let asset_desc: &[u8] = b"asset_desc";
+        let asset_desc: Vec<u8> = "asset_desc".into();
 
         builder
-            .init_issuance_bundle::<FeeError>(iak, Vec::from(asset_desc), None)
+            .init_issuance_bundle::<FeeError>(iak, asset_desc.clone(), None)
             .unwrap();
 
         let tx = builder.mock_build_no_fee(OsRng).unwrap().into_transaction();
         let bundle = tx.issue_bundle().unwrap();
 
         assert_eq!(bundle.actions().len(), 1, "There should be only one action");
-        let actions = bundle.get_actions_by_desc(asset_desc);
+        let actions = bundle.get_actions_by_desc(&asset_desc);
         assert_eq!(
             actions.len(),
             1,
@@ -1481,12 +1481,12 @@ mod tests {
     fn init_issuance_bundle_without_finalization() {
         let (mut builder, iak, address) = prepare_zsa_test();
 
-        let asset_desc: &[u8] = b"asset_desc";
+        let asset_desc: Vec<u8> = "asset_desc".into();
 
         builder
             .init_issuance_bundle::<FeeError>(
                 iak,
-                Vec::from(asset_desc),
+                asset_desc.clone(),
                 Some(IssueInfo {
                     recipient: address,
                     value: NoteValue::from_raw(42),
@@ -1498,7 +1498,7 @@ mod tests {
         let bundle = binding.issue_bundle().unwrap();
 
         assert_eq!(bundle.actions().len(), 1, "There should be only one action");
-        let actions = bundle.get_actions_by_desc(asset_desc);
+        let actions = bundle.get_actions_by_desc(&asset_desc);
         assert_eq!(
             actions.len(),
             1,
@@ -1519,12 +1519,12 @@ mod tests {
     fn add_issuance_same_asset() {
         let (mut builder, iak, address) = prepare_zsa_test();
 
-        let asset_desc: &[u8] = b"asset_desc";
+        let asset_desc: Vec<u8> = "asset_desc".into();
 
         builder
             .init_issuance_bundle::<FeeError>(
                 iak,
-                Vec::from(asset_desc),
+                asset_desc.clone(),
                 Some(IssueInfo {
                     recipient: address,
                     value: NoteValue::from_raw(42),
@@ -1532,14 +1532,14 @@ mod tests {
             )
             .unwrap();
         builder
-            .add_recipient::<FeeError>(asset_desc, address, NoteValue::from_raw(21))
+            .add_recipient::<FeeError>(&asset_desc, address, NoteValue::from_raw(21))
             .unwrap();
 
         let binding = builder.mock_build_no_fee(OsRng).unwrap().into_transaction();
         let bundle = binding.issue_bundle().unwrap();
 
         assert_eq!(bundle.actions().len(), 1, "There should be only one action");
-        let actions = bundle.get_actions_by_desc(asset_desc);
+        let actions = bundle.get_actions_by_desc(&asset_desc);
         assert_eq!(
             actions.len(),
             1,
@@ -1564,13 +1564,13 @@ mod tests {
     fn add_issuance_different_asset() {
         let (mut builder, iak, address) = prepare_zsa_test();
 
-        let asset_desc_1: &[u8] = b"asset_desc";
-        let asset_desc_2: &[u8] = b"asset_desc_2";
+        let asset_desc_1: Vec<u8> = "asset_desc".into();
+        let asset_desc_2: Vec<u8> = "asset_desc_2".into();
 
         builder
             .init_issuance_bundle::<FeeError>(
                 iak,
-                Vec::from(asset_desc_1),
+                asset_desc_1.clone(),
                 Some(IssueInfo {
                     recipient: address,
                     value: NoteValue::from_raw(42),
@@ -1578,7 +1578,7 @@ mod tests {
             )
             .unwrap();
         builder
-            .add_recipient::<FeeError>(asset_desc_2, address, NoteValue::from_raw(21))
+            .add_recipient::<FeeError>(&asset_desc_2, address, NoteValue::from_raw(21))
             .unwrap();
 
         let binding = builder.mock_build_no_fee(OsRng).unwrap().into_transaction();
@@ -1586,7 +1586,7 @@ mod tests {
 
         assert_eq!(bundle.actions().len(), 2, "There should be 2 actions");
 
-        let actions = bundle.get_actions_by_desc(asset_desc_1);
+        let actions = bundle.get_actions_by_desc(&asset_desc_1);
         assert_eq!(
             actions.len(),
             1,
@@ -1605,7 +1605,7 @@ mod tests {
             "Incorrect notes sum"
         );
 
-        let actions_2 = bundle.get_actions_by_desc(asset_desc_2);
+        let actions_2 = bundle.get_actions_by_desc(&asset_desc_2);
         assert_eq!(
             actions_2.len(),
             1,
