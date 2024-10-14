@@ -1038,7 +1038,7 @@ fn find_received<
     Nf,
     IvkTag: Copy + std::hash::Hash + Eq + Send + 'static,
     SK: ScanningKeyOps<D, AccountId, Nf>,
-    Output: ShieldedOutput<D, COMPACT_NOTE_SIZE>,
+    Output: ShieldedOutput<D>,
     NoteCommitment,
 >(
     block_height: BlockHeight,
@@ -1155,13 +1155,13 @@ pub mod testing {
     use rand_core::{OsRng, RngCore};
     use sapling::{
         constants::SPENDING_KEY_GENERATOR,
-        note_encryption::{sapling_note_encryption, SaplingDomain},
+        note_encryption::{sapling_note_encryption, SaplingDomain, COMPACT_NOTE_SIZE},
         util::generate_random_rseed,
         value::NoteValue,
         zip32::DiversifiableFullViewingKey,
         Nullifier,
     };
-    use zcash_note_encryption::{Domain, COMPACT_NOTE_SIZE};
+    use zcash_note_encryption::Domain;
     use zcash_primitives::{
         block::BlockHash,
         consensus::{BlockHeight, Network},

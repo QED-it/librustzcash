@@ -9,8 +9,8 @@ use std::{
     io,
 };
 
-use sapling::{self, note::ExtractedNoteCommitment, Node};
-use zcash_note_encryption::{EphemeralKeyBytes, COMPACT_NOTE_SIZE};
+use sapling::{self, note::ExtractedNoteCommitment, note_encryption::COMPACT_NOTE_SIZE, Node};
+use zcash_note_encryption::EphemeralKeyBytes;
 use zcash_primitives::{
     block::{BlockHash, BlockHeader},
     consensus::BlockHeight,
@@ -150,7 +150,7 @@ impl<Proof> From<&sapling::bundle::OutputDescription<Proof>>
         compact_formats::CompactSaplingOutput {
             cmu: out.cmu().to_bytes().to_vec(),
             ephemeral_key: out.ephemeral_key().as_ref().to_vec(),
-            ciphertext: out.enc_ciphertext()[..COMPACT_NOTE_SIZE].to_vec(),
+            ciphertext: out.enc_ciphertext().as_ref()[..COMPACT_NOTE_SIZE].to_vec(),
         }
     }
 }
