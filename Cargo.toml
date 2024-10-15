@@ -6,6 +6,7 @@ members = [
     "components/zcash_encoding",
     "components/zcash_protocol",
     "components/zip321",
+    # zcash_client_backend and zcash_client_sqlite are not compatible with OrchardZSA
 #    "zcash_client_backend",
 #    "zcash_client_sqlite",
     "zcash_extensions",
