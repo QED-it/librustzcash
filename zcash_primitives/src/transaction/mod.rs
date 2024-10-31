@@ -375,9 +375,9 @@ impl PartialEq for Transaction {
 
 #[derive(Debug, Clone)]
 pub enum OrchardBundle<V: orchard::bundle::Authorization, Z: orchard::bundle::Authorization> {
-    OrchardVanilla(Bundle<V, Amount, OrchardVanilla>),
+    OrchardVanilla(Box<Bundle<V, Amount, OrchardVanilla>>),
     #[cfg(zcash_unstable = "nu6" /* TODO nu7 */ )]
-    OrchardZSA(Bundle<Z, Amount, OrchardZSA>),
+    OrchardZSA(Box<Bundle<Z, Amount, OrchardZSA>>),
     #[doc(hidden)]
     _Phantom(PhantomData<Z>),
 }
@@ -418,15 +418,15 @@ impl<V: orchard::bundle::Authorization, Z: orchard::bundle::Authorization> Orcha
         #[cfg(zcash_unstable = "nu6" /* TODO nu7 */ )] step_zsa: impl FnOnce(&mut R2, Z) -> NZ,
     ) -> OrchardBundle<NV, NZ> {
         match self {
-            OrchardBundle::OrchardVanilla(b) => {
-                OrchardBundle::OrchardVanilla(b.map_authorization(context, spend_auth, step))
-            }
+            OrchardBundle::OrchardVanilla(b) => OrchardBundle::OrchardVanilla(Box::new(
+                b.map_authorization(context, spend_auth, step),
+            )),
             #[cfg(zcash_unstable = "nu6" /* TODO nu7 */ )]
-            OrchardBundle::OrchardZSA(b) => OrchardBundle::OrchardZSA(b.map_authorization(
+            OrchardBundle::OrchardZSA(b) => OrchardBundle::OrchardZSA(Box::new(b.map_authorization(
                 context_zsa,
                 spend_auth_zsa,
                 step_zsa,
-            )),
+            ))),
             _ => unreachable!(),
         }
     }
@@ -906,7 +906,7 @@ impl Transaction {
             transparent_bundle,
             sprout_bundle: None,
             sapling_bundle,
-            orchard_bundle: orchard_bundle.map(OrchardBundle::OrchardVanilla),
+            orchard_bundle: orchard_bundle.map(|b| OrchardBundle::OrchardVanilla(Box::new(b))),
             #[cfg(zcash_unstable = "nu6" /* TODO nu7 */ )]
             issue_bundle: None,
             #[cfg(zcash_unstable = "zfuture")]
@@ -962,7 +962,7 @@ impl Transaction {
             transparent_bundle,
             sprout_bundle: None,
             sapling_bundle,
-            orchard_bundle: orchard_bundle.map(OrchardBundle::OrchardZSA),
+            orchard_bundle: orchard_bundle.map(|b| OrchardBundle::OrchardZSA(Box::new(b))),
             issue_bundle,
             #[cfg(zcash_unstable = "zfuture")]
             tze_bundle,
