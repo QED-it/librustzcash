@@ -30,9 +30,9 @@ use crate::{
     },
 };
 
-use orchard::builder::{BundleType, InProgress, Unproven};
+use orchard::builder::BundleType;
 use orchard::note::AssetBase;
-use orchard::orchard_flavor::{OrchardFlavor, OrchardVanilla};
+use orchard::orchard_flavor::OrchardVanilla;
 use orchard::Address;
 
 #[cfg(feature = "transparent-inputs")]
@@ -53,7 +53,6 @@ use crate::{
         fees::FutureFeeRule,
     },
 };
-use orchard::bundle::Authorized;
 #[cfg(zcash_unstable = "nu6" /* TODO nu7 */ )]
 use orchard::{
     issuance,
@@ -949,27 +948,40 @@ impl<'a, P: consensus::Parameters, U: sapling::builder::ProverProgress> Builder<
             .transpose()
             .map_err(Error::SaplingBuild)?;
 
-        let orchard_bundle: Option<OrchardBundle<_>> = match unauthed_tx.orchard_bundle {
-            Some(OrchardBundle::OrchardVanilla(b)) => {
-                Some(OrchardBundle::OrchardVanilla(prove_and_sign(
-                    b,
-                    &mut rng,
+        let orchard_bundle: Option<OrchardBundle<_, _>> = match unauthed_tx.orchard_bundle {
+            Some(OrchardBundle::OrchardVanilla(b)) => Some(OrchardBundle::OrchardVanilla(
+                b.create_proof(
                     &orchard::circuit::ProvingKey::build::<OrchardVanilla>(),
-                    shielded_sig_commitment.as_ref(),
-                    &self.orchard_saks,
-                )?))
-            }
+                    &mut rng,
+                )
+                .and_then(|b| {
+                    b.apply_signatures(
+                        &mut rng,
+                        *shielded_sig_commitment.as_ref(),
+                        &self.orchard_saks,
+                    )
+                })
+                .unwrap(),
+            )),
 
             #[cfg(zcash_unstable = "nu6" /* TODO nu7 */ )]
-            Some(OrchardBundle::OrchardZSA(b)) => Some(OrchardBundle::OrchardZSA(prove_and_sign(
-                b,
-                &mut rng,
-                &orchard::circuit::ProvingKey::build::<OrchardZSA>(),
-                shielded_sig_commitment.as_ref(),
-                &self.orchard_saks,
-            )?)),
+            Some(OrchardBundle::OrchardZSA(b)) => Some(OrchardBundle::OrchardZSA(
+                b.create_proof(
+                    &orchard::circuit::ProvingKey::build::<OrchardZSA>(),
+                    &mut rng,
+                )
+                .and_then(|b| {
+                    b.apply_signatures(
+                        &mut rng,
+                        *shielded_sig_commitment.as_ref(),
+                        &self.orchard_saks,
+                    )
+                })
+                .unwrap(),
+            )),
 
             None => None,
+            Some(_) => unreachable!(),
         };
 
         #[cfg(zcash_unstable = "nu6" /* TODO nu7 */ )]
