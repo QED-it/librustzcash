@@ -1229,7 +1229,7 @@ checksum = "624a8340c38c1b80fd549087862da4ba43e08858af025b236e509b6649fc13d5"
 [[package]]
 name = "orchard"
 version = "0.8.0"
-source = "git+https://github.com/QED-it/orchard?branch=zsa1#410037df38ec60eed49c157d4d430f0eb06604be"
+source = "git+https://github.com/QED-it/orchard?branch=spendauth_clone#679c40290def862e25042f781f99bbb6f863e7a5"
 dependencies = [
  "aes",
  "bitvec",
