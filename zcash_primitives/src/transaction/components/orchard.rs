@@ -69,14 +69,14 @@ impl<A: Authorization> BuildBundle<A, OrchardVanilla> for OrchardVanilla {
         anchor: Anchor,
         authorization: A,
     ) -> OrchardBundle<A, A> {
-        OrchardBundle::OrchardVanilla(Bundle::from_parts(
+        OrchardBundle::OrchardVanilla(Box::new(Bundle::from_parts(
             actions,
             flags,
             value_balance,
             burn,
             anchor,
             authorization,
-        ))
+        )))
     }
 }
 
@@ -90,14 +90,14 @@ impl<A: Authorization> BuildBundle<A, OrchardZSA> for OrchardZSA {
         anchor: Anchor,
         authorization: A,
     ) -> OrchardBundle<A, A> {
-        OrchardBundle::OrchardZSA(orchard::Bundle::from_parts(
+        OrchardBundle::OrchardZSA(Box::new(orchard::Bundle::from_parts(
             actions,
             flags,
             value_balance,
             burn,
             anchor,
             authorization,
-        ))
+        )))
     }
 }
 
@@ -424,7 +424,7 @@ pub mod testing {
         ) -> OrchardBundle<Authorized, Authorized> {
             // overwrite the value balance, as we can't guarantee that the
             // value doesn't exceed the MAX_MONEY bounds.
-            OrchardBundle::OrchardVanilla(bundle.try_map_value_balance::<_, (), _>(|_| Ok(orchard_value_balance)).unwrap())
+            OrchardBundle::OrchardVanilla(Box::new(bundle.try_map_value_balance::<_, (), _>(|_| Ok(orchard_value_balance)).unwrap()))
         }
     }
 
@@ -438,7 +438,7 @@ pub mod testing {
             // value doesn't exceed the MAX_MONEY bounds.
             let _bundle: Bundle<_, _, OrchardZSA> = bundle.try_map_value_balance::<_, (), _>(|_| Ok(orchard_value_balance)).unwrap();
             #[cfg(zcash_unstable = "nu6" /* TODO nu7 */ )]
-            return OrchardBundle::OrchardZSA(_bundle);
+            return OrchardBundle::OrchardZSA(Box::new(_bundle));
             panic!("ZSA is not supported in this version");
         }
     }
