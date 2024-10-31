@@ -19,6 +19,9 @@ use orchard::{
 };
 use zcash_encoding::{Array, CompactSize, Vector};
 use zcash_note_encryption::note_bytes::NoteBytes;
+use zcash_protocol::value::ZatBalance;
+use super::Amount;
+use crate::transaction::{OrchardBundle, Transaction};
 
 use zcash_protocol::value::ZatBalance;
 #[cfg(zcash_unstable = "nu6" /* TODO nu7 */ )]
@@ -423,6 +426,7 @@ pub fn write_action_without_auth<W: Write, D: OrchardDomainCommon>(
 
 #[cfg(any(test, feature = "test-dependencies"))]
 pub mod testing {
+    use orchard::Bundle;
     use proptest::prelude::*;
 
     use crate::transaction::components::amount::testing::arb_amount;
