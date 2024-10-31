@@ -41,16 +41,7 @@ use crate::transaction::components::transparent::builder::TransparentInputInfo;
 #[cfg(not(feature = "transparent-inputs"))]
 use std::convert::Infallible;
 
-#[cfg(zcash_unstable = "nu6" /* TODO nu7 */ )]
-use orchard::{
-    issuance,
-    issuance::{IssueBundle, IssueInfo},
-    keys::{IssuanceAuthorizingKey, IssuanceValidatingKey},
-    orchard_flavor::OrchardZSA,
-};
-#[cfg(zcash_unstable = "nu6" /* TODO nu7 */ )]
-use rand_core::OsRng;
-
+use crate::transaction::OrchardBundle;
 #[cfg(zcash_unstable = "zfuture")]
 use crate::{
     extensions::transparent::{ExtensionTxBuilder, ToPayload},
@@ -62,6 +53,15 @@ use crate::{
         fees::FutureFeeRule,
     },
 };
+#[cfg(zcash_unstable = "nu6" /* TODO nu7 */ )]
+use orchard::{
+    issuance,
+    issuance::{IssueBundle, IssueInfo},
+    keys::{IssuanceAuthorizingKey, IssuanceValidatingKey},
+    orchard_flavor::OrchardZSA,
+};
+#[cfg(zcash_unstable = "nu6" /* TODO nu7 */ )]
+use rand_core::OsRng;
 
 /// Since Blossom activation, the default transaction expiry delta should be 40 blocks.
 /// <https://zips.z.cash/zip-0203#changes-for-blossom>
@@ -868,8 +868,6 @@ impl<'a, P: consensus::Parameters, U: sapling::builder::ProverProgress> Builder<
         };
 
         let mut unproven_orchard_bundle = None;
-        #[cfg(zcash_unstable = "nu6" /* TODO nu7 */ )]
-        let mut unproven_orchard_zsa_bundle = None;
         let mut orchard_meta = orchard::builder::BundleMetadata::empty();
 
         if let Some(builder) = self.orchard_builder {
@@ -879,12 +877,12 @@ impl<'a, P: consensus::Parameters, U: sapling::builder::ProverProgress> Builder<
                 {
                     let (bundle, meta) = builder.build(&mut rng).map_err(Error::OrchardBuild)?;
 
-                    unproven_orchard_zsa_bundle = Some(bundle);
+                    unproven_orchard_bundle = Some(OrchardBundle::OrchardZSA(bundle));
                     orchard_meta = meta;
                 }
             } else {
                 let (bundle, meta) = builder.build(&mut rng).map_err(Error::OrchardBuild)?;
-                unproven_orchard_bundle = Some(bundle);
+                unproven_orchard_bundle = Some(OrchardBundle::OrchardVanilla(bundle));
                 orchard_meta = meta;
             }
         };
@@ -901,8 +899,6 @@ impl<'a, P: consensus::Parameters, U: sapling::builder::ProverProgress> Builder<
             sprout_bundle: None,
             sapling_bundle,
             orchard_bundle: unproven_orchard_bundle,
-            #[cfg(zcash_unstable = "nu6" /* TODO nu7 */ )]
-            orchard_zsa_bundle: unproven_orchard_zsa_bundle,
             #[cfg(zcash_unstable = "nu6" /* TODO nu7 */ )]
             issue_bundle: self.issuance_builder,
             #[cfg(zcash_unstable = "zfuture")]
@@ -949,9 +945,8 @@ impl<'a, P: consensus::Parameters, U: sapling::builder::ProverProgress> Builder<
             .transpose()
             .map_err(Error::SaplingBuild)?;
 
-        let orchard_bundle = unauthed_tx
-            .orchard_bundle
-            .map(|b| {
+        let orchard_bundle: Option<OrchardBundle<_, _>> = match unauthed_tx.orchard_bundle {
+            Some(OrchardBundle::OrchardVanilla(b)) => Some(OrchardBundle::OrchardVanilla(
                 b.create_proof(
                     &orchard::circuit::ProvingKey::build::<OrchardVanilla>(),
                     &mut rng,
@@ -963,14 +958,11 @@ impl<'a, P: consensus::Parameters, U: sapling::builder::ProverProgress> Builder<
                         &self.orchard_saks,
                     )
                 })
-            })
-            .transpose()
-            .map_err(Error::OrchardBuild)?;
+                .unwrap(),
+            )),
 
-        #[cfg(zcash_unstable = "nu6" /* TODO nu7 */ )]
-        let orchard_zsa_bundle = unauthed_tx
-            .orchard_zsa_bundle
-            .map(|b| {
+            #[cfg(zcash_unstable = "nu6" /* TODO nu7 */ )]
+            Some(OrchardBundle::OrchardZSA(b)) => Some(OrchardBundle::OrchardZSA(
                 b.create_proof(
                     &orchard::circuit::ProvingKey::build::<OrchardZSA>(),
                     &mut rng,
@@ -982,9 +974,12 @@ impl<'a, P: consensus::Parameters, U: sapling::builder::ProverProgress> Builder<
                         &self.orchard_saks,
                     )
                 })
-            })
-            .transpose()
-            .map_err(Error::OrchardBuild)?;
+                .unwrap(),
+            )),
+
+            None => None,
+            Some(_) => unreachable!(),
+        };
 
         #[cfg(zcash_unstable = "nu6" /* TODO nu7 */ )]
         let issue_bundle = unauthed_tx
@@ -1002,8 +997,6 @@ impl<'a, P: consensus::Parameters, U: sapling::builder::ProverProgress> Builder<
             sprout_bundle: unauthed_tx.sprout_bundle,
             sapling_bundle,
             orchard_bundle,
-            #[cfg(zcash_unstable = "nu6" /* TODO nu7 */ )]
-            orchard_zsa_bundle,
             #[cfg(zcash_unstable = "nu6" /* TODO nu7 */ )]
             issue_bundle,
             #[cfg(zcash_unstable = "zfuture")]

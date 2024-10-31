@@ -6,7 +6,6 @@ use blake2b_simd::{Hash as Blake2bHash, Params, State};
 use byteorder::{LittleEndian, WriteBytesExt};
 use ff::PrimeField;
 use orchard::bundle;
-use orchard::orchard_flavor::OrchardVanilla;
 
 use crate::{
     consensus::{BlockHeight, BranchId},
@@ -21,7 +20,8 @@ use super::{
         amount::Amount,
         transparent::{self, TxIn, TxOut},
     },
-    Authorization, Authorized, TransactionDigest, TransparentDigests, TxDigests, TxId, TxVersion,
+    Authorization, Authorized, OrchardBundle, TransactionDigest, TransparentDigests, TxDigests,
+    TxId, TxVersion,
 };
 
 #[cfg(zcash_unstable = "nu6" /* TODO nu7 */ )]
@@ -347,17 +347,16 @@ impl<A: Authorization> TransactionDigest<A> for TxIdDigester {
 
     fn digest_orchard(
         &self,
-        orchard_bundle: Option<&bundle::Bundle<A::OrchardAuth, Amount, OrchardVanilla>>,
+        orchard_bundle: Option<&OrchardBundle<A::OrchardAuth, A::OrchardZsaAuth>>,
     ) -> Self::OrchardDigest {
-        orchard_bundle.map(|b| b.commitment().0)
-    }
-
-    #[cfg(zcash_unstable = "nu6" /* TODO nu7 */ )]
-    fn digest_orchard_zsa(
-        &self,
-        orchard_bundle: Option<&bundle::Bundle<A::OrchardZsaAuth, Amount, OrchardZSA>>,
-    ) -> Self::OrchardDigest {
-        orchard_bundle.map(|b| b.commitment().0)
+        orchard_bundle.map(|b| {
+            match b {
+                OrchardBundle::OrchardVanilla(vanilla_bundle) => vanilla_bundle.commitment().0,
+                #[cfg(zcash_unstable = "nu6" /* TODO nu7 */ )]
+                OrchardBundle::OrchardZSA(zsa_bundle) => zsa_bundle.commitment().0,
+                _ => unreachable!(),
+            }
+        })
     }
 
     #[cfg(zcash_unstable = "nu6" /* TODO nu7 */ )]
@@ -541,20 +540,17 @@ impl TransactionDigest<Authorized> for BlockTxCommitmentDigester {
 
     fn digest_orchard(
         &self,
-        orchard_bundle: Option<&bundle::Bundle<bundle::Authorized, Amount, OrchardVanilla>>,
+        orchard_bundle: Option<&OrchardBundle<bundle::Authorized, bundle::Authorized>>,
     ) -> Self::OrchardDigest {
         orchard_bundle.map_or_else(bundle::commitments::hash_bundle_auth_empty, |b| {
-            b.authorizing_commitment().0
-        })
-    }
-
-    #[cfg(zcash_unstable = "nu6" /* TODO nu7 */ )]
-    fn digest_orchard_zsa(
-        &self,
-        orchard_bundle: Option<&bundle::Bundle<bundle::Authorized, Amount, OrchardZSA>>,
-    ) -> Self::OrchardDigest {
-        orchard_bundle.map_or_else(bundle::commitments::hash_bundle_auth_empty, |b| {
-            b.authorizing_commitment().0
+            match b {
+                OrchardBundle::OrchardVanilla(vanilla_bundle) => {
+                    vanilla_bundle.authorizing_commitment().0
+                }
+                #[cfg(zcash_unstable = "nu6" /* TODO nu7 */ )]
+                OrchardBundle::OrchardZSA(zsa_bundle) => zsa_bundle.authorizing_commitment().0,
+                _ => unreachable!(),
+            }
         })
     }
 
