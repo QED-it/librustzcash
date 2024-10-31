@@ -22,8 +22,6 @@ use orchard::{note::AssetBase, orchard_flavor::OrchardZSA, value::NoteValue};
 use zcash_encoding::{Array, CompactSize, Vector};
 use zcash_note_encryption::note_bytes::NoteBytes;
 use zcash_protocol::value::ZatBalance;
-use super::Amount;
-use crate::transaction::{OrchardBundle, Transaction};
 
 use zcash_protocol::value::ZatBalance;
 #[cfg(zcash_unstable = "nu6" /* TODO nu7 */ )]
