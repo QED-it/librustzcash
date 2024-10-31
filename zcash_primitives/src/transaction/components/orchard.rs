@@ -442,7 +442,7 @@ pub mod testing {
         ) -> OrchardBundle<Authorized> {
             // overwrite the value balance, as we can't guarantee that the
             // value doesn't exceed the MAX_MONEY bounds.
-            OrchardBundle::OrchardVanilla(bundle.try_map_value_balance::<_, (), _>(|_| Ok(orchard_value_balance)).unwrap())
+            OrchardBundle::OrchardVanilla(Box::new(bundle.try_map_value_balance::<_, (), _>(|_| Ok(orchard_value_balance)).unwrap()))
         }
     }
 

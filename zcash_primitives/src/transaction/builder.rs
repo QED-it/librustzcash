@@ -877,7 +877,7 @@ impl<'a, P: consensus::Parameters, U: sapling::builder::ProverProgress> Builder<
                 {
                     let (bundle, meta) = builder.build(&mut rng).map_err(Error::OrchardBuild)?;
 
-                    unproven_orchard_bundle = Some(OrchardBundle::OrchardZSA(bundle));
+                    unproven_orchard_bundle = Some(OrchardBundle::OrchardZSA(Box::new(bundle)));
                     orchard_meta = meta;
                 }
             } else {
@@ -946,24 +946,26 @@ impl<'a, P: consensus::Parameters, U: sapling::builder::ProverProgress> Builder<
             .map_err(Error::SaplingBuild)?;
 
         let orchard_bundle: Option<OrchardBundle<_, _>> = match unauthed_tx.orchard_bundle {
-            Some(OrchardBundle::OrchardVanilla(b)) => Some(OrchardBundle::OrchardVanilla(
-                b.create_proof(
-                    &orchard::circuit::ProvingKey::build::<OrchardVanilla>(),
-                    &mut rng,
-                )
-                .and_then(|b| {
-                    b.apply_signatures(
+            Some(OrchardBundle::OrchardVanilla(b)) => {
+                Some(OrchardBundle::OrchardVanilla(Box::new(
+                    b.create_proof(
+                        &orchard::circuit::ProvingKey::build::<OrchardVanilla>(),
                         &mut rng,
-                        *shielded_sig_commitment.as_ref(),
-                        &self.orchard_saks,
                     )
-                })
-                .unwrap(),
-            )),
+                    .and_then(|b| {
+                        b.apply_signatures(
+                            &mut rng,
+                            *shielded_sig_commitment.as_ref(),
+                            &self.orchard_saks,
+                        )
+                    })
+                    .unwrap(),
+                )))
+            }
 
             #[cfg(zcash_unstable = "nu6" /* TODO nu7 */ )]
             Some(OrchardBundle::OrchardZSA(b)) => Some(OrchardBundle::OrchardZSA(
-                b.create_proof(
+                Box::new(b.create_proof(
                     &orchard::circuit::ProvingKey::build::<OrchardZSA>(),
                     &mut rng,
                 )
@@ -975,7 +977,7 @@ impl<'a, P: consensus::Parameters, U: sapling::builder::ProverProgress> Builder<
                     )
                 })
                 .unwrap(),
-            )),
+            ))),
 
             None => None,
             Some(_) => unreachable!(),
