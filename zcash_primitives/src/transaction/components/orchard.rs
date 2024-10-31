@@ -2,7 +2,10 @@
 use std::convert::TryFrom;
 use std::io::{self, Read, Write};
 
+use super::Amount;
+#[cfg(zcash_unstable = "nu6" /* TODO nu7 */ )]
 use crate::transaction::components::issuance::read_asset;
+use crate::transaction::{OrchardBundle, Transaction};
 use byteorder::{ReadBytesExt, WriteBytesExt};
 use nonempty::NonEmpty;
 use orchard::{
@@ -17,8 +20,6 @@ use orchard::{
 use zcash_encoding::{Array, CompactSize, Vector};
 use zcash_note_encryption::note_bytes::NoteBytes;
 use zcash_protocol::value::ZatBalance;
-use super::Amount;
-use crate::transaction::{OrchardBundle, Transaction};
 
 #[cfg(zcash_unstable = "nu6" /* TODO nu7 */ )]
 use byteorder::LittleEndian;
@@ -218,6 +219,7 @@ pub fn read_orchard_zsa_bundle<R: Read>(
     )))
 }
 
+#[cfg(zcash_unstable = "nu6" /* TODO nu7 */ )]
 fn read_burn<R: Read>(reader: &mut R) -> io::Result<(AssetBase, NoteValue)> {
     Ok((read_asset(reader)?, read_note_value(reader)?))
 }
@@ -339,6 +341,7 @@ pub fn read_signature<R: Read, T: SigType>(mut reader: R) -> io::Result<Signatur
     Ok(Signature::from(bytes))
 }
 
+#[cfg(zcash_unstable = "nu6" /* TODO nu7 */ )]
 fn read_note_value<R: Read>(mut reader: R) -> io::Result<NoteValue> {
     let mut bytes = [0; 8];
     reader.read_exact(&mut bytes)?;
@@ -510,7 +513,10 @@ pub mod testing {
 
     use crate::transaction::components::amount::testing::arb_amount;
     use crate::transaction::{OrchardBundle, TxVersion};
-    use orchard::bundle::{testing::{self as t_orch}, Authorized};
+    use orchard::bundle::{
+        testing::{self as t_orch},
+        Authorized,
+    };
     use orchard::orchard_flavor::OrchardZSA;
 
     prop_compose! {
@@ -525,15 +531,16 @@ pub mod testing {
     }
 
     prop_compose! {
+        #[allow(unreachable_code)]
         pub fn arb_zsa_bundle(n_actions: usize)(
             orchard_value_balance in arb_amount(),
             bundle in t_orch::BundleArb::arb_bundle(n_actions)
         ) -> OrchardBundle<Authorized, Authorized> {
             // overwrite the value balance, as we can't guarantee that the
             // value doesn't exceed the MAX_MONEY bounds.
-            let bundle: Bundle<_, _, OrchardZSA> = bundle.try_map_value_balance::<_, (), _>(|_| Ok(orchard_value_balance)).unwrap();
+            let _bundle: Bundle<_, _, OrchardZSA> = bundle.try_map_value_balance::<_, (), _>(|_| Ok(orchard_value_balance)).unwrap();
             #[cfg(zcash_unstable = "nu6" /* TODO nu7 */ )]
-            return OrchardBundle::OrchardZSA(bundle);
+            return OrchardBundle::OrchardZSA(_bundle);
             panic!("ZSA is not supported in this version");
         }
     }
