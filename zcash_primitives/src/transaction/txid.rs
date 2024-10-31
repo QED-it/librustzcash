@@ -27,7 +27,6 @@ use super::{
 #[cfg(zcash_unstable = "nu6" /* TODO nu7 */ )]
 use orchard::{
     issuance::{IssueBundle, Signed},
-    orchard_flavor::OrchardZSA,
 };
 
 #[cfg(zcash_unstable = "zfuture")]
