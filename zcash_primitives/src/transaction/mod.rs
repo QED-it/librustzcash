@@ -19,6 +19,7 @@ use std::convert::TryFrom;
 use std::fmt;
 use std::fmt::Debug;
 use std::io::{self, Read, Write};
+use std::marker::PhantomData;
 use std::ops::Deref;
 use zcash_encoding::{CompactSize, Vector};
 
@@ -655,6 +656,8 @@ impl<A: Authorization> TransactionData<A> {
             orchard_bundle: self.orchard_bundle.map(|b| {
                 b.map_authorization(
                     &mut f_orchard,
+                    #[cfg(zcash_unstable = "nu6" /* TODO nu7 */ )]
+                    &mut f_orchard_zsa,
                     |f, _, s| f.map_spend_auth(s),
                     |f, a| f.map_authorization(a),
                 )
