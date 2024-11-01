@@ -417,7 +417,9 @@ impl Parameters for RegtestNetwork {
             NetworkUpgrade::Heartwood => Some(BlockHeight(1)),
             NetworkUpgrade::Canopy => Some(BlockHeight(1)),
             NetworkUpgrade::Nu5 => Some(BlockHeight(1)),
+            #[cfg(zcash_unstable = "nu6")]
             NetworkUpgrade::Nu6 => Some(BlockHeight(1)),
+            #[cfg(zcash_unstable = "nu6" /* TODO nu7 */ )]
             NetworkUpgrade::Nu7 => Some(BlockHeight(1)),
             #[cfg(feature = "zfuture")]
             NetworkUpgrade::ZFuture => None,
