@@ -427,7 +427,7 @@ impl Parameters for RegtestNetwork {
     }
 }
 
-#[derive(PartialEq, Eq, Copy, Clone, Debug)]
+#[derive(PartialEq, Eq, Copy, Clone, Debug, Hash)]
 pub enum Network {
     /// Zcash Mainnet.
     MainNetwork,
