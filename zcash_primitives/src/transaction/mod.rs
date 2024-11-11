@@ -48,6 +48,7 @@ use self::components::tze::{self, TzeIn, TzeOut};
 use crate::transaction::components::issuance;
 #[cfg(zcash_unstable = "nu6" /* TODO nu7 */ )]
 use orchard::issuance::IssueBundle;
+use orchard::swap_bundle::SwapBundle;
 use zcash_protocol::value::ZatBalance;
 
 const OVERWINTER_VERSION_GROUP_ID: u32 = 0x03C48270;
@@ -378,6 +379,8 @@ pub enum OrchardBundle<V: orchard::bundle::Authorization, Z: orchard::bundle::Au
     OrchardVanilla(Box<Bundle<V, Amount, OrchardVanilla>>),
     #[cfg(zcash_unstable = "nu6" /* TODO nu7 */ )]
     OrchardZSA(Box<Bundle<Z, Amount, OrchardZSA>>),
+    #[cfg(zcash_unstable = "swap" )]
+    OrchardSwap(Box<SwapBundle<Amount>>),
     #[doc(hidden)]
     _Phantom(PhantomData<Z>),
 }
@@ -394,6 +397,8 @@ impl<V: orchard::bundle::Authorization, Z: orchard::bundle::Authorization> Orcha
             OrchardBundle::OrchardVanilla(b) => b.value_balance(),
             #[cfg(zcash_unstable = "nu6" /* TODO nu7 */ )]
             OrchardBundle::OrchardZSA(b) => b.value_balance(),
+            #[cfg(zcash_unstable = "swap")]
+            OrchardBundle::OrchardSwap(b) => b.value_balance(),
             _ => unreachable!(),
         }
     }
@@ -427,6 +432,8 @@ impl<V: orchard::bundle::Authorization, Z: orchard::bundle::Authorization> Orcha
                 spend_auth_zsa,
                 step_zsa,
             ))),
+            #[cfg(zcash_unstable = "swap")]
+            OrchardBundle::OrchardSwap(b) => OrchardBundle::OrchardSwap(b), // TODO check that we actually ever map this particular authorization
             _ => unreachable!(),
         }
     }

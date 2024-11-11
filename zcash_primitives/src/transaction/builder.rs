@@ -60,6 +60,12 @@ use orchard::{
     keys::{IssuanceAuthorizingKey, IssuanceValidatingKey},
     orchard_flavor::OrchardZSA,
 };
+#[cfg(zcash_unstable = "swap")]
+use orchard::{
+    orchard_flavor::OrchardZSA,
+    swap_bundle::SwapBundle
+};
+
 #[cfg(zcash_unstable = "nu6" /* TODO nu7 */ )]
 use rand_core::OsRng;
 
@@ -243,6 +249,10 @@ pub enum BuildConfig {
         sapling_anchor: Option<sapling::Anchor>,
         orchard_anchor: Option<orchard::Anchor>,
     },
+    Swap {
+        sapling_anchor: Option<sapling::Anchor>,
+        orchard_anchor: Option<orchard::Anchor>,
+    },
     Coinbase,
 }
 
@@ -253,7 +263,8 @@ impl BuildConfig {
     ) -> Option<(sapling::builder::BundleType, sapling::Anchor)> {
         match self {
             BuildConfig::Standard { sapling_anchor, .. }
-            | BuildConfig::Zsa { sapling_anchor, .. } => sapling_anchor
+            | BuildConfig::Zsa { sapling_anchor, .. }
+            | BuildConfig::Swap { sapling_anchor, .. } => sapling_anchor
                 .as_ref()
                 .map(|a| (sapling::builder::BundleType::DEFAULT, *a)),
             BuildConfig::Coinbase => Some((
@@ -272,6 +283,9 @@ impl BuildConfig {
             BuildConfig::Zsa { orchard_anchor, .. } => orchard_anchor
                 .as_ref()
                 .map(|a| (BundleType::DEFAULT_ZSA, *a)),
+            BuildConfig::Swap { orchard_anchor, .. } => orchard_anchor
+                .as_ref()
+                .map(|a| (BundleType::DEFAULT_SWAP, *a)),
             BuildConfig::Coinbase => Some((BundleType::Coinbase, orchard::Anchor::empty_tree())),
         }
     }
@@ -470,6 +484,7 @@ impl<'a, P: consensus::Parameters> Builder<'a, P, ()> {
         ik: IssuanceAuthorizingKey,
         asset_desc: Vec<u8>,
         issue_info: Option<IssueInfo>,
+        first_issuance: bool,
     ) -> Result<(), Error<FE>> {
         assert!(self.build_config.orchard_bundle_type()? == BundleType::DEFAULT_ZSA);
 
@@ -482,6 +497,7 @@ impl<'a, P: consensus::Parameters> Builder<'a, P, ()> {
                 IssuanceValidatingKey::from(&ik),
                 asset_desc,
                 issue_info,
+                first_issuance,
                 OsRng,
             )
             .map_err(Error::IssuanceBundle)?
@@ -499,12 +515,13 @@ impl<'a, P: consensus::Parameters> Builder<'a, P, ()> {
         asset_desc: &[u8],
         recipient: Address,
         value: orchard::value::NoteValue,
+        first_issuance: bool,
     ) -> Result<(), Error<FE>> {
         assert!(self.build_config.orchard_bundle_type()? == BundleType::DEFAULT_ZSA);
         self.issuance_builder
             .as_mut()
             .ok_or(Error::IssuanceBuilderNotAvailable)?
-            .add_recipient(asset_desc, recipient, value, OsRng)
+            .add_recipient(asset_desc, recipient, value, first_issuance, OsRng)
             .map_err(Error::IssuanceBundle)?;
 
         Ok(())
@@ -869,7 +886,31 @@ impl<'a, P: consensus::Parameters, U: sapling::builder::ProverProgress> Builder<
 
         if let Some(builder) = self.orchard_builder {
             let bundle_type = self.build_config.orchard_bundle_type()?;
-            if bundle_type == BundleType::DEFAULT_ZSA {
+            if bundle_type == BundleType::DEFAULT_SWAP {
+                #[cfg(zcash_unstable = "swap")]
+                {
+                    // TODO default(?) timelimit
+                    let timelimit: u32 = self.target_height.into() + 10;
+
+                    let main_action_group = builder
+                        .build_action_group(&mut rng, timelimit)
+                        .map_err(Error::OrchardBuild)?;
+
+                    // TODO check main group is not empty
+                    // TODO join main_action_group with others if available
+                    let action_groups = vec![main_action_group];
+
+                    let pk = &orchard::circuit::ProvingKey::build::<OrchardZSA>();
+
+                    let authorized_groups = action_groups.map(|group| {
+                        group.create_proof(pk, rng).apply_signatures(rng, group.commitment().into(), &self.orchard_saks)
+                    });
+
+                    // In this case the bundle is, in fact, already authorized
+                    unproven_orchard_bundle = Some(OrchardBundle::OrchardSwap(Box::new(SwapBundle::new(rng, authorized_groups))));
+                    orchard_meta = meta; // TODO
+                }
+            } else if bundle_type == BundleType::DEFAULT_ZSA {
                 #[cfg(zcash_unstable = "nu6" /* TODO nu7 */ )]
                 {
                     let (bundle, meta) = builder
@@ -981,6 +1022,10 @@ impl<'a, P: consensus::Parameters, U: sapling::builder::ProverProgress> Builder<
                 })
                 .unwrap(),
             ))),
+
+            // Swap bundle is already authorized
+            #[cfg(zcash_unstable = "swap")]
+            Some(OrchardBundle::OrchardSwap(b)) => Some(OrchardBundle::OrchardSwap(b)),
 
             None => None,
             Some(_) => unreachable!(),
