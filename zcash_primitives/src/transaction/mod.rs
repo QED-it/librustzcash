@@ -368,6 +368,10 @@ pub enum OrchardBundle<A: orchard::bundle::Authorization> {
     OrchardVanilla(Box<Bundle<A, Amount, OrchardVanilla>>),
     #[cfg(zcash_unstable = "nu6" /* TODO nu7 */ )]
     OrchardZSA(Box<Bundle<A, Amount, OrchardZSA>>),
+    #[cfg(zcash_unstable = "swap" )]
+    OrchardSwap(Box<SwapBundle<Amount>>),
+    #[doc(hidden)]
+    _Phantom(PhantomData<Z>),
 }
 
 /// Errors that can occur during transaction construction.
@@ -382,6 +386,9 @@ impl<A: orchard::bundle::Authorization> OrchardBundle<A> {
             OrchardBundle::OrchardVanilla(b) => b.value_balance(),
             #[cfg(zcash_unstable = "nu6" /* TODO nu7 */ )]
             OrchardBundle::OrchardZSA(b) => b.value_balance(),
+            #[cfg(zcash_unstable = "swap")]
+            OrchardBundle::OrchardSwap(b) => b.value_balance(),
+            _ => unreachable!(),
         }
     }
 
@@ -396,9 +403,14 @@ impl<A: orchard::bundle::Authorization> OrchardBundle<A> {
                 b.map_authorization(context, spend_auth, step),
             )),
             #[cfg(zcash_unstable = "nu6" /* TODO nu7 */ )]
-            OrchardBundle::OrchardZSA(b) => {
-                OrchardBundle::OrchardZSA(Box::new(b.map_authorization(context, spend_auth, step)))
-            }
+            OrchardBundle::OrchardZSA(b) => OrchardBundle::OrchardZSA(Box::new(b.map_authorization(
+                context_zsa,
+                spend_auth_zsa,
+                step_zsa,
+            ))),
+            #[cfg(zcash_unstable = "swap")]
+            OrchardBundle::OrchardSwap(b) => OrchardBundle::OrchardSwap(b), // TODO check that we actually ever map this particular authorization
+            _ => unreachable!(),
         }
     }
 
