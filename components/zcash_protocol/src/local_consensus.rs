@@ -181,10 +181,7 @@ mod tests {
             Some(expected_nu6)
         );
         #[cfg(zcash_unstable = "nu6" /* TODO nu7 */ )]
-        assert_eq!(
-            regtest.activation_height(NetworkUpgrade::Nu7),
-            None
-        );
+        assert_eq!(regtest.activation_height(NetworkUpgrade::Nu7), None);
         #[cfg(zcash_unstable = "zfuture")]
         assert_eq!(
             regtest.activation_height(NetworkUpgrade::ZFuture),
