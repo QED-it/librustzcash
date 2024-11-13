@@ -1648,7 +1648,7 @@ mod tests {
         let seed = "0123456789abcdef0123456789abcdef".as_bytes();
 
         let iak = IssuanceAuthorizingKey::from_zip32_seed(seed, COIN_TYPE, 0).unwrap();
-        let tx_height = TEST_NETWORK.activation_height(NetworkUpgrade::Nu7).unwrap();
+        let tx_height = TEST_NETWORK.activation_height(NetworkUpgrade::Nu6).unwrap();
 
         let build_config = BuildConfig::Zsa {
             sapling_anchor: None,
