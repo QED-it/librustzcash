@@ -878,12 +878,12 @@ mod tests {
         );
         #[cfg(zcash_unstable = "nu6")]
         assert_eq!(
-            BranchId::for_height(&MAIN_NETWORK, BlockHeight(1_687_106)),
+            BranchId::for_height(&MAIN_NETWORK, BlockHeight(2_726_400)),
             BranchId::Nu6,
         );
         #[cfg(zcash_unstable = "nu6" /* TODO nu7 */ )]
         assert_eq!(
-            BranchId::for_height(&MAIN_NETWORK, BlockHeight(1_842_421)),
+            BranchId::for_height(&MAIN_NETWORK, BlockHeight(2_726_401)),
             BranchId::Nu7,
         );
     }
