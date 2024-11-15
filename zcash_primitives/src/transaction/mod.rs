@@ -14,14 +14,11 @@ mod tests;
 use blake2b_simd::Hash as Blake2bHash;
 use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
 use memuse::DynamicUsage;
-use orchard::{
-    builder::Unproven, orchard_flavor::OrchardVanilla, orchard_flavor::OrchardZSA, Bundle,
-};
+use orchard::{builder::Unproven, orchard_flavor::OrchardVanilla, Bundle};
 use std::convert::TryFrom;
 use std::fmt;
 use std::fmt::Debug;
 use std::io::{self, Read, Write};
-use std::marker::PhantomData;
 use std::ops::Deref;
 use zcash_encoding::{CompactSize, Vector};
 
@@ -47,7 +44,7 @@ use self::components::tze::{self, TzeIn, TzeOut};
 #[cfg(zcash_unstable = "nu6" /* TODO nu7 */ )]
 use crate::transaction::components::issuance;
 #[cfg(zcash_unstable = "nu6" /* TODO nu7 */ )]
-use orchard::issuance::IssueBundle;
+use orchard::{issuance::IssueBundle, orchard_flavor::OrchardZSA};
 use zcash_protocol::value::ZatBalance;
 
 const OVERWINTER_VERSION_GROUP_ID: u32 = 0x03C48270;
@@ -302,8 +299,6 @@ pub trait Authorization {
     type SaplingAuth: sapling::bundle::Authorization;
     type OrchardAuth: orchard::bundle::Authorization;
 
-    type OrchardZsaAuth: orchard::bundle::Authorization;
-
     #[cfg(zcash_unstable = "nu6" /* TODO nu7 */ )]
     type IssueAuth: orchard::issuance::IssueAuth;
 
@@ -319,8 +314,6 @@ impl Authorization for Authorized {
     type TransparentAuth = transparent::Authorized;
     type SaplingAuth = sapling::bundle::Authorized;
     type OrchardAuth = orchard::bundle::Authorized;
-
-    type OrchardZsaAuth = orchard::bundle::Authorized;
 
     #[cfg(zcash_unstable = "nu6" /* TODO nu7 */ )]
     type IssueAuth = orchard::issuance::Signed;
@@ -339,11 +332,7 @@ impl Authorization for Unauthorized {
     type TransparentAuth = transparent::builder::Unauthorized;
     type SaplingAuth =
         sapling_builder::InProgress<sapling_builder::Proven, sapling_builder::Unsigned>;
-    type OrchardAuth =
-        orchard::builder::InProgress<Unproven<OrchardVanilla>, orchard::builder::Unauthorized>;
-
-    type OrchardZsaAuth =
-        orchard::builder::InProgress<Unproven<OrchardZSA>, orchard::builder::Unauthorized>;
+    type OrchardAuth = orchard::builder::InProgress<Unproven, orchard::builder::Unauthorized>;
 
     #[cfg(zcash_unstable = "nu6" /* TODO nu7 */ )]
     type IssueAuth = orchard::issuance::Unauthorized;
@@ -374,12 +363,10 @@ impl PartialEq for Transaction {
 }
 
 #[derive(Debug, Clone)]
-pub enum OrchardBundle<V: orchard::bundle::Authorization, Z: orchard::bundle::Authorization> {
-    OrchardVanilla(Box<Bundle<V, Amount, OrchardVanilla>>),
+pub enum OrchardBundle<A: orchard::bundle::Authorization> {
+    OrchardVanilla(Box<Bundle<A, Amount, OrchardVanilla>>),
     #[cfg(zcash_unstable = "nu6" /* TODO nu7 */ )]
-    OrchardZSA(Box<Bundle<Z, Amount, OrchardZSA>>),
-    #[doc(hidden)]
-    _Phantom(PhantomData<Z>),
+    OrchardZSA(Box<Bundle<A, Amount, OrchardZSA>>),
 }
 
 /// Errors that can occur during transaction construction.
@@ -388,46 +375,29 @@ pub enum BundleError {
     WrongBundleType,
 }
 
-impl<V: orchard::bundle::Authorization, Z: orchard::bundle::Authorization> OrchardBundle<V, Z> {
+impl<A: orchard::bundle::Authorization> OrchardBundle<A> {
     pub fn value_balance(&self) -> &Amount {
         match self {
             OrchardBundle::OrchardVanilla(b) => b.value_balance(),
             #[cfg(zcash_unstable = "nu6" /* TODO nu7 */ )]
             OrchardBundle::OrchardZSA(b) => b.value_balance(),
-            _ => unreachable!(),
         }
     }
 
-    pub fn map_authorization<
-        R,
-        #[cfg(zcash_unstable = "nu6" /* TODO nu7 */ )] R2,
-        NV: orchard::bundle::Authorization,
-        NZ: orchard::bundle::Authorization,
-    >(
+    pub fn map_authorization<R, B: orchard::bundle::Authorization>(
         self,
         context: &mut R,
-        #[cfg(zcash_unstable = "nu6" /* TODO nu7 */ )] context_zsa: &mut R2,
-        spend_auth: impl FnMut(&mut R, &V, V::SpendAuth) -> NV::SpendAuth,
-        #[cfg(zcash_unstable = "nu6" /* TODO nu7 */ )] spend_auth_zsa: impl FnMut(
-            &mut R2,
-            &Z,
-            Z::SpendAuth,
-        )
-            -> NZ::SpendAuth,
-        step: impl FnOnce(&mut R, V) -> NV,
-        #[cfg(zcash_unstable = "nu6" /* TODO nu7 */ )] step_zsa: impl FnOnce(&mut R2, Z) -> NZ,
-    ) -> OrchardBundle<NV, NZ> {
+        spend_auth: impl FnMut(&mut R, &A, A::SpendAuth) -> B::SpendAuth,
+        step: impl FnOnce(&mut R, A) -> B,
+    ) -> OrchardBundle<B> {
         match self {
             OrchardBundle::OrchardVanilla(b) => OrchardBundle::OrchardVanilla(Box::new(
                 b.map_authorization(context, spend_auth, step),
             )),
             #[cfg(zcash_unstable = "nu6" /* TODO nu7 */ )]
-            OrchardBundle::OrchardZSA(b) => OrchardBundle::OrchardZSA(Box::new(b.map_authorization(
-                context_zsa,
-                spend_auth_zsa,
-                step_zsa,
-            ))),
-            _ => unreachable!(),
+            OrchardBundle::OrchardZSA(b) => {
+                OrchardBundle::OrchardZSA(Box::new(b.map_authorization(context, spend_auth, step)))
+            }
         }
     }
 }
@@ -442,7 +412,7 @@ pub struct TransactionData<A: Authorization> {
     transparent_bundle: Option<transparent::Bundle<A::TransparentAuth>>,
     sprout_bundle: Option<sprout::Bundle>,
     sapling_bundle: Option<sapling::Bundle<A::SaplingAuth, Amount>>,
-    orchard_bundle: Option<OrchardBundle<A::OrchardAuth, A::OrchardZsaAuth>>,
+    orchard_bundle: Option<OrchardBundle<A::OrchardAuth>>,
     #[cfg(zcash_unstable = "nu6" /* TODO nu7 */ )]
     issue_bundle: Option<IssueBundle<A::IssueAuth>>,
     #[cfg(zcash_unstable = "zfuture")]
@@ -460,7 +430,7 @@ impl<A: Authorization> TransactionData<A> {
         transparent_bundle: Option<transparent::Bundle<A::TransparentAuth>>,
         sprout_bundle: Option<sprout::Bundle>,
         sapling_bundle: Option<sapling::Bundle<A::SaplingAuth, Amount>>,
-        orchard_bundle: Option<OrchardBundle<A::OrchardAuth, A::OrchardZsaAuth>>,
+        orchard_bundle: Option<OrchardBundle<A::OrchardAuth>>,
         #[rustfmt::skip]
         #[cfg(zcash_unstable = "nu6" /* TODO nu7 */ )]
         issue_bundle: Option<IssueBundle<A::IssueAuth>>,
@@ -539,7 +509,7 @@ impl<A: Authorization> TransactionData<A> {
         self.sapling_bundle.as_ref()
     }
 
-    pub fn orchard_bundle(&self) -> Option<&OrchardBundle<A::OrchardAuth, A::OrchardZsaAuth>> {
+    pub fn orchard_bundle(&self) -> Option<&OrchardBundle<A::OrchardAuth>> {
         self.orchard_bundle.as_ref()
     }
 
@@ -618,8 +588,8 @@ impl<A: Authorization> TransactionData<A> {
             Option<sapling::Bundle<A::SaplingAuth, Amount>>,
         ) -> Option<sapling::Bundle<B::SaplingAuth, Amount>>,
         f_orchard: impl FnOnce(
-            Option<OrchardBundle<A::OrchardAuth, A::OrchardZsaAuth>>,
-        ) -> Option<OrchardBundle<B::OrchardAuth, B::OrchardZsaAuth>>,
+            Option<OrchardBundle<A::OrchardAuth>>,
+        ) -> Option<OrchardBundle<B::OrchardAuth>>,
         #[rustfmt::skip]
         #[cfg(zcash_unstable = "nu6" /* TODO nu7 */ )]
         f_issue: impl FnOnce(
@@ -651,11 +621,6 @@ impl<A: Authorization> TransactionData<A> {
         f_transparent: impl transparent::MapAuth<A::TransparentAuth, B::TransparentAuth>,
         mut f_sapling: impl sapling_serialization::MapAuth<A::SaplingAuth, B::SaplingAuth>,
         mut f_orchard: impl orchard_serialization::MapAuth<A::OrchardAuth, B::OrchardAuth>,
-        #[cfg(zcash_unstable = "nu6" /* TODO nu7 */ )]
-        mut f_orchard_zsa: impl orchard_serialization::MapAuth<
-            A::OrchardZsaAuth,
-            B::OrchardZsaAuth,
-        >,
         #[rustfmt::skip]
         #[cfg(zcash_unstable = "nu6" /* TODO nu7 */ )]
         f_issue: impl issuance::MapIssueAuth<A::IssueAuth, B::IssueAuth>,
@@ -682,13 +647,7 @@ impl<A: Authorization> TransactionData<A> {
             orchard_bundle: self.orchard_bundle.map(|b| {
                 b.map_authorization(
                     &mut f_orchard,
-                    #[cfg(zcash_unstable = "nu6" /* TODO nu7 */ )]
-                    &mut f_orchard_zsa,
                     |f, _, s| f.map_spend_auth(s),
-                    #[cfg(zcash_unstable = "nu6" /* TODO nu7 */ )]
-                    |f, _, s| f.map_spend_auth(s),
-                    |f, a| f.map_authorization(a),
-                    #[cfg(zcash_unstable = "nu6" /* TODO nu7 */ )]
                     |f, a| f.map_authorization(a),
                 )
             }),
@@ -1185,7 +1144,7 @@ pub trait TransactionDigest<A: Authorization> {
 
     fn digest_orchard(
         &self,
-        orchard_bundle: Option<&OrchardBundle<A::OrchardAuth, A::OrchardZsaAuth>>,
+        orchard_bundle: Option<&OrchardBundle<A::OrchardAuth>>,
     ) -> Self::OrchardDigest;
 
     #[cfg(zcash_unstable = "nu6" /* TODO nu7 */ )]

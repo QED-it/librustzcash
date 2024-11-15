@@ -57,7 +57,7 @@ pub trait BuildBundle<A: Authorization, D: OrchardDomainCommon> {
         burn: Vec<(AssetBase, NoteValue)>,
         anchor: Anchor,
         authorization: A,
-    ) -> OrchardBundle<A, A>;
+    ) -> OrchardBundle<A>;
 }
 
 impl<A: Authorization> BuildBundle<A, OrchardVanilla> for OrchardVanilla {
@@ -68,7 +68,7 @@ impl<A: Authorization> BuildBundle<A, OrchardVanilla> for OrchardVanilla {
         burn: Vec<(AssetBase, NoteValue)>,
         anchor: Anchor,
         authorization: A,
-    ) -> OrchardBundle<A, A> {
+    ) -> OrchardBundle<A> {
         OrchardBundle::OrchardVanilla(Box::new(Bundle::from_parts(
             actions,
             flags,
@@ -89,7 +89,7 @@ impl<A: Authorization> BuildBundle<A, OrchardZSA> for OrchardZSA {
         burn: Vec<(AssetBase, NoteValue)>,
         anchor: Anchor,
         authorization: A,
-    ) -> OrchardBundle<A, A> {
+    ) -> OrchardBundle<A> {
         OrchardBundle::OrchardZSA(Box::new(orchard::Bundle::from_parts(
             actions,
             flags,
@@ -316,7 +316,7 @@ impl<W: Write> WriteBurn<W> for OrchardZSA {
 
 /// Writes an [`orchard::Bundle`] in the appropriate transaction format.
 pub fn write_orchard_bundle<W: Write>(
-    bundle: Option<&OrchardBundle<Authorized, Authorized>>,
+    bundle: Option<&OrchardBundle<Authorized>>,
     mut writer: W,
 ) -> io::Result<()> {
     if let Some(bundle) = &bundle {
@@ -324,7 +324,6 @@ pub fn write_orchard_bundle<W: Write>(
             OrchardBundle::OrchardVanilla(b) => write_orchard_bundle_contents(b, writer)?,
             #[cfg(zcash_unstable = "nu6" /* TODO nu7 */ )]
             OrchardBundle::OrchardZSA(b) => write_orchard_bundle_contents(b, writer)?,
-            _ => unreachable!(),
         }
     } else {
         CompactSize::write(&mut writer, 0)?;
@@ -421,7 +420,7 @@ pub mod testing {
         pub fn arb_bundle(n_actions: usize)(
             orchard_value_balance in arb_amount(),
             bundle in t_orch::BundleArb::arb_bundle(n_actions)
-        ) -> OrchardBundle<Authorized, Authorized> {
+        ) -> OrchardBundle<Authorized> {
             // overwrite the value balance, as we can't guarantee that the
             // value doesn't exceed the MAX_MONEY bounds.
             OrchardBundle::OrchardVanilla(Box::new(bundle.try_map_value_balance::<_, (), _>(|_| Ok(orchard_value_balance)).unwrap()))
@@ -433,7 +432,7 @@ pub mod testing {
         pub fn arb_zsa_bundle(n_actions: usize)(
             orchard_value_balance in arb_amount(),
             bundle in t_orch::BundleArb::arb_bundle(n_actions)
-        ) -> OrchardBundle<Authorized, Authorized> {
+        ) -> OrchardBundle<Authorized> {
             // overwrite the value balance, as we can't guarantee that the
             // value doesn't exceed the MAX_MONEY bounds.
             let _bundle: Bundle<_, _, OrchardZSA> = bundle.try_map_value_balance::<_, (), _>(|_| Ok(orchard_value_balance)).unwrap();
@@ -445,7 +444,7 @@ pub mod testing {
 
     pub fn arb_bundle_for_version(
         v: TxVersion,
-    ) -> impl Strategy<Value = Option<OrchardBundle<Authorized, Authorized>>> {
+    ) -> impl Strategy<Value = Option<OrchardBundle<Authorized>>> {
         if v.has_orchard_zsa() {
             Strategy::boxed((1usize..100).prop_flat_map(|n| prop::option::of(arb_zsa_bundle(n))))
         } else if v.has_orchard() {

@@ -948,7 +948,7 @@ impl<'a, P: consensus::Parameters, U: sapling::builder::ProverProgress> Builder<
             .transpose()
             .map_err(Error::SaplingBuild)?;
 
-        let orchard_bundle: Option<OrchardBundle<_, _>> = match unauthed_tx.orchard_bundle {
+        let orchard_bundle: Option<OrchardBundle<_>> = match unauthed_tx.orchard_bundle {
             Some(OrchardBundle::OrchardVanilla(b)) => {
                 Some(OrchardBundle::OrchardVanilla(Box::new(
                     b.create_proof(
@@ -967,8 +967,8 @@ impl<'a, P: consensus::Parameters, U: sapling::builder::ProverProgress> Builder<
             }
 
             #[cfg(zcash_unstable = "nu6" /* TODO nu7 */ )]
-            Some(OrchardBundle::OrchardZSA(b)) => Some(OrchardBundle::OrchardZSA(
-                Box::new(b.create_proof(
+            Some(OrchardBundle::OrchardZSA(b)) => Some(OrchardBundle::OrchardZSA(Box::new(
+                b.create_proof(
                     &orchard::circuit::ProvingKey::build::<OrchardZSA>(),
                     &mut rng,
                 )
@@ -983,7 +983,6 @@ impl<'a, P: consensus::Parameters, U: sapling::builder::ProverProgress> Builder<
             ))),
 
             None => None,
-            Some(_) => unreachable!(),
         };
 
         #[cfg(zcash_unstable = "nu6" /* TODO nu7 */ )]
