@@ -59,13 +59,11 @@ fn check_roundtrip(tx: Transaction) -> Result<(), TestCaseError> {
             OrchardVanilla(b) => *b.value_balance(),
             #[cfg(zcash_unstable = "nu6" /* TODO nu7 */ )]
             OrchardZSA(b) => *b.value_balance(),
-            _ => unreachable!(),
         }),
         txo.orchard_bundle.as_ref().map(|v| match v {
             OrchardVanilla(b) => *b.value_balance(),
             #[cfg(zcash_unstable = "nu6" /* TODO nu7 */ )]
             OrchardZSA(b) => *b.value_balance(),
-            _ => unreachable!(),
         })
     );
     #[cfg(zcash_unstable = "nu6" /* TODO nu7 */ )]
@@ -227,8 +225,6 @@ impl Authorization for TestUnauthorized {
     type TransparentAuth = TestTransparentAuth;
     type SaplingAuth = sapling::bundle::Authorized;
     type OrchardAuth = orchard::bundle::Authorized;
-
-    type OrchardZsaAuth = orchard::bundle::Authorized;
 
     #[cfg(zcash_unstable = "nu6" /* TODO nu7 */ )]
     type IssueAuth = orchard::issuance::Signed;
