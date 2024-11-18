@@ -463,7 +463,7 @@ impl<A: Authorization> TransactionData<A> {
         transparent_bundle: Option<transparent::Bundle<A::TransparentAuth>>,
         sprout_bundle: Option<sprout::Bundle>,
         sapling_bundle: Option<sapling::Bundle<A::SaplingAuth, Amount>>,
-        orchard_bundle: Option<OrchardBundle<A>>,
+        orchard_bundle: Option<OrchardBundle<A::OrchardAuth>>,
         tze_bundle: Option<tze::Bundle<A::TzeAuth>>,
     ) -> Self {
         TransactionData {
