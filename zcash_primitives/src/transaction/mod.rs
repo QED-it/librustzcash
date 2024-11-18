@@ -400,6 +400,14 @@ impl<A: orchard::bundle::Authorization> OrchardBundle<A> {
             }
         }
     }
+
+    pub fn vanilla_bundle(&self) -> &Bundle<A, Amount, OrchardVanilla> {
+        match self {
+            OrchardBundle::OrchardVanilla(b) => b,
+            #[allow(unreachable_patterns)]
+            _ => panic!("Wrong bundle type"),
+        }
+    }
 }
 
 /// The information contained in a Zcash transaction.
