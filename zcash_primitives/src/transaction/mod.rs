@@ -870,7 +870,7 @@ impl Transaction {
             Self::read_v5_header_fragment(&mut reader)?;
         let transparent_bundle = Self::read_transparent(&mut reader)?;
         let sapling_bundle = sapling_serialization::read_v5_bundle(&mut reader)?;
-        let orchard_bundle = orchard_serialization::read_orchard_bundle(&mut reader)?;
+        let orchard_bundle = orchard_serialization::read_v5_orchard_bundle(&mut reader)?;
 
         #[cfg(zcash_unstable = "zfuture")]
         let tze_bundle = if version.has_tze() {
@@ -926,7 +926,7 @@ impl Transaction {
             Self::read_v5_header_fragment(&mut reader)?;
         let transparent_bundle = Self::read_transparent(&mut reader)?;
         let sapling_bundle = sapling_serialization::read_v5_bundle(&mut reader)?;
-        let orchard_zsa_bundle = orchard_serialization::read_orchard_bundle(&mut reader)?;
+        let orchard_zsa_bundle = orchard_serialization::read_v6_orchard_bundle(&mut reader)?;
         let issue_bundle = issuance::read_v6_bundle(&mut reader)?;
 
         #[cfg(zcash_unstable = "zfuture")]
@@ -1045,7 +1045,7 @@ impl Transaction {
         self.write_header(&mut writer)?;
         self.write_transparent(&mut writer)?;
         self.write_sapling(&mut writer)?;
-        orchard_serialization::write_orchard_bundle(&mut writer, self.orchard_bundle.as_ref(), 0)?; // TODO timelimit
+        orchard_serialization::write_v5_orchard_bundle(&mut writer, self.orchard_bundle.as_ref())?;
         #[cfg(zcash_unstable = "zfuture")]
         self.write_tze(&mut writer)?;
         Ok(())
@@ -1082,7 +1082,10 @@ impl Transaction {
         self.write_header(&mut writer)?;
         self.write_transparent(&mut writer)?;
         self.write_sapling(&mut writer)?;
-        orchard_serialization::write_orchard_bundle(&mut writer, self.orchard_zsa_bundle.as_ref(), 0)?; // TODO timelimit
+        orchard_serialization::write_v6_orchard_bundle(
+            &mut writer,
+            self.orchard_zsa_bundle.as_ref(),
+        )?;
         issuance::write_v6_bundle(self.issue_bundle.as_ref(), &mut writer)?;
         #[cfg(zcash_unstable = "zfuture")]
         self.write_tze(&mut writer)?;
