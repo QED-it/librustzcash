@@ -168,13 +168,13 @@ jobs:
       - name: Verify working directory is clean (excluding lockfile)
         run: git diff --exit-code ':!Cargo.lock'
 
-#  build-nodefault:
-#    name: Build target ${{ matrix.target }}
-#    runs-on: ubuntu-latest
-#    strategy:
-#      matrix:
-#        target:
-#          - wasm32-wasi
+  build-nodefault:
+    name: Build target ${{ matrix.target }}
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        target:
+          - wasm32-wasi
 
     steps:
       - uses: actions/checkout@v4
