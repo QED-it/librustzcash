@@ -11,12 +11,12 @@ use nonempty::NonEmpty;
 use orchard::{
     bundle::{Authorization, Authorized, Flags},
     note::{AssetBase, ExtractedNoteCommitment, Nullifier, TransmittedNoteCiphertext},
-    note_encryption::OrchardDomainCommon,
     orchard_flavor::{OrchardVanilla, OrchardZSA},
     primitives::redpallas::{self, SigType, Signature, SpendAuth, VerificationKey},
     value::{NoteValue, ValueCommitment},
     Action, Anchor, Bundle,
 };
+use orchard::domain::OrchardDomainCommon;
 use zcash_encoding::{Array, CompactSize, Vector};
 use zcash_note_encryption::note_bytes::NoteBytes;
 use zcash_protocol::value::ZatBalance;
