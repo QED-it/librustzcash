@@ -962,7 +962,7 @@ impl<'a, P: consensus::Parameters, U: sapling::builder::ProverProgress> Builder<
                             &self.orchard_saks,
                         )
                     })
-                    .unwrap(),
+                    .map_err(Error::OrchardBuild)?,
                 )))
             }
 
@@ -979,7 +979,7 @@ impl<'a, P: consensus::Parameters, U: sapling::builder::ProverProgress> Builder<
                         &self.orchard_saks,
                     )
                 })
-                .unwrap(),
+                .map_err(Error::OrchardBuild)?,
             ))),
 
             None => None,
