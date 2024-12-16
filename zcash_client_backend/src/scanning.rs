@@ -31,7 +31,7 @@ use crate::{
 
 #[cfg(feature = "orchard")]
 use orchard::{
-    note_encryption::{CompactAction, OrchardDomain},
+    domain::{CompactAction, OrchardDomain},
     orchard_flavor::OrchardVanilla,
     tree::MerkleHashOrchard,
 };
@@ -534,17 +534,13 @@ type TaggedSaplingBatchRunner<IvkTag, Tasks> = BatchRunner<
 >;
 
 #[cfg(feature = "orchard")]
-type TaggedOrchardBatch<IvkTag> = Batch<
-    IvkTag,
-    OrchardDomain<OrchardVanilla>,
-    orchard::note_encryption::CompactAction<OrchardVanilla>,
-    CompactDecryptor,
->;
+type TaggedOrchardBatch<IvkTag> =
+    Batch<IvkTag, OrchardDomain<OrchardVanilla>, CompactAction<OrchardVanilla>, CompactDecryptor>;
 #[cfg(feature = "orchard")]
 type TaggedOrchardBatchRunner<IvkTag, Tasks> = BatchRunner<
     IvkTag,
     OrchardDomain<OrchardVanilla>,
-    orchard::note_encryption::CompactAction<OrchardVanilla>,
+    CompactAction<OrchardVanilla>,
     CompactDecryptor,
     Tasks,
 >;
