@@ -534,12 +534,8 @@ type TaggedSaplingBatchRunner<IvkTag, Tasks> = BatchRunner<
 >;
 
 #[cfg(feature = "orchard")]
-type TaggedOrchardBatch<IvkTag> = Batch<
-    IvkTag,
-    OrchardDomain<OrchardVanilla>,
-    CompactAction<OrchardVanilla>,
-    CompactDecryptor,
->;
+type TaggedOrchardBatch<IvkTag> =
+    Batch<IvkTag, OrchardDomain<OrchardVanilla>, CompactAction<OrchardVanilla>, CompactDecryptor>;
 #[cfg(feature = "orchard")]
 type TaggedOrchardBatchRunner<IvkTag, Tasks> = BatchRunner<
     IvkTag,
