@@ -470,6 +470,7 @@ impl<'a, P: consensus::Parameters> Builder<'a, P, ()> {
         ik: IssuanceAuthorizingKey,
         asset_desc: Vec<u8>,
         issue_info: Option<IssueInfo>,
+        first_issuance: bool,
     ) -> Result<(), Error<FE>> {
         assert!(self.build_config.orchard_bundle_type()? == BundleType::DEFAULT_ZSA);
 
@@ -482,6 +483,7 @@ impl<'a, P: consensus::Parameters> Builder<'a, P, ()> {
                 IssuanceValidatingKey::from(&ik),
                 asset_desc,
                 issue_info,
+                first_issuance,
                 OsRng,
             )
             .map_err(Error::IssuanceBundle)?
@@ -499,12 +501,13 @@ impl<'a, P: consensus::Parameters> Builder<'a, P, ()> {
         asset_desc: &[u8],
         recipient: Address,
         value: orchard::value::NoteValue,
+        first_issuance: bool,
     ) -> Result<(), Error<FE>> {
         assert!(self.build_config.orchard_bundle_type()? == BundleType::DEFAULT_ZSA);
         self.issuance_builder
             .as_mut()
             .ok_or(Error::IssuanceBuilderNotAvailable)?
-            .add_recipient(asset_desc, recipient, value, OsRng)
+            .add_recipient(asset_desc, recipient, value, first_issuance, OsRng)
             .map_err(Error::IssuanceBundle)?;
 
         Ok(())
