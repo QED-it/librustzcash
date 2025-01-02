@@ -890,11 +890,12 @@ impl<'a, P: consensus::Parameters, U: sapling::builder::ProverProgress> Builder<
                 #[cfg(zcash_unstable = "swap")]
                 {
                     // TODO default(?) timelimit
-                    let timelimit: u32 = self.target_height.into() + 10;
+                    let timelimit: u32 = (self.target_height + 10).into();
 
-                    let main_action_group = builder
+                    let (main_action_group, meta) = builder
                         .build_action_group(&mut rng, timelimit)
-                        .map_err(Error::OrchardBuild)?;
+                        .map_err(Error::OrchardBuild)?
+                        .unwrap();
 
                     // TODO check main group is not empty
                     // TODO join main_action_group with others if available
@@ -902,12 +903,13 @@ impl<'a, P: consensus::Parameters, U: sapling::builder::ProverProgress> Builder<
 
                     let pk = &orchard::circuit::ProvingKey::build::<OrchardZSA>();
 
-                    let authorized_groups = action_groups.map(|group| {
-                        group.create_proof(pk, rng).apply_signatures(rng, group.commitment().into(), &self.orchard_saks)
-                    });
+                    let authorized_groups = action_groups.into_iter().map(|group| {
+                        let commitment = group.commitment();
+                        group.create_proof(pk, &mut rng)?.apply_signatures(&mut rng, commitment.into(), &self.orchard_saks)
+                    }).collect::<Result<Vec<_>, _>>().map_err(Error::OrchardBuild)?;
 
                     // In this case the bundle is, in fact, already authorized
-                    unproven_orchard_bundle = Some(OrchardBundle::OrchardSwap(Box::new(SwapBundle::new(rng, authorized_groups))));
+                    unproven_orchard_bundle = Some(OrchardBundle::OrchardSwap(Box::new(SwapBundle::new(&mut rng, authorized_groups))));
                     orchard_meta = meta; // TODO
                 }
             } else if bundle_type == BundleType::DEFAULT_ZSA {

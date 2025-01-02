@@ -131,6 +131,18 @@ impl ZatBalance {
     }
 }
 
+impl Sum for ZatBalance {
+    fn sum<I>(iter: I) -> Self
+    where
+        I: Iterator<Item = Self>,
+    {
+        iter.fold(
+            ZatBalance (0),
+            |acc, item| ZatBalance(acc.0 + item.0),
+        )
+    }
+}
+
 impl TryFrom<i64> for ZatBalance {
     type Error = BalanceError;
 

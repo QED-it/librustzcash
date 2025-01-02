@@ -144,6 +144,15 @@ proptest! {
     }
 }
 
+#[cfg(zcash_unstable = "swap" /* TODO nu7 */ )]
+proptest! {
+    #![proptest_config(ProptestConfig::with_cases(10))]
+    #[test]
+    fn tx_serialization_roundtrip_swap(tx in arb_tx(BranchId::Swap)) {
+        check_roundtrip(tx)?;
+    }
+}
+
 #[cfg(zcash_unstable = "zfuture")]
 proptest! {
     #[test]
