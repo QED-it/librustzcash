@@ -358,6 +358,8 @@ impl Parameters for MainNetwork {
             NetworkUpgrade::Nu6 => Some(BlockHeight(2_726_400)),
             #[cfg(zcash_unstable = "nu6" /* TODO nu7 */ )]
             NetworkUpgrade::Nu7 => Some(BlockHeight(2_726_401)),
+            #[cfg(zcash_unstable = "swap")]
+            NetworkUpgrade::Swap => Some(BlockHeight(2_726_402)),
             #[cfg(zcash_unstable = "zfuture")]
             NetworkUpgrade::ZFuture => None,
         }
@@ -421,6 +423,8 @@ impl Parameters for RegtestNetwork {
             NetworkUpgrade::Nu6 => Some(BlockHeight(1)),
             #[cfg(zcash_unstable = "nu6" /* TODO nu7 */ )]
             NetworkUpgrade::Nu7 => Some(BlockHeight(1)),
+            #[cfg(zcash_unstable = "swap")]
+            NetworkUpgrade::Swap => Some(BlockHeight(1)),
             #[cfg(zcash_unstable = "zfuture")]
             NetworkUpgrade::ZFuture => None,
         }
@@ -497,6 +501,11 @@ pub enum NetworkUpgrade {
     /// [Nu7]: https://z.cash/upgrade/nu7/
     #[cfg(zcash_unstable = "nu6" /* TODO nu7 */ )]
     Nu7,
+    /// The [Swap] network upgrade.
+    ///
+    /// [Swap]:
+    #[cfg(zcash_unstable = "swap")]
+    Swap,
     /// The ZFUTURE network upgrade.
     ///
     /// This upgrade is expected never to activate on mainnet;
@@ -521,6 +530,8 @@ impl fmt::Display for NetworkUpgrade {
             NetworkUpgrade::Nu6 => write!(f, "Nu6"),
             #[cfg(zcash_unstable = "nu6" /* TODO nu7 */ )]
             NetworkUpgrade::Nu7 => write!(f, "Nu7"),
+            #[cfg(zcash_unstable = "swap")]
+            NetworkUpgrade::Swap => write!(f, "Swap"),
             #[cfg(zcash_unstable = "zfuture")]
             NetworkUpgrade::ZFuture => write!(f, "ZFUTURE"),
         }
@@ -540,6 +551,8 @@ impl NetworkUpgrade {
             NetworkUpgrade::Nu6 => BranchId::Nu6,
             #[cfg(zcash_unstable = "nu6" /* TODO nu7 */ )]
             NetworkUpgrade::Nu7 => BranchId::Nu7,
+            #[cfg(zcash_unstable = "swap")]
+            NetworkUpgrade::Swap => BranchId::Swap,
             #[cfg(zcash_unstable = "zfuture")]
             NetworkUpgrade::ZFuture => BranchId::ZFuture,
         }
@@ -561,6 +574,8 @@ const UPGRADES_IN_ORDER: &[NetworkUpgrade] = &[
     NetworkUpgrade::Nu6,
     #[cfg(zcash_unstable = "nu6" /* TODO nu7 */ )]
     NetworkUpgrade::Nu7,
+    #[cfg(zcash_unstable = "swap")]
+    NetworkUpgrade::Swap,
 ];
 
 /// The "grace period" defined in [ZIP 212].
@@ -603,6 +618,9 @@ pub enum BranchId {
     /// The consensus rules deployed by [`NetworkUpgrade::Nu7`].
     #[cfg(zcash_unstable = "nu6" /* TODO nu7 */ )]
     Nu7,
+    /// The consensus rules deployed by [`NetworkUpgrade::Swap`].
+    #[cfg(zcash_unstable = "swap")]
+    Swap,
     /// Candidates for future consensus rules; this branch will never
     /// activate on mainnet.
     #[cfg(zcash_unstable = "zfuture")]
@@ -627,6 +645,8 @@ impl TryFrom<u32> for BranchId {
             0xc8e7_1055 => Ok(BranchId::Nu6),
             #[cfg(zcash_unstable = "nu6" /* TODO nu7 */ )]
             0x7719_0ad8 => Ok(BranchId::Nu7),
+            #[cfg(zcash_unstable = "swap")]
+            0x8888_8888 => Ok(BranchId::Swap),
             #[cfg(zcash_unstable = "zfuture")]
             0xffff_ffff => Ok(BranchId::ZFuture),
             _ => Err(Box::leak(
@@ -650,6 +670,8 @@ impl From<BranchId> for u32 {
             BranchId::Nu6 => 0xc8e7_1055,
             #[cfg(zcash_unstable = "nu6" /* TODO nu7 */ )]
             BranchId::Nu7 => 0x7719_0ad8,
+            #[cfg(zcash_unstable = "swap")]
+            BranchId::Swap => 0x8888_8888,
             #[cfg(zcash_unstable = "zfuture")]
             BranchId::ZFuture => 0xffff_ffff,
         }
@@ -726,6 +748,10 @@ impl BranchId {
             BranchId::Nu7 => params
                 .activation_height(NetworkUpgrade::Nu7)
                 .map(|lower| (lower, upper_bound(lower, params))),
+            #[cfg(zcash_unstable = "swap")]
+            BranchId::Swap => params
+                .activation_height(NetworkUpgrade::Swap)
+                .map(|lower| (lower, upper_bound(lower, params))),
             #[cfg(zcash_unstable = "zfuture")]
             BranchId::ZFuture => params
                 .activation_height(NetworkUpgrade::ZFuture)
@@ -752,6 +778,13 @@ fn upper_bound<P: Parameters>(target_height: BlockHeight, params: &P) -> Option<
     {
         upper = params
             .activation_height(NetworkUpgrade::Nu7)
+            .filter(|&nu_height| nu_height > target_height)
+            .or(upper);
+    }
+    #[cfg(zcash_unstable = "swap")]
+    {
+        upper = params
+            .activation_height(NetworkUpgrade::Swap)
             .filter(|&nu_height| nu_height > target_height)
             .or(upper);
     }
@@ -785,6 +818,8 @@ pub mod testing {
             BranchId::Nu6,
             #[cfg(zcash_unstable = "nu6" /* TODO nu7 */ )]
             BranchId::Nu7,
+            #[cfg(zcash_unstable = "swap")]
+            BranchId::Swap,
             #[cfg(zcash_unstable = "zfuture")]
             BranchId::ZFuture,
         ])
@@ -887,6 +922,11 @@ mod tests {
         assert_eq!(
             BranchId::for_height(&MAIN_NETWORK, BlockHeight(2_726_401)),
             BranchId::Nu7,
+        );
+        #[cfg(zcash_unstable = "swap")]
+        assert_eq!(
+            BranchId::for_height(&MAIN_NETWORK, BlockHeight(1_842_422)),
+            BranchId::Swap,
         );
     }
 }
