@@ -1461,7 +1461,7 @@ mod tests {
         let asset_desc: Vec<u8> = "asset_desc".into();
 
         builder
-            .init_issuance_bundle::<FeeError>(iak, asset_desc.clone(), None)
+            .init_issuance_bundle::<FeeError>(iak, asset_desc.clone(), None, true)
             .unwrap();
 
         let tx = builder.mock_build_no_fee(OsRng).unwrap().into_transaction();
@@ -1494,6 +1494,7 @@ mod tests {
                     recipient: address,
                     value: NoteValue::from_raw(42),
                 }),
+                true,
             )
             .unwrap();
 
@@ -1532,10 +1533,11 @@ mod tests {
                     recipient: address,
                     value: NoteValue::from_raw(42),
                 }),
+                true,
             )
             .unwrap();
         builder
-            .add_recipient::<FeeError>(&asset_desc, address, NoteValue::from_raw(21))
+            .add_recipient::<FeeError>(&asset_desc, address, NoteValue::from_raw(21), false)
             .unwrap();
 
         let binding = builder.mock_build_no_fee(OsRng).unwrap().into_transaction();
@@ -1578,10 +1580,11 @@ mod tests {
                     recipient: address,
                     value: NoteValue::from_raw(42),
                 }),
+                true,
             )
             .unwrap();
         builder
-            .add_recipient::<FeeError>(&asset_desc_2, address, NoteValue::from_raw(21))
+            .add_recipient::<FeeError>(&asset_desc_2, address, NoteValue::from_raw(21), true)
             .unwrap();
 
         let binding = builder.mock_build_no_fee(OsRng).unwrap().into_transaction();
