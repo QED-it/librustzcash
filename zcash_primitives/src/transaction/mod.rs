@@ -46,6 +46,8 @@ use self::components::tze::{self, TzeIn, TzeOut};
 use crate::transaction::components::issuance;
 #[cfg(zcash_unstable = "nu6" /* TODO nu7 */ )]
 use orchard::{issuance::IssueBundle, orchard_flavor::OrchardZSA};
+#[cfg(zcash_unstable = "swap")]
+use orchard::swap_bundle::SwapBundle;
 use zcash_protocol::value::ZatBalance;
 
 const OVERWINTER_VERSION_GROUP_ID: u32 = 0x03C48270;
