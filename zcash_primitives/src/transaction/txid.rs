@@ -354,6 +354,8 @@ impl<A: Authorization> TransactionDigest<A> for TxIdDigester {
                 OrchardVanilla(v) => v.commitment().0,
                 #[cfg(zcash_unstable = "nu6" /* TODO nu7 */ )]
                 OrchardZSA(z) => z.commitment().0,
+                #[cfg(zcash_unstable = "nu6" /* TODO swap */ )]
+                OrchardSwap(s) => s.commitment().0,
             }
         })
     }
