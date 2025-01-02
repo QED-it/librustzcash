@@ -144,7 +144,7 @@ proptest! {
     }
 }
 
-#[cfg(zcash_unstable = "swap" /* TODO nu7 */ )]
+#[cfg(zcash_unstable = "nu6" /* TODO swap */ )]
 proptest! {
     #![proptest_config(ProptestConfig::with_cases(10))]
     #[test]

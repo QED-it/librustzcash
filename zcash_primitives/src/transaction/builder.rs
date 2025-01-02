@@ -61,9 +61,8 @@ use orchard::{
     note::Nullifier,
     orchard_flavor::OrchardZSA,
 };
-#[cfg(zcash_unstable = "swap")]
+#[cfg(zcash_unstable = "nu6" /* TODO swap */ )]
 use orchard::{
-    orchard_flavor::OrchardZSA,
     swap_bundle::SwapBundle
 };
 
@@ -890,7 +889,7 @@ impl<'a, P: consensus::Parameters, U: sapling::builder::ProverProgress> Builder<
         if let Some(builder) = self.orchard_builder {
             let bundle_type = self.build_config.orchard_bundle_type()?;
             if bundle_type == BundleType::DEFAULT_SWAP {
-                #[cfg(zcash_unstable = "swap")]
+                #[cfg(zcash_unstable = "nu6" /* TODO swap */ )]
                 {
                     // TODO default(?) timelimit
                     let timelimit: u32 = (self.target_height + 10).into();
@@ -1023,7 +1022,7 @@ impl<'a, P: consensus::Parameters, U: sapling::builder::ProverProgress> Builder<
             ))),
 
             // Swap bundle is already authorized
-            #[cfg(zcash_unstable = "swap")]
+            #[cfg(zcash_unstable = "nu6" /* TODO swap */ )]
             Some(OrchardBundle::OrchardSwap(b)) => Some(OrchardBundle::OrchardSwap(b)),
 
             None => None,

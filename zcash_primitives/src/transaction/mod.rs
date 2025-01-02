@@ -46,7 +46,7 @@ use self::components::tze::{self, TzeIn, TzeOut};
 use crate::transaction::components::issuance;
 #[cfg(zcash_unstable = "nu6" /* TODO nu7 */ )]
 use orchard::{issuance::IssueBundle, orchard_flavor::OrchardZSA};
-#[cfg(zcash_unstable = "swap")]
+#[cfg(zcash_unstable = "nu6" /* TODO swap */ )]
 use orchard::swap_bundle::SwapBundle;
 use zcash_protocol::value::ZatBalance;
 
@@ -290,7 +290,7 @@ impl TxVersion {
             BranchId::Nu6 => TxVersion::Zip225,
             #[cfg(zcash_unstable = "nu6" /* TODO nu7 */ )]
             BranchId::Nu7 => TxVersion::Zsa,
-            #[cfg(zcash_unstable = "swap")]
+            #[cfg(zcash_unstable = "nu6" /* TODO swap */ )]
             BranchId::Swap => TxVersion::Zsa,
             #[cfg(zcash_unstable = "zfuture")]
             BranchId::ZFuture => TxVersion::ZFuture,
@@ -372,7 +372,7 @@ pub enum OrchardBundle<A: orchard::bundle::Authorization> {
     OrchardVanilla(Box<Bundle<A, Amount, OrchardVanilla>>),
     #[cfg(zcash_unstable = "nu6" /* TODO nu7 */ )]
     OrchardZSA(Box<Bundle<A, Amount, OrchardZSA>>),
-    #[cfg(zcash_unstable = "swap" )]
+    #[cfg(zcash_unstable = "nu6" /* TODO swap */ )]
     OrchardSwap(Box<SwapBundle<Amount>>),
     #[doc(hidden)]
     _Phantom(PhantomData<Z>),
@@ -390,7 +390,7 @@ impl<A: orchard::bundle::Authorization> OrchardBundle<A> {
             OrchardBundle::OrchardVanilla(b) => b.value_balance(),
             #[cfg(zcash_unstable = "nu6" /* TODO nu7 */ )]
             OrchardBundle::OrchardZSA(b) => b.value_balance(),
-            #[cfg(zcash_unstable = "swap")]
+            #[cfg(zcash_unstable = "nu6" /* TODO swap */ )]
             OrchardBundle::OrchardSwap(b) => b.value_balance(),
             _ => unreachable!(),
         }
@@ -412,7 +412,7 @@ impl<A: orchard::bundle::Authorization> OrchardBundle<A> {
                 spend_auth_zsa,
                 step_zsa,
             ))),
-            #[cfg(zcash_unstable = "swap")]
+            #[cfg(zcash_unstable = "nu6" /* TODO swap */ )]
             OrchardBundle::OrchardSwap(b) => OrchardBundle::OrchardSwap(b), // TODO check that we actually ever map this particular authorization
             _ => unreachable!(),
         }
@@ -1230,7 +1230,7 @@ pub mod testing {
             BranchId::Nu6 => Just(TxVersion::Zip225).boxed(),
             #[cfg(zcash_unstable = "nu6" /* TODO nu7 */ )]
             BranchId::Nu7 => Just(TxVersion::Zsa).boxed(),
-            #[cfg(zcash_unstable = "swap")]
+            #[cfg(zcash_unstable = "nu6" /* TODO swap */ )]
             BranchId::Swap => Just(TxVersion::Zsa).boxed(),
             #[cfg(zcash_unstable = "zfuture")]
             BranchId::ZFuture => Just(TxVersion::ZFuture).boxed(),
