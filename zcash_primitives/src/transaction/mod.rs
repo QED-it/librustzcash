@@ -290,6 +290,8 @@ impl TxVersion {
             BranchId::Nu6 => TxVersion::Zip225,
             #[cfg(zcash_unstable = "nu6" /* TODO nu7 */ )]
             BranchId::Nu7 => TxVersion::Zsa,
+            #[cfg(zcash_unstable = "swap")]
+            BranchId::Swap => TxVersion::Zsa,
             #[cfg(zcash_unstable = "zfuture")]
             BranchId::ZFuture => TxVersion::ZFuture,
         }
@@ -1228,6 +1230,8 @@ pub mod testing {
             BranchId::Nu6 => Just(TxVersion::Zip225).boxed(),
             #[cfg(zcash_unstable = "nu6" /* TODO nu7 */ )]
             BranchId::Nu7 => Just(TxVersion::Zsa).boxed(),
+            #[cfg(zcash_unstable = "swap")]
+            BranchId::Swap => Just(TxVersion::Zsa).boxed(),
             #[cfg(zcash_unstable = "zfuture")]
             BranchId::ZFuture => Just(TxVersion::ZFuture).boxed(),
         }
