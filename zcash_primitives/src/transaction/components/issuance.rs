@@ -32,7 +32,8 @@ pub fn read_v6_bundle<R: Read>(mut reader: R) -> io::Result<Option<IssueBundle<S
 }
 
 fn read_reference_notes<R: Read>(mut _reader: R) -> io::Result<HashMap<AssetBase, Note>> {
-    todo!()
+    // TODO
+    Ok(HashMap::new())
 }
 
 fn read_ik<R: Read>(mut reader: R) -> io::Result<IssuanceValidatingKey> {
@@ -136,7 +137,8 @@ pub fn write_v6_bundle<W: Write>(
 }
 
 fn write_reference_notes<W: Write>(mut _writer: &mut W, _notes: &HashMap<AssetBase, Note>) -> io::Result<()> {
-    todo!()
+    // TODO
+    Ok(())
 }
 
 fn write_action<W: Write>(mut writer: &mut W, action: &IssueAction) -> io::Result<()> {

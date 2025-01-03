@@ -1209,7 +1209,7 @@ checksum = "c08d65885ee38876c4f86fa503fb49d7b507c2b62552df7c70b2fce627e06381"
 [[package]]
 name = "orchard"
 version = "0.8.0"
-source = "git+https://github.com/QED-it/orchard?branch=zsa_swap_spendauth_clone#bd6dc72e82ddade953e59490098774d284296c7e"
+source = "git+https://github.com/QED-it/orchard?branch=zsa_swap_spendauth_clone#2e531248e8af0819004e270664f0ca39dcb96ea9"
 dependencies = [
  "aes",
  "bitvec",

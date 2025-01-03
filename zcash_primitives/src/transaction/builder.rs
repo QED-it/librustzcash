@@ -62,9 +62,10 @@ use orchard::{
 };
 #[cfg(zcash_unstable = "nu6" /* TODO swap */ )]
 use orchard::{
-    swap_bundle::SwapBundle
+    swap_bundle::{SwapBundle, ActionGroupAuthorized, ActionGroup},
 };
-
+#[cfg(zcash_unstable = "nu6" /* TODO swap */ )]
+use zcash_protocol::value::ZatBalance;
 #[cfg(zcash_unstable = "nu6" /* TODO nu7 */ )]
 use rand_core::OsRng;
 
@@ -340,6 +341,8 @@ pub struct Builder<'a, P, U: sapling::builder::ProverProgress> {
     transparent_builder: TransparentBuilder,
     sapling_builder: Option<sapling::builder::Builder>,
     orchard_builder: Option<orchard::builder::Builder>,
+    #[cfg(zcash_unstable = "nu6" /* TODO swap */ )]
+    action_groups: Vec<ActionGroup<ActionGroupAuthorized, ZatBalance>>,
     #[cfg(zcash_unstable = "nu6" /* TODO nu7 */ )]
     issuance_builder: Option<IssueBundle<issuance::Unauthorized>>,
     // TODO: In the future, instead of taking the spending keys as arguments when calling
@@ -433,9 +436,11 @@ impl<'a, P: consensus::Parameters> Builder<'a, P, ()> {
             transparent_builder: TransparentBuilder::empty(),
             sapling_builder,
             orchard_builder,
+            #[cfg(zcash_unstable = "nu6" /* TODO swap */ )]
+            action_groups: Vec::new(),
             #[cfg(zcash_unstable = "nu6" /* TODO nu7 */ )]
             issuance_builder: None,
-            sapling_asks: vec![],
+            sapling_asks: Vec::new(),
             orchard_saks: Vec::new(),
             #[cfg(zcash_unstable = "nu6" /* TODO nu7 */ )]
             issuance_isk: None,
@@ -465,6 +470,8 @@ impl<'a, P: consensus::Parameters> Builder<'a, P, ()> {
             transparent_builder: self.transparent_builder,
             sapling_builder: self.sapling_builder,
             orchard_builder: self.orchard_builder,
+            #[cfg(zcash_unstable = "nu6" /* TODO swap */ )]
+            action_groups: self.action_groups,
             #[cfg(zcash_unstable = "nu6" /* TODO nu7 */ )]
             issuance_builder: self.issuance_builder,
             sapling_asks: self.sapling_asks,
@@ -549,6 +556,14 @@ impl<'a, P: consensus::Parameters> Builder<'a, P, ()> {
             .add_burn(asset, orchard::value::NoteValue::from_raw(value))
             .map_err(Error::OrchardBuild)?;
 
+        Ok(())
+    }
+
+    /// Adds an Action Group to the transaction.
+    #[cfg(zcash_unstable = "nu6" /* TODO swap */ )]
+    pub fn add_action_group<FE>(&mut self, action_group: ActionGroup<ActionGroupAuthorized, ZatBalance>) -> Result<(), Error<FE>> {
+        assert!(self.build_config.orchard_bundle_type()? == BundleType::DEFAULT_SWAP);
+        self.action_groups.push(action_group);
         Ok(())
     }
 }
@@ -818,8 +833,9 @@ impl<'a, P: consensus::Parameters, U: sapling::builder::ProverProgress> Builder<
         self.build_internal(rng, spend_prover, output_prover, fee)
     }
 
+
     fn build_internal<R: RngCore + CryptoRng, SP: SpendProver, OP: OutputProver, FE>(
-        self,
+        #[allow(unused_mut)] mut self,
         mut rng: R,
         spend_prover: &SP,
         output_prover: &OP,
@@ -888,28 +904,23 @@ impl<'a, P: consensus::Parameters, U: sapling::builder::ProverProgress> Builder<
             if bundle_type == BundleType::DEFAULT_SWAP {
                 #[cfg(zcash_unstable = "nu6" /* TODO swap */ )]
                 {
-                    // TODO default(?) timelimit
-                    let timelimit: u32 = (self.target_height + 10).into();
+                    if !builder.is_empty() {
+                        let timelimit: u32 = (self.target_height + 10).into(); // TODO default(?) timelimit
 
-                    let (main_action_group, meta) = builder
-                        .build_action_group(&mut rng, timelimit)
-                        .map_err(Error::OrchardBuild)?
-                        .unwrap();
+                        let (main_action_group, meta) = builder
+                            .build_action_group(&mut rng, timelimit)
+                            .map_err(Error::OrchardBuild)?
+                            .unwrap();
+                        orchard_meta = meta;
 
-                    // TODO check main group is not empty
-                    // TODO join main_action_group with others if available
-                    let action_groups = vec![main_action_group];
-
-                    let pk = &orchard::circuit::ProvingKey::build::<OrchardZSA>();
-
-                    let authorized_groups = action_groups.into_iter().map(|group| {
-                        let commitment = group.commitment();
-                        group.create_proof(pk, &mut rng)?.apply_signatures(&mut rng, commitment.into(), &self.orchard_saks)
-                    }).collect::<Result<Vec<_>, _>>().map_err(Error::OrchardBuild)?;
+                        let pk = &orchard::circuit::ProvingKey::build::<OrchardZSA>();
+                        let commitment = main_action_group.commitment();
+                        let proven_main_group = main_action_group.create_proof(pk, &mut rng).map_err(Error::OrchardBuild)?.apply_signatures(&mut rng, commitment.into(), &self.orchard_saks).map_err(Error::OrchardBuild)?;
+                        self.action_groups.push(proven_main_group);
+                    }
 
                     // In this case the bundle is, in fact, already authorized
-                    unproven_orchard_bundle = Some(OrchardBundle::OrchardSwap(Box::new(SwapBundle::new(&mut rng, authorized_groups))));
-                    orchard_meta = meta; // TODO
+                    unproven_orchard_bundle = Some(OrchardBundle::OrchardSwap(Box::new(SwapBundle::new(&mut rng, self.action_groups))));
                 }
             } else if bundle_type == BundleType::DEFAULT_ZSA {
                 #[cfg(zcash_unstable = "nu6" /* TODO nu7 */ )]
