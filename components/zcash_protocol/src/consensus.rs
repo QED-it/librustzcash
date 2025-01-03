@@ -925,7 +925,7 @@ mod tests {
         );
         #[cfg(zcash_unstable = "nu6" /* TODO swap */ )]
         assert_eq!(
-            BranchId::for_height(&MAIN_NETWORK, BlockHeight(1_842_422)),
+            BranchId::for_height(&MAIN_NETWORK, BlockHeight(2_726_402)),
             BranchId::Swap,
         );
     }
