@@ -7,8 +7,8 @@ use byteorder::{ReadBytesExt, WriteBytesExt};
 use nonempty::NonEmpty;
 use orchard::{
     bundle::{Authorization, Authorized, Flags},
+    domain::OrchardDomainCommon,
     note::{AssetBase, ExtractedNoteCommitment, Nullifier, TransmittedNoteCiphertext},
-    note_encryption::OrchardDomainCommon,
     orchard_flavor::{OrchardVanilla, OrchardZSA},
     primitives::redpallas::{self, SigType, Signature, SpendAuth, VerificationKey},
     value::{NoteValue, ValueCommitment},

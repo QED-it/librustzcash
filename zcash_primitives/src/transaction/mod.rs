@@ -58,7 +58,7 @@ const V5_VERSION_GROUP_ID: u32 = 0x26A7270A;
 #[cfg(zcash_unstable = "nu6" /* TODO nu7 */ )]
 const V6_TX_VERSION: u32 = 6;
 #[cfg(zcash_unstable = "nu6" /* TODO nu7 */ )]
-const V6_VERSION_GROUP_ID: u32 = 0x124A69F8; // TODO ???
+const V6_VERSION_GROUP_ID: u32 = 0x77777777; // TODO ???
 
 /// These versions are used exclusively for in-development transaction
 /// serialization, and will never be active under the consensus rules.
@@ -339,11 +339,11 @@ impl Authorization for Unauthorized {
     type SaplingAuth =
         sapling_builder::InProgress<sapling_builder::Proven, sapling_builder::Unsigned>;
     type OrchardAuth =
-        orchard::builder::InProgress<Unproven<OrchardVanilla>, orchard::builder::Unauthorized>;
+        orchard::builder::InProgress<Unproven, orchard::builder::Unauthorized>;
 
     #[cfg(zcash_unstable = "nu6" /* TODO nu7 */ )]
     type OrchardZsaAuth =
-        orchard::builder::InProgress<Unproven<OrchardZSA>, orchard::builder::Unauthorized>;
+        orchard::builder::InProgress<Unproven, orchard::builder::Unauthorized>;
 
     #[cfg(zcash_unstable = "nu6" /* TODO nu7 */ )]
     type IssueAuth = orchard::issuance::Unauthorized;
