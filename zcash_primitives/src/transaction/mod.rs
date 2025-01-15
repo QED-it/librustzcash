@@ -338,12 +338,10 @@ impl Authorization for Unauthorized {
     type TransparentAuth = transparent::builder::Unauthorized;
     type SaplingAuth =
         sapling_builder::InProgress<sapling_builder::Proven, sapling_builder::Unsigned>;
-    type OrchardAuth =
-        orchard::builder::InProgress<Unproven, orchard::builder::Unauthorized>;
+    type OrchardAuth = orchard::builder::InProgress<Unproven, orchard::builder::Unauthorized>;
 
     #[cfg(zcash_unstable = "nu6" /* TODO nu7 */ )]
-    type OrchardZsaAuth =
-        orchard::builder::InProgress<Unproven, orchard::builder::Unauthorized>;
+    type OrchardZsaAuth = orchard::builder::InProgress<Unproven, orchard::builder::Unauthorized>;
 
     #[cfg(zcash_unstable = "nu6" /* TODO nu7 */ )]
     type IssueAuth = orchard::issuance::Unauthorized;
