@@ -470,6 +470,7 @@ impl<'a, P: consensus::Parameters> Builder<'a, P, ()> {
         ik: IssuanceAuthorizingKey,
         asset_desc: Vec<u8>,
         issue_info: Option<IssueInfo>,
+        first_issuance: bool,
     ) -> Result<(), Error<FE>> {
         assert!(self.build_config.orchard_bundle_type()? == BundleType::DEFAULT_ZSA);
 
@@ -482,6 +483,7 @@ impl<'a, P: consensus::Parameters> Builder<'a, P, ()> {
                 IssuanceValidatingKey::from(&ik),
                 asset_desc,
                 issue_info,
+                first_issuance,
                 OsRng,
             )
             .map_err(Error::IssuanceBundle)?
@@ -499,12 +501,13 @@ impl<'a, P: consensus::Parameters> Builder<'a, P, ()> {
         asset_desc: &[u8],
         recipient: Address,
         value: orchard::value::NoteValue,
+        first_issuance: bool,
     ) -> Result<(), Error<FE>> {
         assert!(self.build_config.orchard_bundle_type()? == BundleType::DEFAULT_ZSA);
         self.issuance_builder
             .as_mut()
             .ok_or(Error::IssuanceBuilderNotAvailable)?
-            .add_recipient(asset_desc, recipient, value, OsRng)
+            .add_recipient(asset_desc, recipient, value, first_issuance, OsRng)
             .map_err(Error::IssuanceBundle)?;
 
         Ok(())
@@ -874,19 +877,13 @@ impl<'a, P: consensus::Parameters, U: sapling::builder::ProverProgress> Builder<
             if bundle_type == BundleType::DEFAULT_ZSA {
                 #[cfg(zcash_unstable = "nu6" /* TODO nu7 */ )]
                 {
-                    let (bundle, meta) = builder
-                        .build(&mut rng)
-                        .map_err(Error::OrchardBuild)?
-                        .unwrap();
+                    let (bundle, meta) = builder.build(&mut rng).map_err(Error::OrchardBuild)?;
 
                     unproven_orchard_zsa_bundle = Some(bundle);
                     orchard_meta = meta;
                 }
             } else {
-                let (bundle, meta) = builder
-                    .build(&mut rng)
-                    .map_err(Error::OrchardBuild)?
-                    .unwrap();
+                let (bundle, meta) = builder.build(&mut rng).map_err(Error::OrchardBuild)?;
                 unproven_orchard_bundle = Some(bundle);
                 orchard_meta = meta;
             }
@@ -1458,20 +1455,14 @@ mod tests {
         let asset_desc: Vec<u8> = "asset_desc".into();
 
         builder
-            .init_issuance_bundle::<FeeError>(iak, asset_desc.clone(), None)
+            .init_issuance_bundle::<FeeError>(iak, asset_desc.clone(), None, false)
             .unwrap();
 
         let tx = builder.mock_build_no_fee(OsRng).unwrap().into_transaction();
         let bundle = tx.issue_bundle().unwrap();
 
         assert_eq!(bundle.actions().len(), 1, "There should be only one action");
-        let actions = bundle.get_actions_by_desc(&asset_desc);
-        assert_eq!(
-            actions.len(),
-            1,
-            "The one action should correspond to asset_desc"
-        );
-        let action = actions[0];
+        let action = bundle.get_action_by_desc(&asset_desc).unwrap();
         assert!(action.is_finalized(), "Action should be finalized");
         assert_eq!(action.notes().len(), 0, "Action should have zero notes");
     }
@@ -1491,6 +1482,7 @@ mod tests {
                     recipient: address,
                     value: NoteValue::from_raw(42),
                 }),
+                false,
             )
             .unwrap();
 
@@ -1498,13 +1490,7 @@ mod tests {
         let bundle = binding.issue_bundle().unwrap();
 
         assert_eq!(bundle.actions().len(), 1, "There should be only one action");
-        let actions = bundle.get_actions_by_desc(&asset_desc);
-        assert_eq!(
-            actions.len(),
-            1,
-            "The one action should correspond to asset_desc"
-        );
-        let action = actions[0];
+        let action = bundle.get_action_by_desc(&asset_desc).unwrap();
         assert!(!action.is_finalized(), "Action should not be finalized");
         assert_eq!(action.notes().len(), 1, "Action should have 1 note");
         assert_eq!(
@@ -1529,23 +1515,18 @@ mod tests {
                     recipient: address,
                     value: NoteValue::from_raw(42),
                 }),
+                false,
             )
             .unwrap();
         builder
-            .add_recipient::<FeeError>(&asset_desc, address, NoteValue::from_raw(21))
+            .add_recipient::<FeeError>(&asset_desc, address, NoteValue::from_raw(21), false)
             .unwrap();
 
         let binding = builder.mock_build_no_fee(OsRng).unwrap().into_transaction();
         let bundle = binding.issue_bundle().unwrap();
 
         assert_eq!(bundle.actions().len(), 1, "There should be only one action");
-        let actions = bundle.get_actions_by_desc(&asset_desc);
-        assert_eq!(
-            actions.len(),
-            1,
-            "The one action should correspond to asset_desc"
-        );
-        let action = actions[0];
+        let action = bundle.get_action_by_desc(&asset_desc).unwrap();
         assert!(!action.is_finalized(), "Action should not be finalized");
         assert_eq!(action.notes().len(), 2, "Action should have 2 notes");
         assert_eq!(
@@ -1575,10 +1556,11 @@ mod tests {
                     recipient: address,
                     value: NoteValue::from_raw(42),
                 }),
+                false,
             )
             .unwrap();
         builder
-            .add_recipient::<FeeError>(&asset_desc_2, address, NoteValue::from_raw(21))
+            .add_recipient::<FeeError>(&asset_desc_2, address, NoteValue::from_raw(21), false)
             .unwrap();
 
         let binding = builder.mock_build_no_fee(OsRng).unwrap().into_transaction();
@@ -1586,13 +1568,7 @@ mod tests {
 
         assert_eq!(bundle.actions().len(), 2, "There should be 2 actions");
 
-        let actions = bundle.get_actions_by_desc(&asset_desc_1);
-        assert_eq!(
-            actions.len(),
-            1,
-            "Only one action should correspond to asset_desc_1"
-        );
-        let action = actions[0];
+        let action = bundle.get_action_by_desc(&asset_desc_1).unwrap();
         assert!(!action.is_finalized(), "Action should not be finalized");
         assert_eq!(action.notes().len(), 1, "Action should have 1 note");
         assert_eq!(
@@ -1605,13 +1581,7 @@ mod tests {
             "Incorrect notes sum"
         );
 
-        let actions_2 = bundle.get_actions_by_desc(&asset_desc_2);
-        assert_eq!(
-            actions_2.len(),
-            1,
-            "Only one action should correspond to asset_desc_2"
-        );
-        let action2 = actions_2[0];
+        let action2 = bundle.get_action_by_desc(&asset_desc_2).unwrap();
         assert!(!action2.is_finalized(), "Action should not be finalized");
         assert_eq!(action2.notes().len(), 1, "Action should have 1 note");
         assert_eq!(

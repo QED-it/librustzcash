@@ -390,7 +390,7 @@ fn write_orchard_bundle_contents<W: Write, D: OrchardDomainCommon + WriteBurn<W>
         |w, b| w.write_u8(*b),
     )?;
 
-    writer.write_u32::<LittleEndian>(u32::from(timelimit))?;
+    writer.write_u32::<LittleEndian>(timelimit)?;
 
     Array::write(
         &mut writer,
