@@ -1596,6 +1596,112 @@ mod tests {
     }
 
     #[test]
+    #[cfg(zcash_unstable = "nu6" /* TODO nu7 */ )]
+    fn first_issuance_init_issuance_bundle() {
+        let (mut builder, iak, address) = prepare_zsa_test();
+
+        let asset_desc: Vec<u8> = "asset_desc".into();
+
+        builder
+            .init_issuance_bundle::<FeeError>(
+                iak,
+                asset_desc.clone(),
+                Some(IssueInfo {
+                    recipient: address,
+                    value: NoteValue::from_raw(42),
+                }),
+                true,
+            )
+            .unwrap();
+
+        let binding = builder.mock_build_no_fee(OsRng).unwrap().into_transaction();
+        let bundle = binding.issue_bundle().unwrap();
+
+        assert_eq!(bundle.actions().len(), 1, "There should be only one action");
+        let action = bundle.get_action_by_desc(&asset_desc).unwrap();
+        assert_eq!(
+            action.notes().len(),
+            2,
+            "Action should have 2 notes, including the reference note"
+        );
+        assert_eq!(
+            action.notes().first().unwrap().value().inner(),
+            0,
+            "Incorrect reference note value"
+        );
+        assert_eq!(
+            action.notes()[1].value().inner(),
+            42,
+            "Incorrect reference note value"
+        );
+    }
+
+    #[test]
+    #[cfg(zcash_unstable = "nu6" /* TODO nu7 */ )]
+    fn first_issuance_add_recipient() {
+        let (mut builder, iak, address) = prepare_zsa_test();
+
+        let asset_desc: Vec<u8> = "asset_desc".into();
+
+        builder
+            .init_issuance_bundle::<FeeError>(iak, asset_desc.clone(), None, false)
+            .unwrap();
+
+        builder
+            .add_recipient::<FeeError>(&asset_desc, address, NoteValue::from_raw(42), true)
+            .unwrap();
+
+        let binding = builder.mock_build_no_fee(OsRng).unwrap().into_transaction();
+        let bundle = binding.issue_bundle().unwrap();
+
+        assert_eq!(bundle.actions().len(), 1, "There should be only one action");
+        let action = bundle.get_action_by_desc(&asset_desc).unwrap();
+        assert_eq!(
+            action.notes().len(),
+            2,
+            "Action should have 2 notes, including the reference note"
+        );
+        assert_eq!(
+            action.notes().first().unwrap().value().inner(),
+            0,
+            "Incorrect reference note value"
+        );
+        assert_eq!(
+            action.notes()[1].value().inner(),
+            42,
+            "Incorrect reference note value"
+        );
+    }
+
+    #[test]
+    #[cfg(zcash_unstable = "nu6" /* TODO nu7 */ )]
+    fn first_issuance_only_reference_note() {
+        let (mut builder, iak, _) = prepare_zsa_test();
+
+        let asset_desc: Vec<u8> = "asset_desc".into();
+
+        builder
+            .init_issuance_bundle::<FeeError>(iak, asset_desc.clone(), None, true)
+            .unwrap();
+
+        let binding = builder.mock_build_no_fee(OsRng).unwrap().into_transaction();
+        let bundle = binding.issue_bundle().unwrap();
+
+        assert_eq!(bundle.actions().len(), 1, "There should be only one action");
+        let action = bundle.get_action_by_desc(&asset_desc).unwrap();
+        assert_eq!(
+            action.notes().len(),
+            1,
+            "Action should have 1 note, including the reference note"
+        );
+        assert_eq!(
+            action.notes().first().unwrap().value().inner(),
+            0,
+            "Incorrect reference note value"
+        );
+    }
+
+    #[test]
     #[should_panic]
     #[cfg(zcash_unstable = "nu6" /* TODO nu7 */ )]
     fn fails_on_add_burn_without_input() {
