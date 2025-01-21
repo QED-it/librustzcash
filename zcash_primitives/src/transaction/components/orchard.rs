@@ -7,8 +7,8 @@ use byteorder::{ReadBytesExt, WriteBytesExt};
 use nonempty::NonEmpty;
 use orchard::{
     bundle::{Authorization, Authorized, Flags},
+    domain::OrchardDomainCommon,
     note::{AssetBase, ExtractedNoteCommitment, Nullifier, TransmittedNoteCiphertext},
-    note_encryption::OrchardDomainCommon,
     orchard_flavor::{OrchardVanilla, OrchardZSA},
     primitives::redpallas::{self, SigType, Signature, SpendAuth, VerificationKey},
     value::{NoteValue, ValueCommitment},
@@ -390,7 +390,7 @@ fn write_orchard_bundle_contents<W: Write, D: OrchardDomainCommon + WriteBurn<W>
         |w, b| w.write_u8(*b),
     )?;
 
-    writer.write_u32::<LittleEndian>(u32::from(timelimit))?;
+    writer.write_u32::<LittleEndian>(timelimit)?;
 
     Array::write(
         &mut writer,
