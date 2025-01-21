@@ -1154,6 +1154,7 @@ mod tests {
         orchard::note::AssetBase,
         orchard::value::NoteValue,
         orchard::Address,
+        orchard::ReferenceKeys,
         zcash_protocol::consensus::TestNetwork,
         zcash_protocol::constants::testnet::COIN_TYPE,
         zip32::Scope::External,
@@ -1630,6 +1631,11 @@ mod tests {
             "Incorrect reference note value"
         );
         assert_eq!(
+            action.notes().first().unwrap().recipient(),
+            ReferenceKeys::recipient(),
+            "Incorrect recipient in reference note"
+        );
+        assert_eq!(
             action.notes()[1].value().inner(),
             42,
             "Incorrect note value"
@@ -1667,6 +1673,11 @@ mod tests {
             "Incorrect reference note value"
         );
         assert_eq!(
+            action.notes().first().unwrap().recipient(),
+            ReferenceKeys::recipient(),
+            "Incorrect recipient in reference note"
+        );
+        assert_eq!(
             action.notes()[1].value().inner(),
             42,
             "Incorrect note value"
@@ -1698,6 +1709,11 @@ mod tests {
             action.notes().first().unwrap().value().inner(),
             0,
             "Incorrect reference note value"
+        );
+        assert_eq!(
+            action.notes().first().unwrap().recipient(),
+            ReferenceKeys::recipient(),
+            "Incorrect recipient in reference note"
         );
     }
 
