@@ -1632,7 +1632,7 @@ mod tests {
         assert_eq!(
             action.notes()[1].value().inner(),
             42,
-            "Incorrect reference note value"
+            "Incorrect note value"
         );
     }
 
@@ -1669,7 +1669,7 @@ mod tests {
         assert_eq!(
             action.notes()[1].value().inner(),
             42,
-            "Incorrect reference note value"
+            "Incorrect note value"
         );
     }
 
