@@ -355,8 +355,7 @@ pub fn write_orchard_zsa_bundle<W: Write>(
 
     let bundle = bundle.unwrap();
 
-    // According to the spec there can be zero action groups, but in current implementation
-    // Bundle.actions() returns a NonEmpty<Action> so there is no need to check for empty actions list
+    // We always have exactly one action group for orchardZSA
     CompactSize::write(&mut writer, 1)?;
 
     Vector::write_nonempty(&mut writer, bundle.actions(), |w, a| {
