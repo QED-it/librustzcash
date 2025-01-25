@@ -355,7 +355,7 @@ pub fn write_orchard_zsa_bundle<W: Write>(
 
     let bundle = bundle.unwrap();
 
-    // We always have exactly one action group for orchardZSA
+    // Exactly one action group for NU7
     CompactSize::write(&mut writer, 1)?;
 
     Vector::write_nonempty(&mut writer, bundle.actions(), |w, a| {
@@ -370,7 +370,8 @@ pub fn write_orchard_zsa_bundle<W: Write>(
         |w, b| w.write_u8(*b),
     )?;
 
-    writer.write_u32::<LittleEndian>(0)?; // Currently timelimit is hardcoded to zero
+    // Timelimit must be zero for NU7
+    writer.write_u32::<LittleEndian>(0)?;
 
     Array::write(
         &mut writer,
