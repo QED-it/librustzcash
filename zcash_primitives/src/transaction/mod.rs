@@ -928,7 +928,7 @@ impl Transaction {
             transparent_bundle,
             sprout_bundle: None,
             sapling_bundle,
-            orchard_bundle: orchard_bundle.map(|b| OrchardBundle::OrchardZSA(Box::new(b))),
+            orchard_bundle: orchard_zsa_bundle.map(|b| OrchardBundle::OrchardZSA(Box::new(b))),
             issue_bundle,
             #[cfg(zcash_unstable = "zfuture")]
             tze_bundle,
@@ -1065,10 +1065,7 @@ impl Transaction {
         self.write_header(&mut writer)?;
         self.write_transparent(&mut writer)?;
         self.write_sapling(&mut writer)?;
-        orchard_serialization::write_orchard_zsa_bundle(
-            &mut writer,
-            self.orchard_bundle.as_ref(),
-        )?;
+        orchard_serialization::write_orchard_bundle(&mut writer, self.orchard_bundle.as_ref())?;
         issuance::write_v6_bundle(self.issue_bundle.as_ref(), &mut writer)?;
         #[cfg(zcash_unstable = "zfuture")]
         self.write_tze(&mut writer)?;

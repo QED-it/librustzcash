@@ -8,7 +8,6 @@ use crate::transaction::components::issuance::read_asset;
 use crate::transaction::{OrchardBundle, Transaction};
 use byteorder::{ReadBytesExt, WriteBytesExt};
 use nonempty::NonEmpty;
-use orchard::domain::OrchardDomainCommon;
 use orchard::{
     bundle::{Authorization, Authorized, Flags},
     domain::OrchardDomainCommon,
@@ -16,11 +15,10 @@ use orchard::{
     orchard_flavor::{OrchardVanilla, OrchardZSA},
     primitives::redpallas::{self, SigType, Signature, SpendAuth, VerificationKey},
     value::{NoteValue, ValueCommitment},
-    Action, Anchor,
+    Action, Anchor, Bundle,
 };
 use zcash_encoding::{Array, CompactSize, Vector};
 use zcash_note_encryption::note_bytes::NoteBytes;
-use zcash_protocol::value::ZatBalance;
 
 #[cfg(zcash_unstable = "nu6" /* TODO nu7 */ )]
 use byteorder::LittleEndian;
@@ -372,10 +370,9 @@ pub fn write_orchard_bundle<W: Write>(
 ) -> io::Result<()> {
     if let Some(bundle) = &bundle {
         match bundle {
-            OrchardBundle::OrchardVanilla(b) => write_orchard_vanilla_bundle(b, writer)?,
+            OrchardBundle::OrchardVanilla(b) => write_orchard_vanilla_bundle(writer, b)?,
             #[cfg(zcash_unstable = "nu6" /* TODO nu7 */ )]
-            OrchardBundle::OrchardZSA(b) => write_orchard_bundle_contents(b, writer)?,
-            _ => unreachable!(),
+            OrchardBundle::OrchardZSA(b) => write_orchard_zsa_bundle(writer, b)?,
         }
     } else {
         CompactSize::write(&mut writer, 0)?;
@@ -384,37 +381,32 @@ pub fn write_orchard_bundle<W: Write>(
     Ok(())
 }
 
-
-/// Writes an [`orchard::Bundle`] in the appropriate transaction format.
+/// Writes an [`Bundle`] in the appropriate transaction format.
 pub fn write_orchard_vanilla_bundle<W: Write>(
     mut writer: W,
-    bundle: Option<&orchard::Bundle<Authorized, Amount, OrchardVanilla>>,
+    bundle: &Bundle<Authorized, Amount, OrchardVanilla>,
 ) -> io::Result<()> {
-    if let Some(bundle) = &bundle {
-        Vector::write_nonempty(&mut writer, bundle.actions(), |w, a| {
-            write_action_without_auth(w, a)
-        })?;
+    Vector::write_nonempty(&mut writer, bundle.actions(), |w, a| {
+        write_action_without_auth(w, a)
+    })?;
 
-        writer.write_all(&[bundle.flags().to_byte()])?;
-        writer.write_all(&bundle.value_balance().to_i64_le_bytes())?;
-        writer.write_all(&bundle.anchor().to_bytes())?;
-        Vector::write(
-            &mut writer,
-            bundle.authorization().proof().as_ref(),
-            |w, b| w.write_u8(*b),
-        )?;
-        Array::write(
-            &mut writer,
-            bundle.actions().iter().map(|a| a.authorization()),
-            |w, auth| w.write_all(&<[u8; 64]>::from(*auth)),
-        )?;
+    writer.write_all(&[bundle.flags().to_byte()])?;
+    writer.write_all(&bundle.value_balance().to_i64_le_bytes())?;
+    writer.write_all(&bundle.anchor().to_bytes())?;
+    Vector::write(
+        &mut writer,
+        bundle.authorization().proof().as_ref(),
+        |w, b| w.write_u8(*b),
+    )?;
+    Array::write(
+        &mut writer,
+        bundle.actions().iter().map(|a| a.authorization()),
+        |w, auth| w.write_all(&<[u8; 64]>::from(*auth)),
+    )?;
 
-        writer.write_all(&<[u8; 64]>::from(
-            bundle.authorization().binding_signature(),
-        ))?;
-    } else {
-        CompactSize::write(&mut writer, 0)?;
-    }
+    writer.write_all(&<[u8; 64]>::from(
+        bundle.authorization().binding_signature(),
+    ))?;
 
     Ok(())
 }
@@ -423,15 +415,8 @@ pub fn write_orchard_vanilla_bundle<W: Write>(
 #[cfg(zcash_unstable = "nu6" /* TODO nu7 */ )]
 pub fn write_orchard_zsa_bundle<W: Write>(
     mut writer: W,
-    bundle: Option<&orchard::Bundle<Authorized, Amount, OrchardZSA>>,
+    bundle: &orchard::Bundle<Authorized, Amount, OrchardZSA>,
 ) -> io::Result<()> {
-    if bundle.is_none() {
-        CompactSize::write(&mut writer, 0)?;
-        return Ok(());
-    }
-
-    let bundle = bundle.unwrap();
-
     // Exactly one action group for NU7
     CompactSize::write(&mut writer, 1)?;
 
