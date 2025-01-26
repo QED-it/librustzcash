@@ -8,7 +8,6 @@ use crate::transaction::components::issuance::read_asset;
 use crate::transaction::{OrchardBundle, Transaction};
 use byteorder::ReadBytesExt;
 use nonempty::NonEmpty;
-use orchard::domain::OrchardDomainCommon;
 use orchard::{
     bundle::{Authorization, Authorized, Flags},
     domain::OrchardDomainCommon,
@@ -20,7 +19,6 @@ use orchard::{
 };
 use zcash_encoding::{Array, CompactSize, Vector};
 use zcash_note_encryption::note_bytes::NoteBytes;
-use zcash_protocol::value::ZatBalance;
 
 use zcash_protocol::value::ZatBalance;
 #[cfg(zcash_unstable = "nu6" /* TODO nu7 */ )]
