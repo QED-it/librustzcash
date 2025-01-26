@@ -885,7 +885,7 @@ impl<'a, P: consensus::Parameters, U: sapling::builder::ProverProgress> Builder<
                 }
             } else {
                 let (bundle, meta) = builder.build(&mut rng).map_err(Error::OrchardBuild)?;
-                unproven_orchard_bundle = Some(OrchardBundle::OrchardVanilla(bundle));
+                unproven_orchard_bundle = Some(OrchardBundle::OrchardVanilla(Box::new(bundle)));
                 orchard_meta = meta;
             }
         };
