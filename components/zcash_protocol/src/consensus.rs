@@ -392,6 +392,8 @@ impl Parameters for TestNetwork {
             NetworkUpgrade::Nu6 => Some(BlockHeight(2_976_000)),
             #[cfg(zcash_unstable = "nu6" /* TODO nu7 */ )]
             NetworkUpgrade::Nu7 => Some(BlockHeight(2_976_001)),
+            #[cfg(zcash_unstable = "nu6" /* TODO swap */ )]
+            NetworkUpgrade::Swap => Some(BlockHeight(2_976_002)),
             #[cfg(zcash_unstable = "zfuture")]
             NetworkUpgrade::ZFuture => None,
         }
