@@ -19,7 +19,6 @@ use std::convert::TryFrom;
 use std::fmt;
 use std::fmt::Debug;
 use std::io::{self, Read, Write};
-use std::marker::PhantomData;
 use std::ops::Deref;
 use zcash_encoding::{CompactSize, Vector};
 
@@ -374,8 +373,6 @@ pub enum OrchardBundle<A: orchard::bundle::Authorization> {
     OrchardZSA(Box<Bundle<A, Amount, OrchardZSA>>),
     #[cfg(zcash_unstable = "nu6" /* TODO swap */ )]
     OrchardSwap(Box<SwapBundle<Amount>>),
-    #[doc(hidden)]
-    _Phantom(PhantomData<Z>),
 }
 
 /// Errors that can occur during transaction construction.
@@ -392,7 +389,6 @@ impl<A: orchard::bundle::Authorization> OrchardBundle<A> {
             OrchardBundle::OrchardZSA(b) => b.value_balance(),
             #[cfg(zcash_unstable = "nu6" /* TODO swap */ )]
             OrchardBundle::OrchardSwap(b) => b.value_balance(),
-            _ => unreachable!(),
         }
     }
 
@@ -407,14 +403,11 @@ impl<A: orchard::bundle::Authorization> OrchardBundle<A> {
                 b.map_authorization(context, spend_auth, step),
             )),
             #[cfg(zcash_unstable = "nu6" /* TODO nu7 */ )]
-            OrchardBundle::OrchardZSA(b) => OrchardBundle::OrchardZSA(Box::new(b.map_authorization(
-                context_zsa,
-                spend_auth_zsa,
-                step_zsa,
-            ))),
+            OrchardBundle::OrchardZSA(b) => OrchardBundle::OrchardZSA(Box::new(
+                b.map_authorization(context, spend_auth, step),
+            )),
             #[cfg(zcash_unstable = "nu6" /* TODO swap */ )]
             OrchardBundle::OrchardSwap(b) => OrchardBundle::OrchardSwap(b), // TODO check that we actually ever map this particular authorization
-            _ => unreachable!(),
         }
     }
 
@@ -672,8 +665,6 @@ impl<A: Authorization> TransactionData<A> {
             orchard_bundle: self.orchard_bundle.map(|b| {
                 b.map_authorization(
                     &mut f_orchard,
-                    #[cfg(zcash_unstable = "nu6" /* TODO nu7 */ )]
-                    &mut f_orchard_zsa,
                     |f, _, s| f.map_spend_auth(s),
                     |f, a| f.map_authorization(a),
                 )
