@@ -51,77 +51,6 @@ impl MapAuth<Authorized, Authorized> for () {
     }
 }
 
-pub trait BuildBundle<A: Authorization, D: OrchardDomainCommon> {
-    fn build_bundle(
-        actions: NonEmpty<Action<A::SpendAuth, D>>,
-        flags: Flags,
-        value_balance: Amount,
-        burn: Vec<(AssetBase, NoteValue)>,
-        anchor: Anchor,
-        authorization: A,
-    ) -> OrchardBundle<A>;
-}
-
-impl<A: Authorization> BuildBundle<A, OrchardVanilla> for OrchardVanilla {
-    fn build_bundle(
-        actions: NonEmpty<Action<A::SpendAuth, OrchardVanilla>>,
-        flags: Flags,
-        value_balance: Amount,
-        burn: Vec<(AssetBase, NoteValue)>,
-        anchor: Anchor,
-        authorization: A,
-    ) -> OrchardBundle<A> {
-        OrchardBundle::OrchardVanilla(Box::new(Bundle::from_parts(
-            actions,
-            flags,
-            value_balance,
-            burn,
-            anchor,
-            authorization,
-        )))
-    }
-}
-
-#[cfg(zcash_unstable = "nu6" /* TODO nu7 */ )]
-impl<A: Authorization> BuildBundle<A, OrchardZSA> for OrchardZSA {
-    fn build_bundle(
-        actions: NonEmpty<Action<A::SpendAuth, OrchardZSA>>,
-        flags: Flags,
-        value_balance: Amount,
-        burn: Vec<(AssetBase, NoteValue)>,
-        anchor: Anchor,
-        authorization: A,
-    ) -> OrchardBundle<A> {
-        OrchardBundle::OrchardZSA(Box::new(orchard::Bundle::from_parts(
-            actions,
-            flags,
-            value_balance,
-            burn,
-            anchor,
-            authorization,
-        )))
-    }
-}
-
-pub trait ReadBurn<R: Read> {
-    fn read_burn(reader: &mut R) -> io::Result<Vec<(AssetBase, NoteValue)>>;
-}
-
-// OrchardVanilla has no burn to read
-impl<R: Read> ReadBurn<R> for OrchardVanilla {
-    fn read_burn(_reader: &mut R) -> io::Result<Vec<(AssetBase, NoteValue)>> {
-        Ok(Vec::new())
-    }
-}
-
-// Read burn for OrchardZSA
-#[cfg(zcash_unstable = "nu6" /* TODO nu7 */ )]
-impl<R: Read> ReadBurn<R> for OrchardZSA {
-    fn read_burn(reader: &mut R) -> io::Result<Vec<(AssetBase, NoteValue)>> {
-        Vector::read(reader, |r| read_burn(r))
-    }
-}
-
 /// Reads an [`orchard::Bundle`] from a v5 transaction format.
 pub fn read_orchard_bundle<R: Read>(
     mut reader: R,
@@ -202,7 +131,7 @@ pub fn read_orchard_zsa_bundle<R: Read>(
 
     let value_balance = Transaction::read_amount(&mut reader)?;
 
-    let burn = OrchardZSA::read_burn(&mut reader)?;
+    let burn = Vector::read(&mut reader, |r| read_burn(r))?;
 
     let binding_signature = read_signature::<_, redpallas::Binding>(&mut reader)?;
 
