@@ -6,7 +6,7 @@ use super::Amount;
 #[cfg(zcash_unstable = "nu6" /* TODO nu7 */ )]
 use crate::transaction::components::issuance::read_asset;
 use crate::transaction::{OrchardBundle, Transaction};
-use byteorder::{ReadBytesExt, WriteBytesExt};
+use byteorder::ReadBytesExt;
 use nonempty::NonEmpty;
 use orchard::{
     bundle::{Authorization, Authorized, Flags},
@@ -20,8 +20,9 @@ use orchard::{
 use zcash_encoding::{Array, CompactSize, Vector};
 use zcash_note_encryption::note_bytes::NoteBytes;
 
+use zcash_protocol::value::ZatBalance;
 #[cfg(zcash_unstable = "nu6" /* TODO nu7 */ )]
-use byteorder::LittleEndian;
+use {byteorder::LittleEndian, byteorder::WriteBytesExt};
 
 pub const FLAG_SPENDS_ENABLED: u8 = 0b0000_0001;
 pub const FLAG_OUTPUTS_ENABLED: u8 = 0b0000_0010;
@@ -297,9 +298,9 @@ pub fn write_orchard_bundle<W: Write>(
     mut writer: W,
     bundle: Option<&OrchardBundle<Authorized>>,
 ) -> io::Result<()> {
-    if let Some(bundle) = &bundle {
+    if let Some(bundle) = bundle {
         match bundle {
-            OrchardBundle::OrchardVanilla(b) => write_orchard_vanilla_bundle(writer, b)?,
+            OrchardBundle::OrchardVanilla(b) => write_v5_bundle(b, writer)?,
             #[cfg(zcash_unstable = "nu6" /* TODO nu7 */ )]
             OrchardBundle::OrchardZSA(b) => write_orchard_zsa_bundle(writer, b)?,
         }
@@ -310,10 +311,10 @@ pub fn write_orchard_bundle<W: Write>(
     Ok(())
 }
 
-/// Writes an [`Bundle`] in the appropriate transaction format.
-pub fn write_orchard_vanilla_bundle<W: Write>(
+/// Writes an [`orchard::Bundle`] in the v5 transaction format.
+pub fn write_v5_bundle<W: Write>(
+    bundle: &Bundle<Authorized, ZatBalance, OrchardVanilla>,
     mut writer: W,
-    bundle: &Bundle<Authorized, Amount, OrchardVanilla>,
 ) -> io::Result<()> {
     Vector::write_nonempty(&mut writer, bundle.actions(), |w, a| {
         write_action_without_auth(w, a)
@@ -325,14 +326,13 @@ pub fn write_orchard_vanilla_bundle<W: Write>(
     Vector::write(
         &mut writer,
         bundle.authorization().proof().as_ref(),
-        |w, b| w.write_u8(*b),
+        |w, b| w.write_all(&[*b]),
     )?;
     Array::write(
         &mut writer,
         bundle.actions().iter().map(|a| a.authorization()),
         |w, auth| w.write_all(&<[u8; 64]>::from(*auth)),
     )?;
-
     writer.write_all(&<[u8; 64]>::from(
         bundle.authorization().binding_signature(),
     ))?;
@@ -423,7 +423,6 @@ pub fn write_action_without_auth<W: Write, D: OrchardDomainCommon>(
 
 #[cfg(any(test, feature = "test-dependencies"))]
 pub mod testing {
-    use orchard::Bundle;
     use proptest::prelude::*;
 
     use crate::transaction::components::amount::testing::arb_amount;
@@ -441,21 +440,20 @@ pub mod testing {
         ) -> OrchardBundle<Authorized> {
             // overwrite the value balance, as we can't guarantee that the
             // value doesn't exceed the MAX_MONEY bounds.
-            OrchardBundle::OrchardVanilla(Box::new(bundle.try_map_value_balance::<_, (), _>(|_| Ok(orchard_value_balance)).unwrap()))
+            OrchardBundle::OrchardVanilla(bundle.try_map_value_balance::<_, (), _>(|_| Ok(orchard_value_balance)).unwrap())
         }
     }
 
     prop_compose! {
         #[allow(unreachable_code)]
         pub fn arb_zsa_bundle(n_actions: usize)(
-            orchard_value_balance in arb_amount(),
-            bundle in t_orch::BundleArb::arb_bundle(n_actions)
+            _orchard_value_balance in arb_amount(),
+            _bundle in t_orch::BundleArb::<OrchardZSA>::arb_bundle(n_actions)
         ) -> OrchardBundle<Authorized> {
             // overwrite the value balance, as we can't guarantee that the
             // value doesn't exceed the MAX_MONEY bounds.
-            let _bundle: Bundle<_, _, OrchardZSA> = bundle.try_map_value_balance::<_, (), _>(|_| Ok(orchard_value_balance)).unwrap();
             #[cfg(zcash_unstable = "nu6" /* TODO nu7 */ )]
-            return OrchardBundle::OrchardZSA(Box::new(_bundle));
+            return OrchardBundle::OrchardZSA(_bundle.try_map_value_balance::<_, (), _>(|_| Ok(_orchard_value_balance)).unwrap());
             panic!("ZSA is not supported in this version");
         }
     }

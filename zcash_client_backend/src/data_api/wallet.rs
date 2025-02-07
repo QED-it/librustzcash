@@ -1123,7 +1123,7 @@ where
                             .orchard_bundle()
                             .and_then(|bundle| {
                                 bundle
-                                    .vanilla_bundle()
+                                    .as_vanilla_bundle()
                                     .decrypt_output_with_key(output_index, &orchard_internal_ivk)
                                     .map(|(note, _, _)| Note::Orchard(note))
                             })

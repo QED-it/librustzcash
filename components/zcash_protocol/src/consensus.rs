@@ -629,9 +629,7 @@ impl TryFrom<u32> for BranchId {
             0x7719_0ad8 => Ok(BranchId::Nu7),
             #[cfg(zcash_unstable = "zfuture")]
             0xffff_ffff => Ok(BranchId::ZFuture),
-            _ => Err(Box::leak(
-                format!("Unknown consensus branch ID: {:08x}", value).into_boxed_str(),
-            )),
+            _ => Err("Unknown consensus branch ID"),
         }
     }
 }

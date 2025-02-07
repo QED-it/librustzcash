@@ -30,9 +30,9 @@ use crate::{
     },
 };
 
-use orchard::builder::BundleType;
+use orchard::builder::{BundleType, InProgress, Unproven};
 use orchard::note::AssetBase;
-use orchard::orchard_flavor::OrchardVanilla;
+use orchard::orchard_flavor::{OrchardFlavor, OrchardVanilla};
 use orchard::Address;
 
 #[cfg(feature = "transparent-inputs")]
@@ -53,6 +53,7 @@ use crate::{
         fees::FutureFeeRule,
     },
 };
+use orchard::bundle::Authorized;
 #[cfg(zcash_unstable = "nu6" /* TODO nu7 */ )]
 use orchard::{
     issuance,
@@ -877,12 +878,12 @@ impl<'a, P: consensus::Parameters, U: sapling::builder::ProverProgress> Builder<
                 {
                     let (bundle, meta) = builder.build(&mut rng).map_err(Error::OrchardBuild)?;
 
-                    unproven_orchard_bundle = Some(OrchardBundle::OrchardZSA(Box::new(bundle)));
+                    unproven_orchard_bundle = Some(OrchardBundle::OrchardZSA(bundle));
                     orchard_meta = meta;
                 }
             } else {
                 let (bundle, meta) = builder.build(&mut rng).map_err(Error::OrchardBuild)?;
-                unproven_orchard_bundle = Some(OrchardBundle::OrchardVanilla(Box::new(bundle)));
+                unproven_orchard_bundle = Some(OrchardBundle::OrchardVanilla(bundle));
                 orchard_meta = meta;
             }
         };
@@ -947,37 +948,23 @@ impl<'a, P: consensus::Parameters, U: sapling::builder::ProverProgress> Builder<
 
         let orchard_bundle: Option<OrchardBundle<_>> = match unauthed_tx.orchard_bundle {
             Some(OrchardBundle::OrchardVanilla(b)) => {
-                Some(OrchardBundle::OrchardVanilla(Box::new(
-                    b.create_proof(
-                        &orchard::circuit::ProvingKey::build::<OrchardVanilla>(),
-                        &mut rng,
-                    )
-                    .and_then(|b| {
-                        b.apply_signatures(
-                            &mut rng,
-                            *shielded_sig_commitment.as_ref(),
-                            &self.orchard_saks,
-                        )
-                    })
-                    .map_err(Error::OrchardBuild)?,
-                )))
+                Some(OrchardBundle::OrchardVanilla(prove_and_sign(
+                    b,
+                    &mut rng,
+                    &orchard::circuit::ProvingKey::build::<OrchardVanilla>(),
+                    shielded_sig_commitment.as_ref(),
+                    &self.orchard_saks,
+                )?))
             }
 
             #[cfg(zcash_unstable = "nu6" /* TODO nu7 */ )]
-            Some(OrchardBundle::OrchardZSA(b)) => Some(OrchardBundle::OrchardZSA(Box::new(
-                b.create_proof(
-                    &orchard::circuit::ProvingKey::build::<OrchardZSA>(),
-                    &mut rng,
-                )
-                .and_then(|b| {
-                    b.apply_signatures(
-                        &mut rng,
-                        *shielded_sig_commitment.as_ref(),
-                        &self.orchard_saks,
-                    )
-                })
-                .map_err(Error::OrchardBuild)?,
-            ))),
+            Some(OrchardBundle::OrchardZSA(b)) => Some(OrchardBundle::OrchardZSA(prove_and_sign(
+                b,
+                &mut rng,
+                &orchard::circuit::ProvingKey::build::<OrchardZSA>(),
+                shielded_sig_commitment.as_ref(),
+                &self.orchard_saks,
+            )?)),
 
             None => None,
         };
@@ -1012,6 +999,22 @@ impl<'a, P: consensus::Parameters, U: sapling::builder::ProverProgress> Builder<
             orchard_meta,
         })
     }
+}
+
+fn prove_and_sign<D, V, FE>(
+    bundle: orchard::Bundle<InProgress<Unproven, orchard::builder::Unauthorized>, V, D>,
+    mut rng: &mut (impl RngCore + CryptoRng),
+    proving_key: &orchard::circuit::ProvingKey,
+    shielded_sig_commitment: &[u8; 32],
+    orchard_saks: &[orchard::keys::SpendAuthorizingKey],
+) -> Result<orchard::Bundle<Authorized, V, D>, Error<FE>>
+where
+    D: OrchardFlavor,
+{
+    bundle
+        .create_proof(proving_key, &mut rng)
+        .and_then(|b| b.apply_signatures(&mut rng, *shielded_sig_commitment, orchard_saks))
+        .map_err(Error::OrchardBuild)
 }
 
 #[cfg(zcash_unstable = "zfuture")]
