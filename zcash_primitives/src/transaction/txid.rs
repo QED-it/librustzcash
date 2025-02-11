@@ -24,13 +24,16 @@ use super::{
     TxId, TxVersion,
 };
 
-#[cfg(zcash_unstable = "nu6" /* TODO nu7 */ )]
-use orchard::issuance::{IssueBundle, Signed};
-
 #[cfg(zcash_unstable = "zfuture")]
 use super::{
     components::tze::{self, TzeIn, TzeOut},
     TzeDigests,
+};
+use crate::transaction::OrchardBundle::OrchardVanilla;
+#[cfg(zcash_unstable = "nu6" /* TODO nu7 */ )]
+use {
+    crate::transaction::OrchardBundle::OrchardZSA,
+    orchard::issuance::{IssueBundle, Signed},
 };
 
 /// TxId tree root personalization
@@ -540,11 +543,9 @@ impl TransactionDigest<Authorized> for BlockTxCommitmentDigester {
     ) -> Self::OrchardDigest {
         orchard_bundle.map_or_else(bundle::commitments::hash_bundle_auth_empty, |b| {
             match b {
-                OrchardBundle::OrchardVanilla(vanilla_bundle) => {
-                    vanilla_bundle.authorizing_commitment().0
-                }
+                OrchardVanilla(bundle) => bundle.authorizing_commitment().0,
                 #[cfg(zcash_unstable = "nu6" /* TODO nu7 */ )]
-                OrchardBundle::OrchardZSA(zsa_bundle) => zsa_bundle.authorizing_commitment().0,
+                OrchardZSA(bundle) => bundle.authorizing_commitment().0,
             }
         })
     }
