@@ -1,4 +1,3 @@
-use std::collections::HashMap;
 use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
 use nonempty::NonEmpty;
 use orchard::issuance::{IssueAction, IssueAuth, IssueBundle, Signed};
@@ -20,20 +19,13 @@ pub fn read_v6_bundle<R: Read>(mut reader: R) -> io::Result<Option<IssueBundle<S
     } else {
         let ik = read_ik(&mut reader)?;
         let authorization = read_authorization(&mut reader)?;
-        let reference_notes = read_reference_notes(&mut reader)?;
 
         Ok(Some(IssueBundle::from_parts(
             ik,
             NonEmpty::from_vec(actions).unwrap(),
-            reference_notes,
             authorization,
         )))
     }
-}
-
-fn read_reference_notes<R: Read>(mut _reader: R) -> io::Result<HashMap<AssetBase, Note>> {
-    // TODO
-    Ok(HashMap::new())
 }
 
 fn read_ik<R: Read>(mut reader: R) -> io::Result<IssuanceValidatingKey> {
@@ -129,15 +121,9 @@ pub fn write_v6_bundle<W: Write>(
         Vector::write_nonempty(&mut writer, bundle.actions(), write_action)?;
         writer.write_all(&bundle.ik().to_bytes())?;
         writer.write_all(&<[u8; 64]>::from(bundle.authorization().signature()))?;
-        write_reference_notes(&mut writer, bundle.reference_notes())?;
     } else {
         CompactSize::write(&mut writer, 0)?;
     }
-    Ok(())
-}
-
-fn write_reference_notes<W: Write>(mut _writer: &mut W, _notes: &HashMap<AssetBase, Note>) -> io::Result<()> {
-    // TODO
     Ok(())
 }
 
