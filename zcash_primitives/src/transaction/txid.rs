@@ -351,9 +351,9 @@ impl<A: Authorization> TransactionDigest<A> for TxIdDigester {
     ) -> Self::OrchardDigest {
         orchard_bundle.map(|b| {
             match b {
-                OrchardBundle::OrchardVanilla(vanilla_bundle) => vanilla_bundle.commitment().0,
+                OrchardVanilla(v) => v.commitment().0,
                 #[cfg(zcash_unstable = "nu6" /* TODO nu7 */ )]
-                OrchardBundle::OrchardZSA(zsa_bundle) => zsa_bundle.commitment().0,
+                OrchardZSA(z) => z.commitment().0,
             }
         })
     }
