@@ -16,6 +16,8 @@ use super::{
     txid::TxIdDigester,
     Authorization, Transaction, TransactionData, TxDigests, TxIn,
 };
+#[cfg(zcash_unstable = "nu6" /* TODO swap */ )]
+use crate::transaction::OrchardBundle::OrchardSwap;
 use crate::transaction::OrchardBundle::OrchardVanilla;
 #[cfg(zcash_unstable = "nu6" /* TODO nu7 */ )]
 use crate::transaction::OrchardBundle::OrchardZSA;
@@ -59,11 +61,15 @@ fn check_roundtrip(tx: Transaction) -> Result<(), TestCaseError> {
             OrchardVanilla(b) => *b.value_balance(),
             #[cfg(zcash_unstable = "nu6" /* TODO nu7 */ )]
             OrchardZSA(b) => *b.value_balance(),
+            #[cfg(zcash_unstable = "nu6" /* TODO swap */ )]
+            OrchardSwap(b) => *b.value_balance(),
         }),
         txo.orchard_bundle.as_ref().map(|v| match v {
             OrchardVanilla(b) => *b.value_balance(),
             #[cfg(zcash_unstable = "nu6" /* TODO nu7 */ )]
             OrchardZSA(b) => *b.value_balance(),
+            #[cfg(zcash_unstable = "nu6" /* TODO swap */ )]
+            OrchardSwap(b) => *b.value_balance(),
         })
     );
     #[cfg(zcash_unstable = "nu6" /* TODO nu7 */ )]

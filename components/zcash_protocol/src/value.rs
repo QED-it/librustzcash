@@ -136,10 +136,7 @@ impl Sum for ZatBalance {
     where
         I: Iterator<Item = Self>,
     {
-        iter.fold(
-            ZatBalance (0),
-            |acc, item| ZatBalance(acc.0 + item.0),
-        )
+        iter.fold(ZatBalance(0), |acc, item| ZatBalance(acc.0 + item.0))
     }
 }
 
