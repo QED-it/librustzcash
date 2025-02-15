@@ -32,7 +32,7 @@ use super::{
 use crate::transaction::OrchardBundle::OrchardVanilla;
 #[cfg(zcash_unstable = "nu6" /* TODO nu7 */ )]
 use {
-    crate::transaction::OrchardBundle::OrchardZSA,
+    crate::transaction::OrchardBundle::{OrchardSwap, OrchardZSA},
     orchard::issuance::{IssueBundle, Signed},
 };
 
@@ -548,6 +548,8 @@ impl TransactionDigest<Authorized> for BlockTxCommitmentDigester {
                 OrchardVanilla(bundle) => bundle.authorizing_commitment().0,
                 #[cfg(zcash_unstable = "nu6" /* TODO nu7 */ )]
                 OrchardZSA(bundle) => bundle.authorizing_commitment().0,
+                #[cfg(zcash_unstable = "nu6" /* TODO swap */ )]
+                OrchardSwap(bundle) => bundle.commitment().0, // TODO double check this is a right commitment. possibly rename for uniformity
             }
         })
     }

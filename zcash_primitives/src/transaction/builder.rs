@@ -53,6 +53,8 @@ use crate::{
         fees::FutureFeeRule,
     },
 };
+#[cfg(zcash_unstable = "nu6" /* TODO swap */ )]
+use orchard::swap_bundle::{ActionGroup, ActionGroupAuthorized, SwapBundle};
 #[cfg(zcash_unstable = "nu6" /* TODO nu7 */ )]
 use orchard::{
     issuance,
@@ -60,14 +62,10 @@ use orchard::{
     keys::{IssuanceAuthorizingKey, IssuanceValidatingKey},
     orchard_flavor::OrchardZSA,
 };
-#[cfg(zcash_unstable = "nu6" /* TODO swap */ )]
-use orchard::{
-    swap_bundle::{SwapBundle, ActionGroupAuthorized, ActionGroup},
-};
-#[cfg(zcash_unstable = "nu6" /* TODO swap */ )]
-use zcash_protocol::value::ZatBalance;
 #[cfg(zcash_unstable = "nu6" /* TODO nu7 */ )]
 use rand_core::OsRng;
+#[cfg(zcash_unstable = "nu6" /* TODO swap */ )]
+use zcash_protocol::value::ZatBalance;
 
 /// Since Blossom activation, the default transaction expiry delta should be 40 blocks.
 /// <https://zips.z.cash/zip-0203#changes-for-blossom>
@@ -239,7 +237,7 @@ impl Progress {
 }
 
 /// Rules for how the builder should be configured for each shielded pool.
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Eq, PartialEq)]
 pub enum BuildConfig {
     Standard {
         sapling_anchor: Option<sapling::Anchor>,
@@ -344,7 +342,7 @@ pub struct Builder<'a, P, U: sapling::builder::ProverProgress> {
     #[cfg(zcash_unstable = "nu6" /* TODO swap */ )]
     action_groups: Vec<ActionGroup<ActionGroupAuthorized, ZatBalance>>,
     #[cfg(zcash_unstable = "nu6" /* TODO nu7 */ )]
-    issuance_builder: Option<IssueBundle<issuance::Unauthorized>>,
+    issuance_builder: Option<IssueBundle<issuance::AwaitingNullifier>>,
     // TODO: In the future, instead of taking the spending keys as arguments when calling
     // `add_sapling_spend` or `add_orchard_spend`, we will build an unauthorized, unproven
     // transaction, and then the caller will be responsible for using the spending keys or their
@@ -561,7 +559,10 @@ impl<'a, P: consensus::Parameters> Builder<'a, P, ()> {
 
     /// Adds an Action Group to the transaction.
     #[cfg(zcash_unstable = "nu6" /* TODO swap */ )]
-    pub fn add_action_group<FE>(&mut self, action_group: ActionGroup<ActionGroupAuthorized, ZatBalance>) -> Result<(), Error<FE>> {
+    pub fn add_action_group<FE>(
+        &mut self,
+        action_group: ActionGroup<ActionGroupAuthorized, ZatBalance>,
+    ) -> Result<(), Error<FE>> {
         assert!(self.build_config.orchard_bundle_type()? == BundleType::DEFAULT_SWAP);
         self.action_groups.push(action_group);
         Ok(())
@@ -833,7 +834,6 @@ impl<'a, P: consensus::Parameters, U: sapling::builder::ProverProgress> Builder<
         self.build_internal(rng, spend_prover, output_prover, fee)
     }
 
-
     fn build_internal<R: RngCore + CryptoRng, SP: SpendProver, OP: OutputProver, FE>(
         #[allow(unused_mut)] mut self,
         mut rng: R,
@@ -900,40 +900,45 @@ impl<'a, P: consensus::Parameters, U: sapling::builder::ProverProgress> Builder<
         let mut orchard_meta = orchard::builder::BundleMetadata::empty();
 
         if let Some(builder) = self.orchard_builder {
-            let bundle_type = self.build_config.orchard_bundle_type()?;
-            if bundle_type == BundleType::DEFAULT_SWAP {
-                #[cfg(zcash_unstable = "nu6" /* TODO swap */ )]
-                {
+            match self.build_config {
+                #[cfg(zcash_unstable = "nu6" /* TODO swap */)]
+                BuildConfig::Swap { .. } => {
                     if !builder.is_empty() {
                         let timelimit: u32 = (self.target_height + 10).into(); // TODO default(?) timelimit
 
                         let (main_action_group, meta) = builder
                             .build_action_group(&mut rng, timelimit)
-                            .map_err(Error::OrchardBuild)?
-                            .unwrap();
+                            .map_err(Error::OrchardBuild)?;
                         orchard_meta = meta;
 
                         let pk = &orchard::circuit::ProvingKey::build::<OrchardZSA>();
                         let commitment = main_action_group.commitment();
-                        let proven_main_group = main_action_group.create_proof(pk, &mut rng).map_err(Error::OrchardBuild)?.apply_signatures(&mut rng, commitment.into(), &self.orchard_saks).map_err(Error::OrchardBuild)?;
+                        let proven_main_group = main_action_group
+                            .create_proof(pk, &mut rng)
+                            .map_err(Error::OrchardBuild)?
+                            .apply_signatures(&mut rng, commitment.into(), &self.orchard_saks)
+                            .map_err(Error::OrchardBuild)?;
                         self.action_groups.push(proven_main_group);
                     }
 
                     // In this case the bundle is, in fact, already authorized
-                    unproven_orchard_bundle = Some(OrchardBundle::OrchardSwap(Box::new(SwapBundle::new(&mut rng, self.action_groups))));
+                    unproven_orchard_bundle = Some(OrchardBundle::OrchardSwap(SwapBundle::new(
+                        &mut rng,
+                        self.action_groups,
+                    )));
                 }
-            } else if bundle_type == BundleType::DEFAULT_ZSA {
-                #[cfg(zcash_unstable = "nu6" /* TODO nu7 */ )]
-                {
+                #[cfg(zcash_unstable = "nu6" /* TODO nu7 */)]
+                BuildConfig::Zsa { .. } => {
                     let (bundle, meta) = builder.build(&mut rng).map_err(Error::OrchardBuild)?;
 
-                    unproven_orchard_bundle = Some(OrchardBundle::OrchardZSA(Box::new(bundle)));
+                    unproven_orchard_bundle = Some(OrchardBundle::OrchardZSA(bundle));
                     orchard_meta = meta;
                 }
-            } else {
-                let (bundle, meta) = builder.build(&mut rng).map_err(Error::OrchardBuild)?;
-                unproven_orchard_bundle = Some(OrchardBundle::OrchardVanilla(Box::new(bundle)));
-                orchard_meta = meta;
+                _ => {
+                    let (bundle, meta) = builder.build(&mut rng).map_err(Error::OrchardBuild)?;
+                    unproven_orchard_bundle = Some(OrchardBundle::OrchardVanilla(bundle));
+                    orchard_meta = meta;
+                }
             }
         };
 
@@ -996,25 +1001,23 @@ impl<'a, P: consensus::Parameters, U: sapling::builder::ProverProgress> Builder<
             .map_err(Error::SaplingBuild)?;
 
         let orchard_bundle: Option<OrchardBundle<_>> = match unauthed_tx.orchard_bundle {
-            Some(OrchardBundle::OrchardVanilla(b)) => {
-                Some(OrchardBundle::OrchardVanilla(Box::new(
-                    b.create_proof(
-                        &orchard::circuit::ProvingKey::build::<OrchardVanilla>(),
+            Some(OrchardBundle::OrchardVanilla(b)) => Some(OrchardBundle::OrchardVanilla(
+                b.create_proof(
+                    &orchard::circuit::ProvingKey::build::<OrchardVanilla>(),
+                    &mut rng,
+                )
+                .and_then(|b| {
+                    b.apply_signatures(
                         &mut rng,
+                        *shielded_sig_commitment.as_ref(),
+                        &self.orchard_saks,
                     )
-                    .and_then(|b| {
-                        b.apply_signatures(
-                            &mut rng,
-                            *shielded_sig_commitment.as_ref(),
-                            &self.orchard_saks,
-                        )
-                    })
-                    .map_err(Error::OrchardBuild)?,
-                )))
-            }
+                })
+                .map_err(Error::OrchardBuild)?,
+            )),
 
             #[cfg(zcash_unstable = "nu6" /* TODO nu7 */ )]
-            Some(OrchardBundle::OrchardZSA(b)) => Some(OrchardBundle::OrchardZSA(Box::new(
+            Some(OrchardBundle::OrchardZSA(b)) => Some(OrchardBundle::OrchardZSA(
                 b.create_proof(
                     &orchard::circuit::ProvingKey::build::<OrchardZSA>(),
                     &mut rng,
@@ -1027,7 +1030,7 @@ impl<'a, P: consensus::Parameters, U: sapling::builder::ProverProgress> Builder<
                     )
                 })
                 .map_err(Error::OrchardBuild)?,
-            ))),
+            )),
 
             // Swap bundle is already authorized
             #[cfg(zcash_unstable = "nu6" /* TODO swap */ )]
@@ -1039,6 +1042,7 @@ impl<'a, P: consensus::Parameters, U: sapling::builder::ProverProgress> Builder<
         #[cfg(zcash_unstable = "nu6" /* TODO nu7 */ )]
         let issue_bundle = unauthed_tx
             .issue_bundle
+            .map(|b| b.update_rho(orchard_bundle.as_ref().unwrap().first_nullifier().unwrap()))
             .map(|b| b.prepare(*shielded_sig_commitment.as_ref()))
             .map(|b| b.sign(self.issuance_isk.as_ref().unwrap()))
             .map(|b| b.unwrap());
@@ -1174,11 +1178,6 @@ mod testing {
 mod tests {
     use std::convert::Infallible;
 
-    use assert_matches::assert_matches;
-    use ff::Field;
-    use incrementalmerkletree::{frontier::CommitmentTree, witness::IncrementalWitness};
-    use rand_core::OsRng;
-
     use crate::{
         consensus::{NetworkUpgrade, Parameters, TEST_NETWORK},
         legacy::TransparentAddress,
@@ -1189,9 +1188,18 @@ mod tests {
             components::amount::{Amount, BalanceError, NonNegativeAmount},
         },
     };
+    use assert_matches::assert_matches;
+    use ff::Field;
+    use incrementalmerkletree::{frontier::CommitmentTree, witness::IncrementalWitness};
+    use orchard::builder::BundleType;
+    use orchard::orchard_flavor::OrchardZSA;
+    use rand_core::OsRng;
 
     use super::{Builder, Error};
 
+    #[cfg(zcash_unstable = "nu6" /* TODO nu7 */ )]
+    #[cfg(not(feature = "transparent-inputs"))]
+    use crate::zip32::AccountId;
     #[cfg(zcash_unstable = "nu6" /* TODO nu7 */ )]
     use {
         crate::transaction::fees::zip317::FeeError,
@@ -1200,17 +1208,15 @@ mod tests {
             FullViewingKey, IssuanceAuthorizingKey, IssuanceValidatingKey, SpendingKey,
         },
         orchard::note::AssetBase,
+        orchard::tree::MerklePath,
         orchard::value::NoteValue,
         orchard::Address,
+        orchard::Note,
         orchard::ReferenceKeys,
         zcash_protocol::consensus::TestNetwork,
         zcash_protocol::constants::testnet::COIN_TYPE,
         zip32::Scope::External,
     };
-
-    #[cfg(zcash_unstable = "nu6" /* TODO nu7 */ )]
-    #[cfg(not(feature = "transparent-inputs"))]
-    use crate::zip32::AccountId;
 
     #[cfg(zcash_unstable = "zfuture")]
     #[cfg(feature = "transparent-inputs")]
@@ -1253,10 +1259,12 @@ mod tests {
             tze_builder: std::marker::PhantomData,
             progress_notifier: (),
             orchard_builder: None,
+            #[cfg(zcash_unstable = "nu6" /* TODO swap */ )]
+            action_groups: vec![],
             #[cfg(zcash_unstable = "nu6" /* TODO nu7 */ )]
             issuance_builder: None,
             sapling_asks: vec![],
-            orchard_saks: Vec::new(),
+            orchard_saks: vec![],
             #[cfg(zcash_unstable = "nu6" /* TODO nu7 */ )]
             issuance_isk: None,
         };
@@ -1496,10 +1504,19 @@ mod tests {
         }
     }
 
+    #[cfg(zcash_unstable = "nu6" /* TODO nu7 */ )]
+    fn add_dummy_orchard_spend(builder: &mut Builder<TestNetwork, ()>) {
+        let (sk, _, note) = Note::dummy(&mut OsRng, None, AssetBase::native());
+        builder
+            .add_orchard_spend::<FeeError>(&sk, note, MerklePath::dummy(&mut OsRng))
+            .unwrap();
+    }
+
     #[test]
     #[cfg(zcash_unstable = "nu6" /* TODO nu7 */ )]
     fn init_issuance_bundle_with_finalization() {
         let (mut builder, iak, _) = prepare_zsa_test();
+        add_dummy_orchard_spend(&mut builder);
 
         let asset_desc: Vec<u8> = "asset_desc".into();
 
@@ -1520,6 +1537,7 @@ mod tests {
     #[cfg(zcash_unstable = "nu6" /* TODO nu7 */ )]
     fn init_issuance_bundle_without_finalization() {
         let (mut builder, iak, address) = prepare_zsa_test();
+        add_dummy_orchard_spend(&mut builder);
 
         let asset_desc: Vec<u8> = "asset_desc".into();
 
@@ -1553,6 +1571,7 @@ mod tests {
     #[cfg(zcash_unstable = "nu6" /* TODO nu7 */ )]
     fn add_issuance_same_asset() {
         let (mut builder, iak, address) = prepare_zsa_test();
+        add_dummy_orchard_spend(&mut builder);
 
         let asset_desc: Vec<u8> = "asset_desc".into();
 
@@ -1593,6 +1612,7 @@ mod tests {
     #[cfg(zcash_unstable = "nu6" /* TODO nu7 */ )]
     fn add_issuance_different_asset() {
         let (mut builder, iak, address) = prepare_zsa_test();
+        add_dummy_orchard_spend(&mut builder);
 
         let asset_desc_1: Vec<u8> = "asset_desc".into();
         let asset_desc_2: Vec<u8> = "asset_desc_2".into();
@@ -1648,6 +1668,7 @@ mod tests {
     #[cfg(zcash_unstable = "nu6" /* TODO nu7 */ )]
     fn first_issuance_init_issuance_bundle() {
         let (mut builder, iak, address) = prepare_zsa_test();
+        add_dummy_orchard_spend(&mut builder);
 
         let asset_desc: Vec<u8> = "asset_desc".into();
 
@@ -1694,15 +1715,16 @@ mod tests {
     #[cfg(zcash_unstable = "nu6" /* TODO nu7 */ )]
     fn first_issuance_add_recipient() {
         let (mut builder, iak, address) = prepare_zsa_test();
+        add_dummy_orchard_spend(&mut builder);
 
         let asset_desc: Vec<u8> = "asset_desc".into();
 
         builder
-            .init_issuance_bundle::<FeeError>(iak, asset_desc.clone(), None, false)
+            .init_issuance_bundle::<FeeError>(iak, asset_desc.clone(), None, true)
             .unwrap();
 
         builder
-            .add_recipient::<FeeError>(&asset_desc, address, NoteValue::from_raw(42), true)
+            .add_recipient::<FeeError>(&asset_desc, address, NoteValue::from_raw(42), false)
             .unwrap();
 
         let binding = builder.mock_build_no_fee(OsRng).unwrap().into_transaction();
@@ -1736,6 +1758,7 @@ mod tests {
     #[cfg(zcash_unstable = "nu6" /* TODO nu7 */ )]
     fn first_issuance_only_reference_note() {
         let (mut builder, iak, _) = prepare_zsa_test();
+        add_dummy_orchard_spend(&mut builder);
 
         let asset_desc: Vec<u8> = "asset_desc".into();
 
@@ -1803,5 +1826,121 @@ mod tests {
         let address = fvk.address_at(0u32, External);
 
         (builder, iak, address)
+    }
+
+    #[test]
+    #[cfg(zcash_unstable = "nu6" /* TODO swap */ )]
+    fn swap_as_transfer() {
+        let (mut builder, _, _) = prepare_swap_test();
+        add_dummy_orchard_spend(&mut builder);
+
+        let binding = builder.mock_build_no_fee(OsRng).unwrap().into_transaction();
+        let bundle = binding.orchard_bundle().unwrap();
+
+        assert_eq!(
+            bundle.as_swap_bundle().action_groups().len(),
+            1,
+            "There should be only one action group"
+        );
+
+        let orchard = bundle
+            .as_swap_bundle()
+            .action_groups()
+            .first()
+            .unwrap()
+            .action_group();
+        assert_eq!(orchard.actions().len(), 2, "There should be only 2 actions");
+    }
+
+    #[test]
+    #[cfg(zcash_unstable = "nu6" /* TODO swap */ )]
+    fn swap_two_external_action_groups() {
+        let (mut builder, _, _) = prepare_swap_test();
+
+        add_dummy_action_group(&mut builder);
+        add_dummy_action_group(&mut builder);
+
+        let binding = builder.mock_build_no_fee(OsRng).unwrap().into_transaction();
+        let bundle = binding.orchard_bundle().unwrap();
+
+        assert_eq!(
+            bundle.as_swap_bundle().action_groups().len(),
+            1,
+            "There should be only one action group"
+        );
+
+        let orchard = bundle
+            .as_swap_bundle()
+            .action_groups()
+            .first()
+            .unwrap()
+            .action_group();
+        assert_eq!(orchard.actions().len(), 2, "There should be only 2 actions");
+    }
+
+    #[cfg(zcash_unstable = "nu6" /* TODO swap */)]
+    fn add_dummy_action_group(builder: &mut Builder<TestNetwork, ()>) {
+        let ik = IssuanceValidatingKey::from(
+            &IssuanceAuthorizingKey::from_zip32_seed(&[0u8; 32], COIN_TYPE, 0).unwrap(),
+        );
+        let (sk, fvk, note_to_spend) = Note::dummy(&mut OsRng, None, AssetBase::derive(&ik, b"assetA"));
+        let (_, _, note_to_receive) = Note::dummy(&mut OsRng, None, AssetBase::derive(&ik, b"assetB"));
+
+        let orchard_saks = vec![orchard::keys::SpendAuthorizingKey::from(&sk)];
+
+        let mut ag_builder =
+            orchard::builder::Builder::new(BundleType::DEFAULT_ZSA, orchard::Anchor::empty_tree());
+        ag_builder
+            .add_spend(fvk, note_to_spend, MerklePath::dummy(&mut OsRng))
+            .unwrap();
+        ag_builder
+            .add_output(
+                None,
+                note_to_receive.recipient(),
+                note_to_receive.value(),
+                note_to_receive.asset(),
+                None,
+            )
+            .unwrap();
+        let (action_group, _) = ag_builder.build_action_group(OsRng, 10).unwrap();
+        let commitment = action_group.commitment().into();
+        let proven_action_group = action_group
+            .create_proof(
+                &orchard::circuit::ProvingKey::build::<OrchardZSA>(),
+                &mut OsRng,
+            )
+            .unwrap()
+            .apply_signatures(
+                &mut OsRng,
+                commitment,
+                &orchard_saks,
+            )
+            .unwrap();
+
+        builder.add_action_group::<FeeError>(proven_action_group).unwrap();
+    }
+
+    #[cfg(zcash_unstable = "nu6" /* TODO swap */)]
+    fn prepare_swap_test() -> (Builder<'static, TestNetwork, ()>, Address, Address) {
+        let seed = "0123456789abcdef0123456789abcdef".as_bytes();
+
+        let tx_height = TEST_NETWORK
+            .activation_height(NetworkUpgrade::Swap)
+            .unwrap();
+
+        let build_config = BuildConfig::Swap {
+            sapling_anchor: None,
+            orchard_anchor: Some(orchard::Anchor::empty_tree()),
+        };
+
+        let builder = Builder::new(TEST_NETWORK, tx_height, build_config);
+
+        let sk =
+            SpendingKey::from_zip32_seed(seed, COIN_TYPE, AccountId::try_from(0).unwrap()).unwrap();
+        let fvk = FullViewingKey::from(&sk);
+        let address1 = fvk.address_at(0u32, External);
+        let address2 = fvk.address_at(1u32, External);
+
+        (builder, address1, address2)
     }
 }
