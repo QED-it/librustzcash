@@ -1248,7 +1248,6 @@ mod tests {
         zcash_protocol::constants::testnet::COIN_TYPE,
         zip32::Scope::External,
     };
-
     #[cfg(zcash_unstable = "zfuture")]
     #[cfg(feature = "transparent-inputs")]
     use super::TzeBuilder;
@@ -1536,18 +1535,31 @@ mod tests {
     }
 
     #[cfg(zcash_unstable = "nu6" /* TODO nu7 */ )]
-    fn add_dummy_orchard_spend(builder: &mut Builder<TestNetwork, ()>) {
-        let (sk, _, note) = Note::dummy(&mut OsRng, None, AssetBase::native());
+    fn add_dummy_orchard_spend(builder: &mut Builder<TestNetwork, ()>, asset: AssetBase) {
+        let (sk, _, note) = Note::dummy(&mut OsRng, None, asset);
         builder
             .add_orchard_spend::<FeeError>(&sk, note, MerklePath::dummy(&mut OsRng))
             .unwrap();
+    }
+
+    #[cfg(zcash_unstable = "nu6" /* TODO nu7 */)]
+    fn add_dummy_orchard_output(builder: &mut Builder<TestNetwork, ()>, asset: AssetBase) {
+        let (_, _, note) = Note::dummy(&mut OsRng, None, asset);
+        builder.add_orchard_output::<FeeError>(
+            None,
+            note.recipient(),
+            note.value().inner(),
+            note.asset(),
+            MemoBytes::empty(),
+        )
+        .unwrap();
     }
 
     #[test]
     #[cfg(zcash_unstable = "nu6" /* TODO nu7 */ )]
     fn init_issuance_bundle_with_finalization() {
         let (mut builder, iak, _) = prepare_zsa_test();
-        add_dummy_orchard_spend(&mut builder);
+        add_dummy_orchard_spend(&mut builder, AssetBase::native());
 
         let asset_desc: Vec<u8> = "asset_desc".into();
 
@@ -1568,7 +1580,7 @@ mod tests {
     #[cfg(zcash_unstable = "nu6" /* TODO nu7 */ )]
     fn init_issuance_bundle_without_finalization() {
         let (mut builder, iak, address) = prepare_zsa_test();
-        add_dummy_orchard_spend(&mut builder);
+        add_dummy_orchard_spend(&mut builder, AssetBase::native());
 
         let asset_desc: Vec<u8> = "asset_desc".into();
 
@@ -1602,7 +1614,7 @@ mod tests {
     #[cfg(zcash_unstable = "nu6" /* TODO nu7 */ )]
     fn add_issuance_same_asset() {
         let (mut builder, iak, address) = prepare_zsa_test();
-        add_dummy_orchard_spend(&mut builder);
+        add_dummy_orchard_spend(&mut builder, AssetBase::native());
 
         let asset_desc: Vec<u8> = "asset_desc".into();
 
@@ -1643,7 +1655,7 @@ mod tests {
     #[cfg(zcash_unstable = "nu6" /* TODO nu7 */ )]
     fn add_issuance_different_asset() {
         let (mut builder, iak, address) = prepare_zsa_test();
-        add_dummy_orchard_spend(&mut builder);
+        add_dummy_orchard_spend(&mut builder, AssetBase::native());
 
         let asset_desc_1: Vec<u8> = "asset_desc".into();
         let asset_desc_2: Vec<u8> = "asset_desc_2".into();
@@ -1699,7 +1711,7 @@ mod tests {
     #[cfg(zcash_unstable = "nu6" /* TODO nu7 */ )]
     fn first_issuance_init_issuance_bundle() {
         let (mut builder, iak, address) = prepare_zsa_test();
-        add_dummy_orchard_spend(&mut builder);
+        add_dummy_orchard_spend(&mut builder, AssetBase::native());
 
         let asset_desc: Vec<u8> = "asset_desc".into();
 
@@ -1746,7 +1758,7 @@ mod tests {
     #[cfg(zcash_unstable = "nu6" /* TODO nu7 */ )]
     fn first_issuance_add_recipient() {
         let (mut builder, iak, address) = prepare_zsa_test();
-        add_dummy_orchard_spend(&mut builder);
+        add_dummy_orchard_spend(&mut builder, AssetBase::native());
 
         let asset_desc: Vec<u8> = "asset_desc".into();
 
@@ -1789,7 +1801,7 @@ mod tests {
     #[cfg(zcash_unstable = "nu6" /* TODO nu7 */ )]
     fn first_issuance_only_reference_note() {
         let (mut builder, iak, _) = prepare_zsa_test();
-        add_dummy_orchard_spend(&mut builder);
+        add_dummy_orchard_spend(&mut builder, AssetBase::native());
 
         let asset_desc: Vec<u8> = "asset_desc".into();
 
@@ -1863,7 +1875,8 @@ mod tests {
     #[cfg(zcash_unstable = "nu6" /* TODO swap */ )]
     fn swap_as_transfer() {
         let (mut builder, _, _) = prepare_swap_test();
-        add_dummy_orchard_spend(&mut builder);
+        add_dummy_orchard_spend(&mut builder, AssetBase::native());
+        add_dummy_orchard_output(&mut builder, AssetBase::native());
 
         let binding = builder.mock_build_no_fee(OsRng).unwrap().into_transaction();
         let bundle = binding.orchard_bundle().unwrap();
@@ -1880,7 +1893,7 @@ mod tests {
             .first()
             .unwrap()
             .action_group();
-        assert_eq!(orchard.actions().len(), 2, "There should be only 2 actions");
+        assert_eq!(orchard.actions().len(), 2, "There should be 2 actions");
     }
 
     #[test]
@@ -1888,34 +1901,83 @@ mod tests {
     fn swap_two_external_action_groups() {
         let (mut builder, _, _) = prepare_swap_test();
 
-        add_dummy_action_group(&mut builder);
-        add_dummy_action_group(&mut builder);
+        add_dummy_action_group(&mut builder, b"assetA", b"assetB");
+        add_dummy_action_group(&mut builder, b"assetB", b"assetA");
 
         let binding = builder.mock_build_no_fee(OsRng).unwrap().into_transaction();
         let bundle = binding.orchard_bundle().unwrap();
 
         assert_eq!(
             bundle.as_swap_bundle().action_groups().len(),
-            1,
-            "There should be only one action group"
+            2,
+            "There should be 2 action groups"
         );
 
         let orchard = bundle
             .as_swap_bundle()
-            .action_groups()
-            .first()
+            .action_groups().get(0)
             .unwrap()
             .action_group();
-        assert_eq!(orchard.actions().len(), 2, "There should be only 2 actions");
+        assert_eq!(orchard.actions().len(), 2, "There should be 2 actions");
+
+        let orchard = bundle
+            .as_swap_bundle()
+            .action_groups().get(1)
+            .unwrap()
+            .action_group();
+        assert_eq!(orchard.actions().len(), 2, "There should be 2 actions");
+    }
+
+    #[test]
+    #[cfg(zcash_unstable = "nu6" /* TODO swap */ )]
+    fn swap_external_and_internal_action_groups() {
+        let (mut builder, _, _) = prepare_swap_test();
+
+        let seed = "0123456789abcdef0123456789abcdef".as_bytes();
+        let iak = IssuanceAuthorizingKey::from_zip32_seed(seed, COIN_TYPE, 0).unwrap();
+
+        let asset_desc_A: &[u8] = b"assetA";
+        let asset_base_A = AssetBase::derive(&IssuanceValidatingKey::from(&iak), asset_desc_A);
+
+        let asset_desc_B: &[u8] = b"assetB";
+        let asset_base_B = AssetBase::derive(&IssuanceValidatingKey::from(&iak), asset_desc_B);
+
+        add_dummy_orchard_spend(&mut builder, asset_base_A);
+        add_dummy_orchard_output(&mut builder, asset_base_B);
+
+        add_dummy_action_group(&mut builder, asset_desc_A, asset_desc_B);
+
+        let binding = builder.mock_build_no_fee(OsRng).unwrap().into_transaction();
+        let bundle = binding.orchard_bundle().unwrap();
+
+        assert_eq!(
+            bundle.as_swap_bundle().action_groups().len(),
+            2,
+            "There should be 2 action groups"
+        );
+
+        let orchard = bundle
+            .as_swap_bundle()
+            .action_groups().get(0)
+            .unwrap()
+            .action_group();
+        assert_eq!(orchard.actions().len(), 2, "There should be 2 actions");
+
+        let orchard = bundle
+            .as_swap_bundle()
+            .action_groups().get(1)
+            .unwrap()
+            .action_group();
+        assert_eq!(orchard.actions().len(), 2, "There should be 2 actions");
     }
 
     #[cfg(zcash_unstable = "nu6" /* TODO swap */)]
-    fn add_dummy_action_group(builder: &mut Builder<TestNetwork, ()>) {
+    fn add_dummy_action_group(builder: &mut Builder<TestNetwork, ()>, asset1: &[u8], asset2: &[u8]) {
         let ik = IssuanceValidatingKey::from(
             &IssuanceAuthorizingKey::from_zip32_seed(&[0u8; 32], COIN_TYPE, 0).unwrap(),
         );
-        let (sk, fvk, note_to_spend) = Note::dummy(&mut OsRng, None, AssetBase::derive(&ik, b"assetA"));
-        let (_, _, note_to_receive) = Note::dummy(&mut OsRng, None, AssetBase::derive(&ik, b"assetB"));
+        let (sk, fvk, note_to_spend) = Note::dummy(&mut OsRng, None, AssetBase::derive(&ik, asset1));
+        let (_, _, note_to_receive) = Note::dummy(&mut OsRng, None, AssetBase::derive(&ik, asset2));
 
         let orchard_saks = vec![orchard::keys::SpendAuthorizingKey::from(&sk)];
 
