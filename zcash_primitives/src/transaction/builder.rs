@@ -1191,8 +1191,6 @@ mod tests {
     use assert_matches::assert_matches;
     use ff::Field;
     use incrementalmerkletree::{frontier::CommitmentTree, witness::IncrementalWitness};
-    use orchard::builder::BundleType;
-    use orchard::orchard_flavor::OrchardZSA;
     use rand_core::OsRng;
 
     use super::{Builder, Error};
@@ -1206,11 +1204,13 @@ mod tests {
     #[cfg(zcash_unstable = "nu6" /* TODO nu7 */ )]
     use {
         crate::transaction::fees::zip317::FeeError,
+        orchard::builder::BundleType,
         orchard::issuance::IssueInfo,
         orchard::keys::{
             FullViewingKey, IssuanceAuthorizingKey, IssuanceValidatingKey, SpendingKey,
         },
         orchard::note::AssetBase,
+        orchard::orchard_flavor::OrchardZSA,
         orchard::tree::MerklePath,
         orchard::value::NoteValue,
         orchard::Address,

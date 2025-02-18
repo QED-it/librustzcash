@@ -6,7 +6,6 @@ use super::Amount;
 use crate::transaction::{OrchardBundle, Transaction};
 use byteorder::ReadBytesExt;
 use nonempty::NonEmpty;
-use orchard::primitives::redpallas::Binding;
 use orchard::{
     bundle::{Authorization, Authorized, AuthorizedWithProof, Flags},
     domain::OrchardDomainCommon,
@@ -19,13 +18,14 @@ use orchard::{
 use zcash_encoding::{Array, CompactSize, Vector};
 use zcash_note_encryption::note_bytes::NoteBytes;
 
-use crate::transaction::components::issuance::read_asset;
 use zcash_protocol::value::ZatBalance;
 #[cfg(zcash_unstable = "nu6" /* TODO nu7 */ )]
 use {
+    crate::transaction::components::issuance::read_asset,
     byteorder::LittleEndian,
     byteorder::WriteBytesExt,
     orchard::orchard_flavor::OrchardZSA,
+    orchard::primitives::redpallas::Binding,
     orchard::{
         note::AssetBase,
         swap_bundle::{ActionGroup, ActionGroupAuthorized, SwapBundle},
@@ -84,8 +84,7 @@ pub fn read_orchard_bundle<R: Read>(
 
         let binding_signature = read_signature::<_, redpallas::Binding>(&mut reader)?;
 
-        let authorization =
-            Authorized::from_parts(orchard::Proof::new(proof_bytes), binding_signature);
+        let authorization = Authorized::from_parts(Proof::new(proof_bytes), binding_signature);
 
         Ok(Some(Bundle::from_parts(
             actions,
@@ -201,7 +200,7 @@ fn read_action_group_data<R: Read>(
     let flags = read_flags(&mut reader)?;
     let anchor = read_anchor(&mut reader)?;
     let proof_bytes = Vector::read(&mut reader, |r| r.read_u8())?;
-    let proof = orchard::Proof::new(proof_bytes);
+    let proof = Proof::new(proof_bytes);
     let timelimit = reader.read_u32::<LittleEndian>()?;
     if timelimit != 0 {
         return Err(io::Error::new(
