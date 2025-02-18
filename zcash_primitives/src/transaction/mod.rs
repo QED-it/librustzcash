@@ -415,6 +415,7 @@ impl<A: orchard::bundle::Authorization> OrchardBundle<A> {
     pub fn as_vanilla_bundle(&self) -> &Bundle<A, Amount, OrchardVanilla> {
         match self {
             OrchardBundle::OrchardVanilla(b) => b,
+            #[cfg(zcash_unstable = "nu6" /* TODO nu7 */ )]
             _ => panic!("Wrong bundle type"),
         }
     }
@@ -917,7 +918,7 @@ impl Transaction {
             transparent_bundle,
             sprout_bundle: None,
             sapling_bundle,
-            orchard_bundle: orchard_bundle.map(|b| OrchardBundle::OrchardVanilla(b)),
+            orchard_bundle: orchard_bundle.map(OrchardBundle::OrchardVanilla),
             #[cfg(zcash_unstable = "nu6" /* TODO nu7 */ )]
             issue_bundle: None,
             #[cfg(zcash_unstable = "zfuture")]
