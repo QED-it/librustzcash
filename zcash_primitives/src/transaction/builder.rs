@@ -1998,7 +1998,7 @@ mod tests {
         ];
 
         let mut ag_builder =
-            orchard::builder::Builder::new(BundleType::DEFAULT_ZSA, orchard::Anchor::empty_tree());
+            orchard::builder::Builder::new(BundleType::DEFAULT_SWAP, orchard::Anchor::empty_tree());
         ag_builder
             .add_spend(rfvk, reference_note, MerklePath::dummy(&mut OsRng))
             .unwrap();
