@@ -1178,6 +1178,7 @@ mod testing {
 mod tests {
     use std::convert::Infallible;
 
+    use super::{Builder, Error};
     use crate::{
         consensus::{NetworkUpgrade, Parameters, TEST_NETWORK},
         legacy::TransparentAddress,
@@ -1192,8 +1193,6 @@ mod tests {
     use ff::Field;
     use incrementalmerkletree::{frontier::CommitmentTree, witness::IncrementalWitness};
     use rand_core::OsRng;
-
-    use super::{Builder, Error};
 
     #[cfg(zcash_unstable = "zfuture")]
     #[cfg(feature = "transparent-inputs")]
@@ -1219,6 +1218,18 @@ mod tests {
         zcash_protocol::consensus::TestNetwork,
         zcash_protocol::constants::testnet::COIN_TYPE,
         zip32::Scope::External,
+    };
+    #[cfg(zcash_unstable = "nu6" /* TODO swap */ )]
+    use {
+        ff::PrimeField,
+        group::{Curve, Group},
+        orchard::note::{Nullifier, RandomSeed, Rho},
+        orchard::tree::MerkleHashOrchard,
+        orchard::NOTE_COMMITMENT_TREE_DEPTH,
+        pasta_curves::arithmetic::CurveAffine,
+        pasta_curves::pallas,
+        rand_core::RngCore,
+        zip32::Scope,
     };
 
     #[cfg(feature = "transparent-inputs")]
@@ -1505,15 +1516,15 @@ mod tests {
 
     #[cfg(zcash_unstable = "nu6" /* TODO nu7 */ )]
     fn add_dummy_orchard_spend(builder: &mut Builder<TestNetwork, ()>, asset: AssetBase) {
-        let (sk, _, note) = Note::dummy(&mut OsRng, None, asset);
+        let (sk, _, note) = dummy_note(asset);
         builder
-            .add_orchard_spend::<FeeError>(&sk, note, MerklePath::dummy(&mut OsRng))
+            .add_orchard_spend::<FeeError>(&sk, note, dummy_merkle_path(&mut OsRng))
             .unwrap();
     }
 
     #[cfg(zcash_unstable = "nu6" /* TODO nu7 */)]
     fn add_dummy_orchard_output(builder: &mut Builder<TestNetwork, ()>, asset: AssetBase) {
-        let (_, _, note) = Note::dummy(&mut OsRng, None, asset);
+        let (_, _, note) = dummy_note(asset);
         builder
             .add_orchard_output::<FeeError>(
                 None,
@@ -1955,11 +1966,9 @@ mod tests {
         let ik = IssuanceValidatingKey::from(
             &IssuanceAuthorizingKey::from_zip32_seed(&[0u8; 32], COIN_TYPE, 0).unwrap(),
         );
-        let (rsk, rfvk, reference_note) =
-            Note::dummy(&mut OsRng, None, AssetBase::derive(&ik, asset2));
-        let (sk, fvk, note_to_spend) =
-            Note::dummy(&mut OsRng, None, AssetBase::derive(&ik, asset1));
-        let (_, _, note_to_receive) = Note::dummy(&mut OsRng, None, AssetBase::derive(&ik, asset2));
+        let (rsk, rfvk, reference_note) = dummy_note(AssetBase::derive(&ik, asset2));
+        let (sk, fvk, note_to_spend) = dummy_note(AssetBase::derive(&ik, asset1));
+        let (_, _, note_to_receive) = dummy_note(AssetBase::derive(&ik, asset2));
 
         let orchard_saks = vec![
             orchard::keys::SpendAuthorizingKey::from(&sk),
@@ -1969,10 +1978,10 @@ mod tests {
         let mut ag_builder =
             orchard::builder::Builder::new(BundleType::DEFAULT_SWAP, orchard::Anchor::empty_tree());
         ag_builder
-            .add_spend(rfvk, reference_note, MerklePath::dummy(&mut OsRng))
+            .add_spend(rfvk, reference_note, dummy_merkle_path(&mut OsRng))
             .unwrap();
         ag_builder
-            .add_spend(fvk, note_to_spend, MerklePath::dummy(&mut OsRng))
+            .add_spend(fvk, note_to_spend, dummy_merkle_path(&mut OsRng))
             .unwrap();
         ag_builder
             .add_output(
@@ -2021,5 +2030,73 @@ mod tests {
         let address2 = fvk.address_at(1u32, External);
 
         (builder, address1, address2)
+    }
+
+    #[cfg(zcash_unstable = "nu6" /* TODO swap */)]
+    fn dummy_note(asset: AssetBase) -> (SpendingKey, FullViewingKey, Note) {
+        let sk = random_sk(&mut OsRng);
+        let fvk: FullViewingKey = (&sk).into();
+        let recipient = fvk.address_at(0u32, Scope::External);
+        let rho = Rho::from_bytes(&dummy_nullifier(&mut OsRng).to_bytes()).unwrap();
+
+        let note = Note::from_parts(
+            recipient,
+            NoteValue::from_raw(0),
+            asset,
+            rho,
+            random_random_seed(&mut OsRng, &rho),
+        )
+        .unwrap();
+
+        (sk, fvk, note)
+    }
+
+    #[cfg(zcash_unstable = "nu6" /* TODO swap */)]
+    fn dummy_nullifier(rng: &mut impl RngCore) -> Nullifier {
+        Nullifier::from_bytes(&pallas::Base::to_repr(&extract_p(&pallas::Point::random(
+            rng,
+        ))))
+        .unwrap()
+    }
+
+    #[cfg(zcash_unstable = "nu6" /* TODO swap */)]
+    fn extract_p(point: &pallas::Point) -> pallas::Base {
+        point
+            .to_affine()
+            .coordinates()
+            .map(|c| *c.x())
+            .unwrap_or_else(pallas::Base::zero)
+    }
+
+    #[cfg(zcash_unstable = "nu6" /* TODO swap */)]
+    fn random_sk(rng: &mut impl RngCore) -> SpendingKey {
+        loop {
+            let mut bytes = [0; 32];
+            rng.fill_bytes(&mut bytes);
+            let sk = SpendingKey::from_bytes(bytes);
+            if sk.is_some().into() {
+                break sk.unwrap();
+            }
+        }
+    }
+
+    #[cfg(zcash_unstable = "nu6" /* TODO swap */)]
+    fn random_random_seed(rng: &mut impl RngCore, rho: &Rho) -> RandomSeed {
+        loop {
+            let mut bytes = [0; 32];
+            rng.fill_bytes(&mut bytes);
+            let rseed = RandomSeed::from_bytes(bytes, rho);
+            if rseed.is_some().into() {
+                break rseed.unwrap();
+            }
+        }
+    }
+
+    #[cfg(zcash_unstable = "nu6" /* TODO swap */)]
+    fn dummy_merkle_path(rng: &mut impl RngCore) -> MerklePath {
+        MerklePath::from_parts(
+            rng.next_u32(),
+            [(); NOTE_COMMITMENT_TREE_DEPTH].map(|_| MerkleHashOrchard::random(rng)),
+        )
     }
 }
