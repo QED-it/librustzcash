@@ -50,6 +50,7 @@ nonempty.workspace = true
 orchard.workspace = true
 sapling.workspace = true
 zcash_spec.workspace = true
+pasta_curves.workspace = true
 
 # - Note Commitment Trees
 incrementalmerkletree = { workspace = true, features = ["legacy-api"] }

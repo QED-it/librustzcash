@@ -3202,6 +3202,7 @@ dependencies = [
  "memuse",
  "nonempty",
  "orchard",
+ "pasta_curves",
  "pprof",
  "proptest",
  "rand",
