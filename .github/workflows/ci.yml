@@ -310,7 +310,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Check formatting
-        run: cargo fmt --all -- --config-path=./rustfmt.toml --check
+        run: cargo fmt --all -- --check
 
   protobuf:
     name: protobuf consistency
