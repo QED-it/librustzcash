@@ -30,7 +30,7 @@ use {
     orchard::primitives::redpallas::Binding,
     orchard::{
         note::AssetBase,
-        swap_bundle::{ActionGroup, ActionGroupAuthorized, SwapBundle},
+        swap_bundle::{ActionGroupAuthorized, SwapBundle},
         value::NoteValue,
     },
 };
@@ -94,6 +94,7 @@ pub fn read_orchard_bundle<R: Read>(
             value_balance,
             vec![],
             anchor,
+            0,
             authorization,
         )))
     }
@@ -114,7 +115,7 @@ pub fn read_orchard_zsa_bundle<R: Read>(
         ));
     }
 
-    let (actions, flags, anchor, proof, _) = read_action_group_data(&mut reader)?;
+    let (actions, flags, anchor, proof, timelimit) = read_action_group_data(&mut reader)?;
 
     let (value_balance, burn, binding_signature) = read_bundle_balance_metadata(&mut reader)?;
 
@@ -124,6 +125,7 @@ pub fn read_orchard_zsa_bundle<R: Read>(
         value_balance,
         burn,
         anchor,
+        timelimit,
         Authorized::from_parts(proof, binding_signature),
     )))
 }
@@ -146,7 +148,7 @@ pub fn read_orchard_swap_bundle<R: Read>(mut reader: R) -> io::Result<Option<Swa
 #[cfg(zcash_unstable = "nu6" /* TODO nu7 */ )]
 fn read_action_groups<R: Read>(
     mut reader: R,
-) -> io::Result<Vec<ActionGroup<ActionGroupAuthorized, ZatBalance>>> {
+) -> io::Result<Vec<Bundle<ActionGroupAuthorized, ZatBalance, OrchardZSA>>> {
     // Read a number of action group
     let num_action_groups: usize = CompactSize::read_t::<_, u32>(&mut reader)? as usize;
     if num_action_groups == 0 {
@@ -166,16 +168,15 @@ fn read_action_groups<R: Read>(
     let action_groups = action_groups_data
         .into_iter()
         .map(|(actions, flags, anchor, proof, timelimit)| {
-            let bundle = Bundle::from_parts(
+            Bundle::from_parts(
                 actions,
                 flags,
                 ZatBalance::zero(), // Dummy value. In reality value balance of an action group can be non-zero, but at this level we only track value balance of the entire bundle.
                 vec![],             // TODO Implement burn either in swap bundle or in groups
                 anchor,
+                timelimit,
                 ActionGroupAuthorized::from_parts(proof),
-            );
-
-            ActionGroup::from_parts(bundle, timelimit, None)
+            )
         })
         .collect::<Vec<_>>();
 
@@ -438,7 +439,7 @@ pub fn write_orchard_zsa_bundle<W: Write>(
     // Exactly one action group for NU7
     CompactSize::write(&mut writer, 1)?;
     // Timelimit must be zero for NU7
-    write_action_group(&mut writer, bundle, 0)?;
+    write_action_group(&mut writer, bundle)?;
     write_bundle_balance_metadata(
         &mut writer,
         bundle.value_balance(),
@@ -458,7 +459,7 @@ pub fn write_orchard_swap_bundle<W: Write>(
     bundle
         .action_groups()
         .into_iter()
-        .for_each(|ag| write_action_group(&mut writer, ag.action_group(), ag.timelimit()).unwrap());
+        .for_each(|ag| write_action_group(&mut writer, ag).unwrap());
     write_bundle_balance_metadata(
         &mut writer,
         bundle.value_balance(),
@@ -472,7 +473,6 @@ pub fn write_orchard_swap_bundle<W: Write>(
 fn write_action_group<W: Write, A: AuthorizedWithProof>(
     mut writer: W,
     bundle: &orchard::Bundle<A, Amount, OrchardZSA>,
-    timelimit: u32,
 ) -> io::Result<()> {
     Vector::write_nonempty(&mut writer, bundle.actions(), |w, a| {
         write_action_without_auth(w, a)
@@ -485,7 +485,7 @@ fn write_action_group<W: Write, A: AuthorizedWithProof>(
         bundle.authorization().proof().as_ref(),
         |w, b| w.write_u8(*b),
     )?;
-    writer.write_u32::<LittleEndian>(timelimit)?;
+    writer.write_u32::<LittleEndian>(bundle.expiry_height())?;
 
     Array::write(
         &mut writer,

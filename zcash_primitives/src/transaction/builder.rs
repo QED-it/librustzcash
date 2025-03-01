@@ -53,8 +53,7 @@ use crate::{
         fees::FutureFeeRule,
     },
 };
-#[cfg(zcash_unstable = "nu6" /* TODO swap */ )]
-use orchard::swap_bundle::{ActionGroup, ActionGroupAuthorized, SwapBundle};
+
 #[cfg(zcash_unstable = "nu6" /* TODO nu7 */ )]
 use orchard::{
     issuance,
@@ -71,6 +70,11 @@ use zcash_protocol::value::ZatBalance;
 use rand_core::OsRng;
 #[cfg(zcash_unstable = "nu6" /* TODO nu7 */ )]
 use std::io;
+#[cfg(zcash_unstable = "nu6" /* TODO swap */ )]
+use orchard::{
+    swap_bundle::{ActionGroupAuthorized, SwapBundle},
+    primitives::redpallas::{Binding, SigningKey},
+};
 
 /// Since Blossom activation, the default transaction expiry delta should be 40 blocks.
 /// <https://zips.z.cash/zip-0203#changes-for-blossom>
@@ -345,7 +349,10 @@ pub struct Builder<'a, P, U: sapling::builder::ProverProgress> {
     sapling_builder: Option<sapling::builder::Builder>,
     orchard_builder: Option<orchard::builder::Builder>,
     #[cfg(zcash_unstable = "nu6" /* TODO swap */ )]
-    action_groups: Vec<ActionGroup<ActionGroupAuthorized, ZatBalance>>,
+    action_groups: Vec<(
+        orchard::Bundle<ActionGroupAuthorized, ZatBalance, OrchardZSA>,
+        SigningKey<Binding>,
+    )>,
     #[cfg(zcash_unstable = "nu6" /* TODO nu7 */ )]
     issuance_builder: Option<IssueBundle<issuance::AwaitingNullifier>>,
     // TODO: In the future, instead of taking the spending keys as arguments when calling
@@ -566,10 +573,11 @@ impl<'a, P: consensus::Parameters> Builder<'a, P, ()> {
     #[cfg(zcash_unstable = "nu6" /* TODO swap */ )]
     pub fn add_action_group<FE>(
         &mut self,
-        action_group: ActionGroup<ActionGroupAuthorized, ZatBalance>,
+        action_group: orchard::Bundle<ActionGroupAuthorized, ZatBalance, OrchardZSA>,
+        bsk: SigningKey<Binding>,
     ) -> Result<(), Error<FE>> {
         assert!(self.build_config.orchard_bundle_type()? == BundleType::DEFAULT_SWAP);
-        self.action_groups.push(action_group);
+        self.action_groups.push((action_group, bsk));
         Ok(())
     }
 }
@@ -917,19 +925,27 @@ impl<'a, P: consensus::Parameters, U: sapling::builder::ProverProgress> Builder<
                         orchard_meta = meta;
 
                         let pk = &orchard::circuit::ProvingKey::build::<OrchardZSA>();
-                        let commitment = main_action_group.commitment();
-                        let proven_main_group = main_action_group
+                        let commitment = main_action_group.action_group_commitment();
+                        let (proven_main_group, main_group_bsk) = main_action_group
                             .create_proof(pk, &mut rng)
                             .map_err(Error::OrchardBuild)?
-                            .apply_signatures(&mut rng, commitment.into(), &self.orchard_saks)
+                            .apply_signatures_for_action_group(
+                                &mut rng,
+                                commitment.into(),
+                                &self.orchard_saks,
+                            )
                             .map_err(Error::OrchardBuild)?;
-                        self.action_groups.push(proven_main_group);
+                        self.action_groups.push((proven_main_group, main_group_bsk));
                     }
+
+                    let (action_groups, bsks): (Vec<_>, Vec<_>) =
+                        self.action_groups.into_iter().unzip();
 
                     // In this case the bundle is, in fact, already authorized
                     unproven_orchard_bundle = Some(OrchardBundle::OrchardSwap(SwapBundle::new(
                         &mut rng,
-                        self.action_groups,
+                        action_groups,
+                        bsks,
                     )));
                 }
                 #[cfg(zcash_unstable = "nu6" /* TODO nu7 */)]
@@ -1899,12 +1915,7 @@ mod tests {
             "There should be only one action group"
         );
 
-        let orchard = bundle
-            .as_swap_bundle()
-            .action_groups()
-            .first()
-            .unwrap()
-            .action_group();
+        let orchard = bundle.as_swap_bundle().action_groups().first().unwrap();
         assert_eq!(orchard.actions().len(), 2, "There should be 2 actions");
     }
 
@@ -1925,20 +1936,10 @@ mod tests {
             "There should be 2 action groups"
         );
 
-        let orchard = bundle
-            .as_swap_bundle()
-            .action_groups()
-            .get(0)
-            .unwrap()
-            .action_group();
+        let orchard = bundle.as_swap_bundle().action_groups().get(0).unwrap();
         assert_eq!(orchard.actions().len(), 2, "There should be 2 actions");
 
-        let orchard = bundle
-            .as_swap_bundle()
-            .action_groups()
-            .get(1)
-            .unwrap()
-            .action_group();
+        let orchard = bundle.as_swap_bundle().action_groups().get(1).unwrap();
         assert_eq!(orchard.actions().len(), 2, "There should be 2 actions");
     }
 
@@ -1971,20 +1972,10 @@ mod tests {
             "There should be 2 action groups"
         );
 
-        let orchard = bundle
-            .as_swap_bundle()
-            .action_groups()
-            .get(0)
-            .unwrap()
-            .action_group();
+        let orchard = bundle.as_swap_bundle().action_groups().get(0).unwrap();
         assert_eq!(orchard.actions().len(), 2, "There should be 2 actions");
 
-        let orchard = bundle
-            .as_swap_bundle()
-            .action_groups()
-            .get(1)
-            .unwrap()
-            .action_group();
+        let orchard = bundle.as_swap_bundle().action_groups().get(1).unwrap();
         assert_eq!(orchard.actions().len(), 2, "There should be 2 actions");
     }
 
@@ -2025,17 +2016,17 @@ mod tests {
             .unwrap();
         let (action_group, _) = ag_builder.build_action_group(OsRng, 10).unwrap();
         let commitment = action_group.commitment().into();
-        let proven_action_group = action_group
+        let (proven_action_group, bsk) = action_group
             .create_proof(
                 &orchard::circuit::ProvingKey::build::<OrchardZSA>(),
                 &mut OsRng,
             )
             .unwrap()
-            .apply_signatures(&mut OsRng, commitment, &orchard_saks)
+            .apply_signatures_for_action_group(&mut OsRng, commitment, &orchard_saks)
             .unwrap();
 
         builder
-            .add_action_group::<FeeError>(proven_action_group)
+            .add_action_group::<FeeError>(proven_action_group, bsk)
             .unwrap();
     }
 

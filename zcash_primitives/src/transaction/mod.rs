@@ -446,7 +446,6 @@ impl<A: orchard::bundle::Authorization> OrchardBundle<A> {
                 b.action_groups()
                     .first()
                     .unwrap()
-                    .action_group()
                     .actions()
                     .first()
                     .nullifier(),
