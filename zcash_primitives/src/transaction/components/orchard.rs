@@ -7,7 +7,7 @@ use crate::transaction::{OrchardBundle, Transaction};
 use byteorder::ReadBytesExt;
 use nonempty::NonEmpty;
 use orchard::{
-    bundle::{Authorization, Authorized, AuthorizedWithProof, Flags},
+    bundle::{Authorization, Authorized, Flags},
     domain::OrchardDomainCommon,
     note::{ExtractedNoteCommitment, Nullifier, TransmittedNoteCiphertext},
     orchard_flavor::OrchardVanilla,
@@ -415,7 +415,7 @@ pub fn write_v5_bundle<W: Write>(
     writer.write_all(&bundle.anchor().to_bytes())?;
     Vector::write(
         &mut writer,
-        bundle.authorization().proof().as_ref(),
+        bundle.authorization().proof().unwrap().as_ref(),
         |w, b| w.write_all(&[*b]),
     )?;
     Array::write(
@@ -470,7 +470,7 @@ pub fn write_orchard_swap_bundle<W: Write>(
 }
 
 #[cfg(zcash_unstable = "nu6" /* TODO nu7 */ )]
-fn write_action_group<W: Write, A: AuthorizedWithProof>(
+fn write_action_group<W: Write, A: Authorization<SpendAuth = Signature<SpendAuth>>>(
     mut writer: W,
     bundle: &orchard::Bundle<A, Amount, OrchardZSA>,
 ) -> io::Result<()> {
@@ -482,7 +482,7 @@ fn write_action_group<W: Write, A: AuthorizedWithProof>(
     writer.write_all(&bundle.anchor().to_bytes())?;
     Vector::write(
         &mut writer,
-        bundle.authorization().proof().as_ref(),
+        bundle.authorization().proof().unwrap().as_ref(),
         |w, b| w.write_u8(*b),
     )?;
     writer.write_u32::<LittleEndian>(bundle.expiry_height())?;
