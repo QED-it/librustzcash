@@ -62,6 +62,11 @@ use orchard::{
     note::Nullifier,
     orchard_flavor::OrchardZSA,
 };
+#[cfg(zcash_unstable = "nu6" /* TODO swap */ )]
+use orchard::{
+    primitives::redpallas::{Binding, SigningKey},
+    swap_bundle::{ActionGroupAuthorized, SwapBundle},
+};
 #[cfg(zcash_unstable = "nu6" /* TODO nu7 */ )]
 use rand_core::OsRng;
 #[cfg(zcash_unstable = "nu6" /* TODO swap */ )]
