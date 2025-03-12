@@ -279,7 +279,7 @@ jobs:
         run: rustup toolchain install 1.71.0-x86_64-unknown-linux-gnu
       - name: Generate coverage report
         run: >
-          cargo +1.71.0 tarpaulin
+          cargo tarpaulin
           --engine llvm
           ${{ steps.prepare.outputs.feature-flags }}
           --release
