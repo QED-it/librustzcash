@@ -284,7 +284,7 @@ fn read_note_value<R: Read>(mut reader: R) -> io::Result<NoteValue> {
 
 // Write burn for OrchardZSA
 #[cfg(zcash_unstable = "nu6" /* TODO nu7 */ )]
-fn write_burn<W: Write>(writer: &mut W, burn: &[(AssetBase, NoteValue)]) -> io::Result<()> {
+pub fn write_burn<W: Write>(writer: &mut W, burn: &[(AssetBase, NoteValue)]) -> io::Result<()> {
     Vector::write(writer, burn, |w, (asset, amount)| {
         w.write_all(&asset.to_bytes())?;
         w.write_all(&amount.to_bytes())?;
