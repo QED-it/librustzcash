@@ -11,12 +11,14 @@ use nonempty::NonEmpty;
 use orchard::{
     bundle::{Authorization, Authorized, Flags},
     domain::OrchardDomainCommon,
-    note::{AssetBase, ExtractedNoteCommitment, Nullifier, TransmittedNoteCiphertext},
-    orchard_flavor::{OrchardVanilla, OrchardZSA},
+    note::{ExtractedNoteCommitment, Nullifier, TransmittedNoteCiphertext},
+    orchard_flavor::OrchardVanilla,
     primitives::redpallas::{self, SigType, Signature, SpendAuth, VerificationKey},
-    value::{NoteValue, ValueCommitment},
+    value::ValueCommitment,
     Action, Anchor, Bundle,
 };
+#[cfg(zcash_unstable = "nu6" /* TODO nu7 */ )]
+use orchard::{note::AssetBase, orchard_flavor::OrchardZSA, value::NoteValue};
 use zcash_encoding::{Array, CompactSize, Vector};
 use zcash_note_encryption::note_bytes::NoteBytes;
 
