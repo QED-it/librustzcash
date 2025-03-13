@@ -132,7 +132,7 @@ pub fn read_orchard_zsa_bundle<R: Read>(
 
     let value_balance = Transaction::read_amount(&mut reader)?;
 
-    let burn = Vector::read(&mut reader, |r| read_burn(r))?;
+    let burn = read_burn(&mut reader)?;
 
     let binding_signature = read_signature::<_, redpallas::Binding>(&mut reader)?;
 
@@ -149,8 +149,13 @@ pub fn read_orchard_zsa_bundle<R: Read>(
 }
 
 #[cfg(zcash_unstable = "nu6" /* TODO nu7 */ )]
-fn read_burn<R: Read>(reader: &mut R) -> io::Result<(AssetBase, NoteValue)> {
+fn read_burn_item<R: Read>(reader: &mut R) -> io::Result<(AssetBase, NoteValue)> {
     Ok((read_asset(reader)?, read_note_value(reader)?))
+}
+
+#[cfg(zcash_unstable = "nu6" /* TODO nu7 */ )]
+pub fn read_burn<R: Read>(mut reader: &mut R) -> io::Result<Vec<(AssetBase, NoteValue)>> {
+    Vector::read(&mut reader, read_burn_item)
 }
 
 pub fn read_value_commitment<R: Read>(mut reader: R) -> io::Result<ValueCommitment> {
