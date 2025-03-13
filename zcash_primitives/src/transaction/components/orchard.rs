@@ -153,6 +153,7 @@ fn read_burn_item<R: Read>(reader: &mut R) -> io::Result<(AssetBase, NoteValue)>
     Ok((read_asset(reader)?, read_note_value(reader)?))
 }
 
+/// Reads burn for OrchardZSA
 #[cfg(zcash_unstable = "nu6" /* TODO nu7 */ )]
 pub fn read_burn<R: Read>(mut reader: &mut R) -> io::Result<Vec<(AssetBase, NoteValue)>> {
     Vector::read(&mut reader, read_burn_item)
@@ -282,7 +283,7 @@ fn read_note_value<R: Read>(mut reader: R) -> io::Result<NoteValue> {
     Ok(NoteValue::from_bytes(bytes))
 }
 
-// Write burn for OrchardZSA
+/// Writes burn for OrchardZSA
 #[cfg(zcash_unstable = "nu6" /* TODO nu7 */ )]
 pub fn write_burn<W: Write>(writer: &mut W, burn: &[(AssetBase, NoteValue)]) -> io::Result<()> {
     Vector::write(writer, burn, |w, (asset, amount)| {
