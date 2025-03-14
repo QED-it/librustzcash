@@ -975,7 +975,7 @@ impl<'a, P: consensus::Parameters, U: sapling::builder::ProverProgress> Builder<
         #[cfg(zcash_unstable = "nu6" /* TODO nu7 */ )]
         let issue_bundle = unauthed_tx
             .issue_bundle
-            .map(|b| b.update_rho(first_nullifier(&orchard_bundle).unwrap()))
+            .map(|b| b.update_rho(first_nullifier(&orchard_bundle)))
             .map(|b| b.prepare(*shielded_sig_commitment.as_ref()))
             .map(|b| b.sign(self.issuance_isk.as_ref().unwrap()))
             .map(|b| b.unwrap());
@@ -1021,20 +1021,13 @@ where
         .map_err(Error::OrchardBuild)
 }
 
+/// This function returns the first nullifier from the first transfer action in the Orchard bundle.
+/// It can only be called on ZSA bundle, will panic in case of invalid input e.g. Vanilla or empty bundle.
 #[cfg(zcash_unstable = "nu6" /* TODO nu7 */ )]
-fn first_nullifier(
-    orchard_bundle: &Option<OrchardBundle<Authorized>>,
-) -> Result<&Nullifier, io::Error> {
+fn first_nullifier(orchard_bundle: &Option<OrchardBundle<Authorized>>) -> &Nullifier {
     match orchard_bundle {
-        Some(OrchardBundle::OrchardVanilla(_)) => Err(io::Error::new(
-            io::ErrorKind::Other,
-            "Incorrect bundle type",
-        )),
-        Some(OrchardBundle::OrchardZSA(b)) => Ok(b.actions().first().nullifier()),
-        None => Err(io::Error::new(
-            io::ErrorKind::Other,
-            "Missing Orchard bundle",
-        )),
+        Some(OrchardBundle::OrchardZSA(b)) => b.actions().first().nullifier(),
+        _ => panic!("first_nullifier called on non-ZSA bundle, this should never happen"),
     }
 }
 
