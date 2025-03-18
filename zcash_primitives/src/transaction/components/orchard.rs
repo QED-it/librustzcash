@@ -124,6 +124,7 @@ pub fn read_orchard_zsa_bundle<R: Read>(
             "Timelimit field must be set to zero".to_owned(),
         ));
     }
+    let burn = read_burn(&mut reader)?;
     let actions = NonEmpty::from_vec(
         actions_without_auth
             .into_iter()
@@ -133,8 +134,6 @@ pub fn read_orchard_zsa_bundle<R: Read>(
     .expect("A nonzero number of actions was read from the transaction data.");
 
     let value_balance = Transaction::read_amount(&mut reader)?;
-
-    let burn = read_burn(&mut reader)?;
 
     let binding_signature = read_signature::<_, redpallas::Binding>(&mut reader)?;
 
@@ -367,6 +366,8 @@ pub fn write_orchard_zsa_bundle<W: Write>(
     // Timelimit must be zero for NU7
     writer.write_u32::<LittleEndian>(0)?;
 
+    write_burn(&mut writer, bundle.burn())?;
+
     Array::write(
         &mut writer,
         bundle.actions().iter().map(|a| a.authorization()),
@@ -374,8 +375,6 @@ pub fn write_orchard_zsa_bundle<W: Write>(
     )?;
 
     writer.write_all(&bundle.value_balance().to_i64_le_bytes())?;
-
-    write_burn(&mut writer, bundle.burn())?;
 
     writer.write_all(&<[u8; 64]>::from(
         bundle.authorization().binding_signature(),
