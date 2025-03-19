@@ -115,9 +115,9 @@ pub fn read_orchard_zsa_bundle<R: Read>(
         ));
     }
 
-    let (actions, flags, anchor, proof, timelimit) = read_action_group_data(&mut reader)?;
+    let (actions, flags, anchor, proof, timelimit, burn) = read_action_group_data(&mut reader)?;
 
-    let (value_balance, burn, binding_signature) = read_bundle_balance_metadata(&mut reader)?;
+    let (value_balance, binding_signature) = read_bundle_balance_metadata(&mut reader)?;
 
     Ok(Some(Bundle::from_parts(
         actions,
@@ -135,8 +135,7 @@ pub fn read_orchard_zsa_bundle<R: Read>(
 pub fn read_orchard_swap_bundle<R: Read>(mut reader: R) -> io::Result<Option<SwapBundle<Amount>>> {
     let action_groups = read_action_groups(&mut reader)?;
 
-    // TODO Implement burn either in swap bundle or in groups
-    let (value_balance, _burn, binding_signature) = read_bundle_balance_metadata(&mut reader)?;
+    let (value_balance, binding_signature) = read_bundle_balance_metadata(&mut reader)?;
 
     Ok(Some(SwapBundle::from_parts(
         action_groups,
@@ -161,18 +160,19 @@ fn read_action_groups<R: Read>(
         Anchor,
         Proof,
         u32,
+        Vec<(AssetBase, NoteValue)>,
     )> = Array::read_collected(&mut reader, num_action_groups, |r| {
         read_action_group_data(r)
     })?;
 
     let action_groups = action_groups_data
         .into_iter()
-        .map(|(actions, flags, anchor, proof, timelimit)| {
+        .map(|(actions, flags, anchor, proof, timelimit, burn)| {
             Bundle::from_parts(
                 actions,
                 flags,
                 ZatBalance::zero(), // Dummy value. In reality value balance of an action group can be non-zero, but at this level we only track value balance of the entire bundle.
-                vec![],             // TODO Implement burn either in swap bundle or in groups
+                burn,
                 anchor,
                 timelimit,
                 ActionGroupAuthorized::from_parts(proof),
@@ -192,6 +192,7 @@ fn read_action_group_data<R: Read>(
     Anchor,
     Proof,
     u32,
+    Vec<(AssetBase, NoteValue)>,
 )> {
     let actions_without_auth = Vector::read(&mut reader, |r| read_action_without_auth(r))?;
     if actions_without_auth.is_empty() {
@@ -211,6 +212,7 @@ fn read_action_group_data<R: Read>(
             "Timelimit field must be set to zero",
         ));
     }
+    let burn = Vector::read(&mut reader, |r| read_burn(r))?;
     let actions = NonEmpty::from_vec(
         actions_without_auth
             .into_iter()
@@ -219,20 +221,20 @@ fn read_action_group_data<R: Read>(
     )
     .expect("A nonzero number of actions was read from the transaction data.");
 
-    Ok((actions, flags, anchor, proof, timelimit))
+    Ok((actions, flags, anchor, proof, timelimit, burn))
 }
 
 #[cfg(zcash_unstable = "nu6" /* TODO nu7 */ )]
 fn read_bundle_balance_metadata<R: Read>(
     mut reader: R,
-) -> io::Result<(Amount, Vec<(AssetBase, NoteValue)>, Signature<Binding>)> {
+) -> io::Result<(Amount, Signature<Binding>)> {
     let value_balance = Transaction::read_amount(&mut reader)?;
 
     let burn = read_burn(&mut reader)?;
 
     let binding_signature = read_signature::<_, redpallas::Binding>(&mut reader)?;
 
-    Ok((value_balance, burn, binding_signature))
+    Ok((value_balance, binding_signature))
 }
 
 #[cfg(zcash_unstable = "nu6" /* TODO nu7 */ )]
@@ -443,7 +445,6 @@ pub fn write_orchard_zsa_bundle<W: Write>(
     write_bundle_balance_metadata(
         &mut writer,
         bundle.value_balance(),
-        bundle.burn(),
         bundle.authorization().binding_signature(),
     )?;
     Ok(())
@@ -463,7 +464,6 @@ pub fn write_orchard_swap_bundle<W: Write>(
     write_bundle_balance_metadata(
         &mut writer,
         bundle.value_balance(),
-        /* TODO burn */ &vec![],
         bundle.binding_signature(),
     )?;
     Ok(())
@@ -486,7 +486,10 @@ fn write_action_group<W: Write, A: Authorization<SpendAuth = Signature<SpendAuth
         |w, b| w.write_u8(*b),
     )?;
     writer.write_u32::<LittleEndian>(bundle.expiry_height())?;
-
+    Vector::write(&mut writer, bundle.burn(), |w, (asset, amount)| {
+        w.write_all(&asset.to_bytes())?;
+        w.write_all(&amount.to_bytes())
+    })?;
     Array::write(
         &mut writer,
         bundle.actions().iter().map(|a| a.authorization()),
@@ -498,7 +501,6 @@ fn write_action_group<W: Write, A: Authorization<SpendAuth = Signature<SpendAuth
 fn write_bundle_balance_metadata<W: Write>(
     mut writer: W,
     value_balance: &ZatBalance,
-    burn: &Vec<(AssetBase, NoteValue)>,
     binding_signature: &Signature<Binding>,
 ) -> io::Result<()> {
     writer.write_all(&value_balance.to_i64_le_bytes())?;
