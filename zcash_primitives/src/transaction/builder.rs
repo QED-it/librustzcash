@@ -56,6 +56,7 @@ use crate::{
 
 #[cfg(zcash_unstable = "nu6" /* TODO nu7 */ )]
 use orchard::{
+    bundle::Authorized,
     issuance,
     issuance::{IssueBundle, IssueInfo},
     keys::{IssuanceAuthorizingKey, IssuanceValidatingKey},
@@ -71,15 +72,6 @@ use orchard::{
 use rand_core::OsRng;
 #[cfg(zcash_unstable = "nu6" /* TODO swap */ )]
 use zcash_protocol::value::ZatBalance;
-#[cfg(zcash_unstable = "nu6" /* TODO nu7 */ )]
-use rand_core::OsRng;
-#[cfg(zcash_unstable = "nu6" /* TODO nu7 */ )]
-use std::io;
-#[cfg(zcash_unstable = "nu6" /* TODO swap */ )]
-use orchard::{
-    swap_bundle::{ActionGroupAuthorized, SwapBundle},
-    primitives::redpallas::{Binding, SigningKey},
-};
 
 /// Since Blossom activation, the default transaction expiry delta should be 40 blocks.
 /// <https://zips.z.cash/zip-0203#changes-for-blossom>
@@ -1096,22 +1088,6 @@ impl<'a, P: consensus::Parameters, U: sapling::builder::ProverProgress> Builder<
             orchard_meta,
         })
     }
-}
-
-fn prove_and_sign<D, V, FE>(
-    bundle: orchard::Bundle<InProgress<Unproven, orchard::builder::Unauthorized>, V, D>,
-    mut rng: &mut (impl RngCore + CryptoRng),
-    proving_key: &orchard::circuit::ProvingKey,
-    shielded_sig_commitment: &[u8; 32],
-    orchard_saks: &[orchard::keys::SpendAuthorizingKey],
-) -> Result<orchard::Bundle<Authorized, V, D>, Error<FE>>
-where
-    D: OrchardFlavor,
-{
-    bundle
-        .create_proof(proving_key, &mut rng)
-        .and_then(|b| b.apply_signatures(&mut rng, *shielded_sig_commitment, orchard_saks))
-        .map_err(Error::OrchardBuild)
 }
 
 /// This function returns the first nullifier from the first transfer action in the Orchard bundle.

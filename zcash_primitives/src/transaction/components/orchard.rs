@@ -15,8 +15,6 @@ use orchard::{
     value::ValueCommitment,
     Action, Anchor, Bundle, Proof,
 };
-#[cfg(zcash_unstable = "nu6" /* TODO nu7 */ )]
-use orchard::{note::AssetBase, orchard_flavor::OrchardZSA, value::NoteValue};
 use zcash_encoding::{Array, CompactSize, Vector};
 use zcash_note_encryption::note_bytes::NoteBytes;
 
@@ -212,7 +210,7 @@ fn read_action_group_data<R: Read>(
             "Timelimit field must be set to zero",
         ));
     }
-    let burn = Vector::read(&mut reader, |r| read_burn(r))?;
+    let burn = read_burn(&mut reader)?;
     let actions = NonEmpty::from_vec(
         actions_without_auth
             .into_iter()
@@ -229,11 +227,7 @@ fn read_bundle_balance_metadata<R: Read>(
     mut reader: R,
 ) -> io::Result<(Amount, Signature<Binding>)> {
     let value_balance = Transaction::read_amount(&mut reader)?;
-
-    let burn = read_burn(&mut reader)?;
-
     let binding_signature = read_signature::<_, redpallas::Binding>(&mut reader)?;
-
     Ok((value_balance, binding_signature))
 }
 
@@ -504,11 +498,6 @@ fn write_bundle_balance_metadata<W: Write>(
     binding_signature: &Signature<Binding>,
 ) -> io::Result<()> {
     writer.write_all(&value_balance.to_i64_le_bytes())?;
-
-    writer.write_all(&bundle.value_balance().to_i64_le_bytes())?;
-
-    write_burn(&mut writer, bundle.burn())?;
-
     writer.write_all(&<[u8; 64]>::from(binding_signature))
 }
 
