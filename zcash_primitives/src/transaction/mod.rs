@@ -43,8 +43,12 @@ use self::{
 use self::components::tze::{self, TzeIn, TzeOut};
 #[cfg(zcash_unstable = "nu6" /* TODO nu7 */ )]
 use crate::transaction::components::issuance;
+use orchard::note::Nullifier;
+#[cfg(zcash_unstable = "nu6" /* TODO swap */ )]
+use orchard::swap_bundle::SwapBundle;
 #[cfg(zcash_unstable = "nu6" /* TODO nu7 */ )]
 use orchard::{issuance::IssueBundle, orchard_flavor::OrchardZSA};
+use zcash_protocol::value::ZatBalance;
 
 const OVERWINTER_VERSION_GROUP_ID: u32 = 0x03C48270;
 const OVERWINTER_TX_VERSION: u32 = 3;
@@ -286,6 +290,8 @@ impl TxVersion {
             BranchId::Nu6 => TxVersion::Zip225,
             #[cfg(zcash_unstable = "nu6" /* TODO nu7 */ )]
             BranchId::Nu7 => TxVersion::Zsa,
+            #[cfg(zcash_unstable = "nu6" /* TODO swap */ )]
+            BranchId::Swap => TxVersion::Zsa,
             #[cfg(zcash_unstable = "zfuture")]
             BranchId::ZFuture => TxVersion::ZFuture,
         }
@@ -366,6 +372,14 @@ pub enum OrchardBundle<A: orchard::bundle::Authorization> {
     OrchardVanilla(Bundle<A, Amount, OrchardVanilla>),
     #[cfg(zcash_unstable = "nu6" /* TODO nu7 */ )]
     OrchardZSA(Bundle<A, Amount, OrchardZSA>),
+    #[cfg(zcash_unstable = "nu6" /* TODO swap */ )]
+    OrchardSwap(SwapBundle<Amount>),
+}
+
+/// Errors that can occur during transaction construction.
+#[derive(Debug)]
+pub enum BundleError {
+    WrongBundleType,
 }
 
 impl<A: orchard::bundle::Authorization> OrchardBundle<A> {
@@ -374,6 +388,8 @@ impl<A: orchard::bundle::Authorization> OrchardBundle<A> {
             OrchardBundle::OrchardVanilla(b) => b.value_balance(),
             #[cfg(zcash_unstable = "nu6" /* TODO nu7 */ )]
             OrchardBundle::OrchardZSA(b) => b.value_balance(),
+            #[cfg(zcash_unstable = "nu6" /* TODO swap */ )]
+            OrchardBundle::OrchardSwap(b) => b.value_balance(),
         }
     }
 
@@ -391,6 +407,8 @@ impl<A: orchard::bundle::Authorization> OrchardBundle<A> {
             OrchardBundle::OrchardZSA(b) => {
                 OrchardBundle::OrchardZSA(b.map_authorization(context, spend_auth, step))
             }
+            #[cfg(zcash_unstable = "nu6" /* TODO swap */ )]
+            OrchardBundle::OrchardSwap(b) => OrchardBundle::OrchardSwap(b), // TODO check that we actually ever map this particular authorization
         }
     }
 
@@ -398,15 +416,40 @@ impl<A: orchard::bundle::Authorization> OrchardBundle<A> {
         match self {
             OrchardBundle::OrchardVanilla(b) => b,
             #[cfg(zcash_unstable = "nu6" /* TODO nu7 */ )]
-            OrchardBundle::OrchardZSA(_) => panic!("Wrong bundle type"),
+            _ => panic!("Wrong bundle type"),
         }
     }
 
     #[cfg(zcash_unstable = "nu6" /* TODO nu7 */ )]
     pub fn as_zsa_bundle(&self) -> &Bundle<A, Amount, OrchardZSA> {
         match self {
-            OrchardBundle::OrchardVanilla(_) => panic!("Wrong bundle type"),
             OrchardBundle::OrchardZSA(b) => b,
+            _ => panic!("Wrong bundle type"),
+        }
+    }
+
+    #[cfg(zcash_unstable = "nu6" /* TODO swap */ )]
+    pub fn as_swap_bundle(&self) -> &SwapBundle<Amount> {
+        match self {
+            OrchardBundle::OrchardSwap(b) => b,
+            _ => panic!("Wrong bundle type"),
+        }
+    }
+
+    pub fn first_nullifier(&self) -> Option<&Nullifier> {
+        match self {
+            OrchardBundle::OrchardVanilla(b) => Some(b.actions().first().nullifier()),
+            #[cfg(zcash_unstable = "nu6" /* TODO nu7 */ )]
+            OrchardBundle::OrchardZSA(b) => Some(b.actions().first().nullifier()),
+            #[cfg(zcash_unstable = "nu6" /* TODO swap */ )]
+            OrchardBundle::OrchardSwap(b) => Some(
+                b.action_groups()
+                    .first()
+                    .unwrap()
+                    .actions()
+                    .first()
+                    .nullifier(),
+            ),
         }
     }
 }
@@ -856,7 +899,8 @@ impl Transaction {
             Self::read_v5_header_fragment(&mut reader)?;
         let transparent_bundle = Self::read_transparent(&mut reader)?;
         let sapling_bundle = sapling_serialization::read_v5_bundle(&mut reader)?;
-        let orchard_bundle = orchard_serialization::read_orchard_bundle(&mut reader)?;
+        let orchard_bundle: Option<Bundle<_, ZatBalance, OrchardVanilla>> =
+            orchard_serialization::read_orchard_bundle(&mut reader)?;
 
         #[cfg(zcash_unstable = "zfuture")]
         let tze_bundle = if version.has_tze() {
@@ -928,7 +972,7 @@ impl Transaction {
             transparent_bundle,
             sprout_bundle: None,
             sapling_bundle,
-            orchard_bundle: orchard_zsa_bundle.map(OrchardBundle::OrchardZSA),
+            orchard_bundle: orchard_zsa_bundle.map(|b| OrchardBundle::OrchardZSA(b)),
             issue_bundle,
             #[cfg(zcash_unstable = "zfuture")]
             tze_bundle,
@@ -1211,6 +1255,8 @@ pub mod testing {
             BranchId::Nu6 => Just(TxVersion::Zip225).boxed(),
             #[cfg(zcash_unstable = "nu6" /* TODO nu7 */ )]
             BranchId::Nu7 => Just(TxVersion::Zsa).boxed(),
+            #[cfg(zcash_unstable = "nu6" /* TODO swap */ )]
+            BranchId::Swap => Just(TxVersion::Zsa).boxed(),
             #[cfg(zcash_unstable = "zfuture")]
             BranchId::ZFuture => Just(TxVersion::ZFuture).boxed(),
         }
