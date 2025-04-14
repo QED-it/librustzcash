@@ -56,7 +56,7 @@ use crate::{
 
 #[cfg(zcash_unstable = "nu6" /* TODO nu7 */ )]
 use orchard::{
-    bundle::Authorized,
+    bundle::Authorization,
     issuance,
     issuance::{IssueBundle, IssueInfo},
     keys::{IssuanceAuthorizingKey, IssuanceValidatingKey},
@@ -963,6 +963,11 @@ impl<'a, P: consensus::Parameters, U: sapling::builder::ProverProgress> Builder<
         #[cfg(zcash_unstable = "zfuture")]
         let (tze_bundle, tze_signers) = self.tze_builder.build();
 
+        #[cfg(zcash_unstable = "nu6" /* TODO nu7 */ )]
+        let issue_bundle_awaiting_sighash = self
+            .issuance_builder
+            .map(|b| b.update_rho(first_nullifier(&unproven_orchard_bundle)));
+
         let unauthed_tx: TransactionData<Unauthorized> = TransactionData {
             version,
             consensus_branch_id: BranchId::for_height(&self.params, self.target_height),
@@ -973,7 +978,7 @@ impl<'a, P: consensus::Parameters, U: sapling::builder::ProverProgress> Builder<
             sapling_bundle,
             orchard_bundle: unproven_orchard_bundle,
             #[cfg(zcash_unstable = "nu6" /* TODO nu7 */ )]
-            issue_bundle: self.issuance_builder,
+            issue_bundle: issue_bundle_awaiting_sighash,
             #[cfg(zcash_unstable = "zfuture")]
             tze_bundle,
         };
@@ -1060,7 +1065,6 @@ impl<'a, P: consensus::Parameters, U: sapling::builder::ProverProgress> Builder<
         #[cfg(zcash_unstable = "nu6" /* TODO nu7 */ )]
         let issue_bundle = unauthed_tx
             .issue_bundle
-            .map(|b| b.update_rho(first_nullifier(&orchard_bundle)))
             .map(|b| b.prepare(*shielded_sig_commitment.as_ref()))
             .map(|b| b.sign(self.issuance_isk.as_ref().unwrap()))
             .map(|b| b.unwrap());
@@ -1093,7 +1097,7 @@ impl<'a, P: consensus::Parameters, U: sapling::builder::ProverProgress> Builder<
 /// This function returns the first nullifier from the first transfer action in the Orchard bundle.
 /// It can only be called on ZSA bundle, will panic in case of invalid input e.g. Vanilla or empty bundle.
 #[cfg(zcash_unstable = "nu6" /* TODO nu7 */ )]
-fn first_nullifier(orchard_bundle: &Option<OrchardBundle<Authorized>>) -> &Nullifier {
+fn first_nullifier<A: Authorization>(orchard_bundle: &Option<OrchardBundle<A>>) -> &Nullifier {
     match orchard_bundle {
         Some(OrchardBundle::OrchardZSA(b)) => b.actions().first().nullifier(),
         _ => panic!("first_nullifier called on non-ZSA bundle, this should never happen"),
