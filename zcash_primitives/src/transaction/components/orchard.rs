@@ -116,7 +116,6 @@ pub fn read_orchard_zsa_bundle<R: Read>(
     }
     let flags = read_flags(&mut reader)?;
     let anchor = read_anchor(&mut reader)?;
-    let proof_bytes = Vector::read(&mut reader, |r| r.read_u8())?;
     let timelimit = reader.read_u32::<LittleEndian>()?;
     if timelimit != 0 {
         return Err(io::Error::new(
@@ -125,6 +124,7 @@ pub fn read_orchard_zsa_bundle<R: Read>(
         ));
     }
     let burn = read_burn(&mut reader)?;
+    let proof_bytes = Vector::read(&mut reader, |r| r.read_u8())?;
     let actions = NonEmpty::from_vec(
         actions_without_auth
             .into_iter()
@@ -357,16 +357,17 @@ pub fn write_orchard_zsa_bundle<W: Write>(
 
     writer.write_all(&[bundle.flags().to_byte()])?;
     writer.write_all(&bundle.anchor().to_bytes())?;
-    Vector::write(
-        &mut writer,
-        bundle.authorization().proof().as_ref(),
-        |w, b| w.write_u8(*b),
-    )?;
 
     // Timelimit must be zero for NU7
     writer.write_u32::<LittleEndian>(0)?;
 
     write_burn(&mut writer, bundle.burn())?;
+
+    Vector::write(
+        &mut writer,
+        bundle.authorization().proof().as_ref(),
+        |w, b| w.write_u8(*b),
+    )?;
 
     Array::write(
         &mut writer,
