@@ -499,7 +499,7 @@ impl<'a, P: consensus::Parameters> Builder<'a, P, ()> {
         issue_info: Option<IssueInfo>,
         first_issuance: bool,
     ) -> Result<(), Error<FE>> {
-        assert!(self.build_config.orchard_bundle_type()? == BundleType::DEFAULT_ZSA);
+        assert!(self.build_config.orchard_bundle_type()? != BundleType::DEFAULT_VANILLA);
 
         if self.issuance_builder.is_some() {
             return Err(Error::IssuanceBundleAlreadyInitialized);
@@ -530,7 +530,7 @@ impl<'a, P: consensus::Parameters> Builder<'a, P, ()> {
         value: orchard::value::NoteValue,
         first_issuance: bool,
     ) -> Result<(), Error<FE>> {
-        assert!(self.build_config.orchard_bundle_type()? == BundleType::DEFAULT_ZSA);
+        assert!(self.build_config.orchard_bundle_type()? != BundleType::DEFAULT_VANILLA);
         self.issuance_builder
             .as_mut()
             .ok_or(Error::IssuanceBuilderNotAvailable)?
@@ -543,7 +543,7 @@ impl<'a, P: consensus::Parameters> Builder<'a, P, ()> {
     /// Finalizes a given asset
     #[cfg(zcash_unstable = "nu6" /* TODO nu7 */ )]
     pub fn finalize_asset<FE>(&mut self, asset_desc: &[u8]) -> Result<(), Error<FE>> {
-        assert!(self.build_config.orchard_bundle_type()? == BundleType::DEFAULT_ZSA);
+        assert!(self.build_config.orchard_bundle_type()? != BundleType::DEFAULT_VANILLA);
         self.issuance_builder
             .as_mut()
             .ok_or(Error::IssuanceBuilderNotAvailable)?
@@ -556,7 +556,7 @@ impl<'a, P: consensus::Parameters> Builder<'a, P, ()> {
     /// Adds a Burn action to the transaction.
     #[cfg(zcash_unstable = "nu6" /* TODO nu7 */ )]
     pub fn add_burn<FE>(&mut self, value: u64, asset: AssetBase) -> Result<(), Error<FE>> {
-        assert!(self.build_config.orchard_bundle_type()? == BundleType::DEFAULT_ZSA);
+        assert!(self.build_config.orchard_bundle_type()? != BundleType::DEFAULT_VANILLA);
         self.orchard_builder
             .as_mut()
             .ok_or(Error::OrchardBundleNotAvailable)?
@@ -914,6 +914,7 @@ impl<'a, P: consensus::Parameters, U: sapling::builder::ProverProgress> Builder<
                 #[cfg(zcash_unstable = "nu6" /* TODO swap */)]
                 BuildConfig::Swap { .. } => {
                     if !builder.is_empty() {
+                        // TODO should build empty too
                         let timelimit: u32 = (self.target_height + 10).into(); // TODO default(?) timelimit
 
                         let (main_action_group, meta) = builder
@@ -1098,8 +1099,19 @@ impl<'a, P: consensus::Parameters, U: sapling::builder::ProverProgress> Builder<
 /// It can only be called on ZSA bundle, will panic in case of invalid input e.g. Vanilla or empty bundle.
 #[cfg(zcash_unstable = "nu6" /* TODO nu7 */ )]
 fn first_nullifier<A: Authorization>(orchard_bundle: &Option<OrchardBundle<A>>) -> &Nullifier {
+    assert!(orchard_bundle.is_some(), "Orchard bundle should not be null");
+
     match orchard_bundle {
-        Some(OrchardBundle::OrchardZSA(b)) => b.actions().first().nullifier(),
+        Some(OrchardBundle::OrchardZSA(b)) => {
+            assert!(b.actions().len() != 0, "Orchard bundle should contain at least one action");
+            b.actions().first().nullifier()
+        },
+        Some(OrchardBundle::OrchardSwap(b)) => {
+            assert!(b.action_groups().len() != 0, "Orchard bundle should contain at least one action group");
+            let first_group_actions = b.action_groups().first().unwrap().actions();
+            assert!(first_group_actions.len() != 0, "Orchard bundle should contain at least one action");
+            first_group_actions.head.nullifier()
+        },
         _ => panic!("first_nullifier called on non-ZSA bundle, this should never happen"),
     }
 }

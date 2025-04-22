@@ -954,7 +954,7 @@ impl Transaction {
             Self::read_v5_header_fragment(&mut reader)?;
         let transparent_bundle = Self::read_transparent(&mut reader)?;
         let sapling_bundle = sapling_serialization::read_v5_bundle(&mut reader)?;
-        let orchard_zsa_bundle = orchard_serialization::read_orchard_zsa_bundle(&mut reader)?;
+        let orchard_zsa_bundle = orchard_serialization::read_orchard_swap_bundle(&mut reader)?;
         let issue_bundle = issuance::read_v6_bundle(&mut reader)?;
 
         #[cfg(zcash_unstable = "zfuture")]
@@ -972,7 +972,7 @@ impl Transaction {
             transparent_bundle,
             sprout_bundle: None,
             sapling_bundle,
-            orchard_bundle: orchard_zsa_bundle.map(|b| OrchardBundle::OrchardZSA(b)),
+            orchard_bundle: orchard_zsa_bundle.map(|b| OrchardBundle::OrchardSwap(b)),
             issue_bundle,
             #[cfg(zcash_unstable = "zfuture")]
             tze_bundle,
