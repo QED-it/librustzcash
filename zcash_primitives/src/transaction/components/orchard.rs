@@ -204,12 +204,6 @@ fn read_action_group_data<R: Read>(
     let proof_bytes = Vector::read(&mut reader, |r| r.read_u8())?;
     let proof = Proof::new(proof_bytes);
     let timelimit = reader.read_u32::<LittleEndian>()?;
-    if timelimit != 0 {
-        return Err(io::Error::new(
-            io::ErrorKind::InvalidInput,
-            "Timelimit field must be set to zero",
-        ));
-    }
     let burn = read_burn(&mut reader)?;
     let actions = NonEmpty::from_vec(
         actions_without_auth
