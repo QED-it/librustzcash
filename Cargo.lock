@@ -1530,7 +1530,7 @@ checksum = "624a8340c38c1b80fd549087862da4ba43e08858af025b236e509b6649fc13d5"
 [[package]]
 name = "orchard"
 version = "0.8.0"
-source = "git+https://github.com/QED-it/orchard?branch=zsa_swap#bd81617f79e461316abbdb40b16f0aa2197a5f28"
+source = "git+https://github.com/QED-it/orchard?branch=zsa_swap#38d2c692c9b7ab4ca6ae280e627f6db66ba0226b"
 dependencies = [
  "aes",
  "bitvec",
