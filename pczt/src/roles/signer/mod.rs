@@ -14,7 +14,6 @@
 //!   - A source of randomness.
 
 use blake2b_simd::Hash as Blake2bHash;
-use orchard::orchard_flavor::OrchardVanilla;
 use rand_core::OsRng;
 
 use ::transparent::sighash::{SIGHASH_ANYONECANPAY, SIGHASH_NONE, SIGHASH_SINGLE};
@@ -34,6 +33,9 @@ use crate::{
 
 use crate::common::determine_lock_time;
 
+#[cfg(zcash_unstable = "nu7")]
+use zcash_protocol::constants::{V6_TX_VERSION, V6_VERSION_GROUP_ID};
+
 const V5_TX_VERSION: u32 = 5;
 const V5_VERSION_GROUP_ID: u32 = 0x26A7270A;
 
@@ -41,7 +43,7 @@ pub struct Signer {
     global: Global,
     transparent: transparent::pczt::Bundle,
     sapling: sapling::pczt::Bundle,
-    orchard: orchard::pczt::Bundle<OrchardVanilla>,
+    orchard: orchard::pczt::Bundle,
     /// Cached across multiple signatures.
     tx_data: TransactionData<EffectsOnly>,
     txid_parts: TxDigests<Blake2bHash>,
@@ -69,6 +71,8 @@ impl Signer {
         // TODO: Pick sighash based on tx version.
         match (global.tx_version, global.version_group_id) {
             (V5_TX_VERSION, V5_VERSION_GROUP_ID) => Ok(()),
+            #[cfg(zcash_unstable = "nu7")]
+            (V6_TX_VERSION, V6_VERSION_GROUP_ID) => Ok(()),
             (version, version_group_id) => Err(Error::Global(GlobalError::UnsupportedTxVersion {
                 version,
                 version_group_id,
@@ -259,10 +263,12 @@ pub(crate) fn pczt_to_tx_data(
     global: &Global,
     transparent: &transparent::pczt::Bundle,
     sapling: &sapling::pczt::Bundle,
-    orchard: &orchard::pczt::Bundle<OrchardVanilla>,
+    orchard: &orchard::pczt::Bundle,
 ) -> Result<TransactionData<EffectsOnly>, Error> {
     let version = match (global.tx_version, global.version_group_id) {
         (V5_TX_VERSION, V5_VERSION_GROUP_ID) => Ok(TxVersion::V5),
+        #[cfg(zcash_unstable = "nu7")]
+        (V6_TX_VERSION, V6_VERSION_GROUP_ID) => Ok(TxVersion::V6),
         (version, version_group_id) => Err(Error::Global(GlobalError::UnsupportedTxVersion {
             version,
             version_group_id,
@@ -278,7 +284,22 @@ pub(crate) fn pczt_to_tx_data(
 
     let sapling_bundle = sapling.extract_effects().map_err(Error::SaplingExtract)?;
 
-    let orchard_bundle = orchard.extract_effects().map_err(Error::OrchardExtract)?;
+    let orchard_bundle = match version {
+        TxVersion::V5 => orchard
+            .extract_effects()
+            .map_err(Error::OrchardExtract)?
+            .map(OrchardBundle::OrchardVanilla),
+        TxVersion::V6 => orchard
+            .extract_effects()
+            .map_err(Error::OrchardExtract)?
+            .map(OrchardBundle::OrchardZSA),
+        _ => {
+            return Err(Error::Global(GlobalError::UnsupportedTxVersion {
+                version: global.tx_version,
+                version_group_id: global.version_group_id,
+            }));
+        }
+    };
 
     Ok(TransactionData::from_parts(
         version,
@@ -288,7 +309,9 @@ pub(crate) fn pczt_to_tx_data(
         transparent_bundle,
         None,
         sapling_bundle,
-        orchard_bundle.map(OrchardBundle::OrchardVanilla),
+        orchard_bundle,
+        #[cfg(zcash_unstable = "nu7")]
+        None,
     ))
 }
 

@@ -10,7 +10,6 @@ use crate::{
     Pczt,
 };
 use alloc::collections::BTreeMap;
-use orchard::orchard_flavor::OrchardVanilla;
 
 use zcash_protocol::constants::{V5_TX_VERSION, V5_VERSION_GROUP_ID};
 
@@ -107,7 +106,7 @@ impl Creator {
     /// [`Builder`]: zcash_primitives::transaction::builder::Builder
     #[cfg(feature = "zcp-builder")]
     pub fn build_from_parts<P: zcash_protocol::consensus::Parameters>(
-        parts: zcash_primitives::transaction::builder::PcztParts<P, OrchardVanilla>,
+        parts: zcash_primitives::transaction::builder::PcztParts<P>,
     ) -> Option<Pczt> {
         use ::transparent::sighash::{SIGHASH_ANYONECANPAY, SIGHASH_SINGLE};
         use zcash_protocol::{consensus::NetworkConstants, constants::V4_TX_VERSION};

@@ -2,6 +2,9 @@
 //!
 //! - Creates bindingSig and extracts the final transaction.
 
+use ::orchard::orchard_flavor::OrchardVanilla;
+#[cfg(zcash_unstable = "nu7")]
+use ::orchard::orchard_flavor::OrchardZSA;
 use core::marker::PhantomData;
 use rand_core::OsRng;
 
@@ -10,6 +13,8 @@ use zcash_primitives::transaction::{
     txid::TxIdDigester,
     Authorization, OrchardBundle, Transaction, TransactionData, TxVersion,
 };
+#[cfg(zcash_unstable = "nu7")]
+use zcash_protocol::constants::{V6_TX_VERSION, V6_VERSION_GROUP_ID};
 use zcash_protocol::{
     consensus::BranchId,
     constants::{V5_TX_VERSION, V5_VERSION_GROUP_ID},
@@ -82,6 +87,8 @@ impl<'a> TransactionExtractor<'a> {
 
         let version = match (pczt.global.tx_version, pczt.global.version_group_id) {
             (V5_TX_VERSION, V5_VERSION_GROUP_ID) => Ok(TxVersion::V5),
+            #[cfg(zcash_unstable = "nu7")]
+            (V6_TX_VERSION, V6_VERSION_GROUP_ID) => Ok(TxVersion::V6),
             (version, version_group_id) => Err(Error::Global(GlobalError::UnsupportedTxVersion {
                 version,
                 version_group_id,
@@ -97,7 +104,21 @@ impl<'a> TransactionExtractor<'a> {
         let transparent_bundle =
             transparent::extract_bundle(pczt.transparent).map_err(Error::Transparent)?;
         let sapling_bundle = sapling::extract_bundle(pczt.sapling).map_err(Error::Sapling)?;
-        let orchard_bundle = orchard::extract_bundle(pczt.orchard).map_err(Error::Orchard)?;
+        let orchard_bundle = match version {
+            TxVersion::V5 => orchard::extract_bundle::<OrchardVanilla>(pczt.orchard)
+                .map_err(Error::Orchard)?
+                .map(OrchardBundle::OrchardVanilla),
+            #[cfg(zcash_unstable = "nu7")]
+            TxVersion::V6 => orchard::extract_bundle::<OrchardZSA>(pczt.orchard)
+                .map_err(Error::Orchard)?
+                .map(OrchardBundle::OrchardZSA),
+            _ => {
+                return Err(Error::Global(GlobalError::UnsupportedTxVersion {
+                    version: version.header(),
+                    version_group_id: version.version_group_id(),
+                }))
+            }
+        };
 
         let tx_data = TransactionData::<Unbound>::from_parts(
             version,
@@ -107,7 +128,9 @@ impl<'a> TransactionExtractor<'a> {
             transparent_bundle,
             None,
             sapling_bundle,
-            orchard_bundle.map(OrchardBundle::OrchardVanilla),
+            orchard_bundle,
+            #[cfg(zcash_unstable = "nu7")]
+            None,
         );
 
         // The commitment being signed is shared across all shielded inputs.
@@ -131,13 +154,15 @@ impl<'a> TransactionExtractor<'a> {
                         .map(OrchardBundle::OrchardVanilla)
                         .ok_or(Error::SighashMismatch),
                     #[cfg(zcash_unstable = "nu7")]
-                    OrchardBundle::OrchardZSA(_) => {
-                        // Handle ZSA bundle case if needed
-                        Err(Error::SighashMismatch) // or appropriate error
-                    }
+                    OrchardBundle::OrchardZSA(bundle) => bundle
+                        .apply_binding_signature(*shielded_sighash.as_ref(), OsRng)
+                        .map(OrchardBundle::OrchardZSA)
+                        .ok_or(Error::SighashMismatch),
                 })
                 .transpose()
             },
+            #[cfg(zcash_unstable = "nu7")]
+            |i| i,
             #[cfg(zcash_unstable = "zfuture")]
             |_| unimplemented!("PCZT support for TZEs is not implemented."),
         )?;
@@ -152,12 +177,17 @@ impl<'a> TransactionExtractor<'a> {
                 .map_err(Error::Sapling)?;
         }
         if let Some(bundle) = tx.orchard_bundle() {
-            orchard::verify_bundle(
-                bundle.as_vanilla_bundle(),
-                orchard_vk,
-                *shielded_sighash.as_ref(),
-            )
-            .map_err(Error::Orchard)?;
+            match bundle {
+                OrchardBundle::OrchardVanilla(bundle) => {
+                    orchard::verify_bundle(bundle, orchard_vk, *shielded_sighash.as_ref())
+                        .map_err(Error::Orchard)?;
+                }
+                #[cfg(zcash_unstable = "nu7")]
+                OrchardBundle::OrchardZSA(bundle) => {
+                    orchard::verify_bundle(bundle, orchard_vk, *shielded_sighash.as_ref())
+                        .map_err(Error::Orchard)?;
+                }
+            }
         }
 
         Ok(tx)
@@ -172,7 +202,7 @@ impl Authorization for Unbound {
     type OrchardAuth = ::orchard::pczt::Unbound;
 
     #[cfg(zcash_unstable = "nu7")]
-    type IssueAuth = ::orchard::pczt::
+    type IssueAuth = ::orchard::issuance::Signed;
     #[cfg(zcash_unstable = "zfuture")]
     type TzeAuth = core::convert::Infallible;
 }

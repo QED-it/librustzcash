@@ -1,7 +1,6 @@
 //! A low-level variant of the Signer role, for dependency-constrained environments.
 
 use crate::Pczt;
-use orchard::orchard_flavor::OrchardVanilla;
 
 pub struct Signer {
     pczt: Pczt,
@@ -18,7 +17,7 @@ impl Signer {
     pub fn sign_orchard_with<E, F>(self, f: F) -> Result<Self, E>
     where
         E: From<orchard::pczt::ParseError>,
-        F: FnOnce(&Pczt, &mut orchard::pczt::Bundle<OrchardVanilla>, &mut u8) -> Result<(), E>,
+        F: FnOnce(&Pczt, &mut orchard::pczt::Bundle, &mut u8) -> Result<(), E>,
     {
         let mut pczt = self.pczt;
 

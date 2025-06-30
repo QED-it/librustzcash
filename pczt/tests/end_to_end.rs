@@ -4,6 +4,7 @@ use ::transparent::{
 };
 use orchard::domain::OrchardDomain;
 use orchard::note::AssetBase;
+use orchard::orchard_flavor::OrchardZSA;
 use orchard::tree::MerkleHashOrchard;
 use pczt::{
     roles::{
@@ -16,7 +17,6 @@ use pczt::{
 use rand_core::OsRng;
 use shardtree::{store::memory::MemoryShardStore, ShardTree};
 use std::sync::OnceLock;
-use orchard::orchard_flavor::OrchardZSA;
 use zcash_note_encryption::try_note_decryption;
 use zcash_primitives::transaction::{
     builder::{BuildConfig, Builder, PcztResult},
@@ -76,7 +76,7 @@ fn transparent_to_orchard() {
     let mut builder = Builder::new(
         params,
         10_000_000.into(),
-        BuildConfig::Standard {
+        BuildConfig::Zsa {
             sapling_anchor: None,
             orchard_anchor: Some(orchard::Anchor::empty_tree()),
         },
@@ -116,7 +116,7 @@ fn transparent_to_orchard() {
 
     // Create proofs.
     let pczt = Prover::new(pczt)
-        .create_orchard_proof(orchard_proving_key())
+        .create_orchard_proof::<OrchardZSA>(orchard_proving_key())
         .unwrap()
         .finish();
     check_round_trip(&pczt);
@@ -206,7 +206,7 @@ fn sapling_to_orchard() {
     let mut builder = Builder::new(
         MainNetwork,
         10_000_000.into(),
-        BuildConfig::Standard {
+        BuildConfig::Zsa {
             sapling_anchor: Some(anchor),
             orchard_anchor: Some(orchard::Anchor::empty_tree()),
         },
@@ -271,7 +271,7 @@ fn sapling_to_orchard() {
 
     // Create Orchard proof.
     let pczt_with_orchard_proof = Prover::new(pczt.clone())
-        .create_orchard_proof(orchard_proving_key())
+        .create_orchard_proof::<OrchardZSA>(orchard_proving_key())
         .unwrap()
         .finish();
     check_round_trip(&pczt_with_orchard_proof);
@@ -328,7 +328,7 @@ fn orchard_to_orchard() {
     let value = orchard::value::NoteValue::from_raw(1_000_000);
     let note = {
         let mut orchard_builder = orchard::builder::Builder::new(
-            orchard::builder::BundleType::DEFAULT_VANILLA,
+            orchard::builder::BundleType::DEFAULT_ZSA,
             orchard::Anchor::empty_tree(),
         );
         orchard_builder
@@ -340,9 +340,7 @@ fn orchard_to_orchard() {
                 Memo::Empty.encode().into_bytes(),
             )
             .unwrap();
-        let (bundle, meta) = orchard_builder
-            .build::<i64, OrchardZSA>(&mut rng)
-            .unwrap();
+        let (bundle, meta) = orchard_builder.build::<i64, OrchardZSA>(&mut rng).unwrap();
         let action = bundle
             .actions()
             .get(meta.output_action_index(0).unwrap())
@@ -374,7 +372,7 @@ fn orchard_to_orchard() {
     let mut builder = Builder::new(
         MainNetwork,
         10_000_000.into(),
-        BuildConfig::Standard {
+        BuildConfig::Zsa {
             sapling_anchor: None,
             orchard_anchor: Some(anchor),
         },
@@ -418,7 +416,7 @@ fn orchard_to_orchard() {
 
     // Create proofs.
     let pczt = Prover::new(pczt)
-        .create_orchard_proof(orchard_proving_key())
+        .create_orchard_proof::<OrchardZSA>(orchard_proving_key())
         .unwrap()
         .finish();
     check_round_trip(&pczt);

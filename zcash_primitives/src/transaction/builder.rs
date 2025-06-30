@@ -58,8 +58,8 @@ use crate::{
         fees::FutureFeeRule,
     },
 };
+use orchard::builder::BuildError::BundleTypeNotSatisfiable;
 use orchard::bundle::Authorized;
-use orchard::domain::OrchardDomainCommon;
 #[cfg(zcash_unstable = "nu7")]
 use orchard::{
     bundle::Authorization,
@@ -335,15 +335,15 @@ impl BuildResult {
 /// It includes the PCZT components along with metadata describing how spends and outputs
 /// were shuffled in creating the transaction's shielded bundles.
 #[derive(Debug)]
-pub struct PcztResult<P: Parameters, D: OrchardDomainCommon> {
-    pub pczt_parts: PcztParts<P, D>,
+pub struct PcztResult<P: Parameters> {
+    pub pczt_parts: PcztParts<P>,
     pub sapling_meta: SaplingMetadata,
     pub orchard_meta: orchard::builder::BundleMetadata,
 }
 
 /// The components of a PCZT.
 #[derive(Debug)]
-pub struct PcztParts<P: Parameters, D: OrchardDomainCommon> {
+pub struct PcztParts<P: Parameters> {
     pub params: P,
     pub version: TxVersion,
     pub consensus_branch_id: BranchId,
@@ -351,7 +351,7 @@ pub struct PcztParts<P: Parameters, D: OrchardDomainCommon> {
     pub expiry_height: BlockHeight,
     pub transparent: Option<transparent::pczt::Bundle>,
     pub sapling: Option<sapling::pczt::Bundle>,
-    pub orchard: Option<orchard::pczt::Bundle<D>>,
+    pub orchard: Option<orchard::pczt::Bundle>,
 }
 
 /// Generates a [`Transaction`] from its inputs and outputs.
@@ -1066,11 +1066,11 @@ impl<P: consensus::Parameters, U: sapling::builder::ProverProgress> Builder<'_, 
     /// Upon success, returns a struct containing the PCZT components, and the
     /// [`SaplingMetadata`] and [`orchard::builder::BundleMetadata`] generated during the
     /// build process.
-    pub fn build_for_pczt<R: RngCore + CryptoRng, FR: FeeRule, D: OrchardDomainCommon>(
+    pub fn build_for_pczt<R: RngCore + CryptoRng, FR: FeeRule>(
         self,
         mut rng: R,
         fee_rule: &FR,
-    ) -> Result<PcztResult<P, D>, Error<FR::Error>> {
+    ) -> Result<PcztResult<P>, Error<FR::Error>> {
         let fee = self.get_fee(fee_rule).map_err(Error::Fee)?;
         let consensus_branch_id = BranchId::for_height(&self.params, self.target_height);
 
@@ -1114,10 +1114,19 @@ impl<P: consensus::Parameters, U: sapling::builder::ProverProgress> Builder<'_, 
 
         let (orchard_bundle, orchard_meta) = match self
             .orchard_builder
-            .map(|builder| {
-                builder
-                    .build_for_pczt(&mut rng)
-                    .map_err(Error::OrchardBuild)
+            .map(|builder| match self.build_config.orchard_bundle_type()? {
+                BundleType::DEFAULT_ZSA => {
+                    #[cfg(zcash_unstable = "nu7")]
+                    return builder
+                        .build_for_pczt::<OrchardZSA>(&mut rng)
+                        .map_err(Error::OrchardBuild);
+                    #[cfg(not(zcash_unstable = "nu7"))]
+                    Err(Error::OrchardBuild(BundleTypeNotSatisfiable))
+                }
+                BundleType::DEFAULT_VANILLA => builder
+                    .build_for_pczt::<OrchardVanilla>(&mut rng)
+                    .map_err(Error::OrchardBuild),
+                _ => Err(Error::OrchardBuild(BundleTypeNotSatisfiable)),
             })
             .transpose()?
         {
@@ -1276,22 +1285,6 @@ mod tests {
     };
 
     use super::{Builder, Error};
-
-    #[cfg(zcash_unstable = "nu7")]
-    use {
-        crate::transaction::fees::zip317::FeeError,
-        orchard::issuance::{compute_asset_desc_hash, IssueInfo},
-        orchard::keys::{
-            FullViewingKey, IssuanceAuthorizingKey, IssuanceValidatingKey, SpendingKey,
-        },
-        orchard::note::AssetBase,
-        orchard::value::NoteValue,
-        orchard::Address,
-        orchard::ReferenceKeys,
-        zcash_protocol::consensus::TestNetwork,
-        zcash_protocol::constants::testnet::COIN_TYPE,
-        zip32::Scope::External,
-    };
 
     #[cfg(zcash_unstable = "nu7")]
     #[cfg(not(feature = "transparent-inputs"))]
@@ -1600,31 +1593,5 @@ mod tests {
                 ZatBalance::const_from_i64(15_000)
             );
         }
-    }
-
-    #[cfg(zcash_unstable = "nu7")]
-    fn prepare_zsa_test() -> (
-        Builder<'static, TestNetwork, ()>,
-        IssuanceAuthorizingKey,
-        Address,
-    ) {
-        let seed = "0123456789abcdef0123456789abcdef".as_bytes();
-
-        let iak = IssuanceAuthorizingKey::from_zip32_seed(seed, COIN_TYPE, 0).unwrap();
-        let tx_height = TEST_NETWORK.activation_height(NetworkUpgrade::Nu7).unwrap();
-
-        let build_config = BuildConfig::Zsa {
-            sapling_anchor: None,
-            orchard_anchor: Some(orchard::Anchor::empty_tree()),
-        };
-
-        let builder = Builder::new(TEST_NETWORK, tx_height, build_config);
-
-        let sk =
-            SpendingKey::from_zip32_seed(seed, COIN_TYPE, AccountId::try_from(0).unwrap()).unwrap();
-        let fvk = FullViewingKey::from(&sk);
-        let address = fvk.address_at(0u32, External);
-
-        (builder, iak, address)
     }
 }

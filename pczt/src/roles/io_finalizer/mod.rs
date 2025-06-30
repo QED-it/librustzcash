@@ -16,6 +16,8 @@ use crate::{
     Pczt,
 };
 use zcash_protocol::constants::{V5_TX_VERSION, V5_VERSION_GROUP_ID};
+#[cfg(zcash_unstable = "nu7")]
+use zcash_protocol::constants::{V6_TX_VERSION, V6_VERSION_GROUP_ID};
 
 use super::signer::pczt_to_tx_data;
 
@@ -69,9 +71,10 @@ impl IoFinalizer {
         let tx_data = pczt_to_tx_data(&global, &transparent, &sapling, &orchard)?;
         let txid_parts = tx_data.digest(TxIdDigester);
 
-        // TODO: Pick sighash based on tx version.
         match (global.tx_version, global.version_group_id) {
             (V5_TX_VERSION, V5_VERSION_GROUP_ID) => Ok(()),
+            #[cfg(zcash_unstable = "nu7")]
+            (V6_TX_VERSION, V6_VERSION_GROUP_ID) => Ok(()),
             (version, version_group_id) => Err(Error::UnsupportedTxVersion {
                 version,
                 version_group_id,

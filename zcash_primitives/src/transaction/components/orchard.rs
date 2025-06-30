@@ -2,9 +2,9 @@
 use crate::encoding::ReadBytesExt;
 
 #[cfg(zcash_unstable = "nu7")]
-use crate::transaction::components::issuance::read_asset;
-#[cfg(zcash_unstable = "nu7")]
 use crate::encoding::WriteBytesExt;
+#[cfg(zcash_unstable = "nu7")]
+use crate::transaction::components::issuance::read_asset;
 
 use crate::transaction::{OrchardBundle, Transaction};
 use alloc::vec::Vec;

@@ -1,11 +1,10 @@
 use crate::Pczt;
-use orchard::orchard_flavor::OrchardVanilla;
 
 impl super::Verifier {
     /// Parses the Orchard bundle and then verifies it in the given closure.
     pub fn with_orchard<E, F>(self, f: F) -> Result<Self, OrchardError<E>>
     where
-        F: FnOnce(&orchard::pczt::Bundle<OrchardVanilla>) -> Result<(), OrchardError<E>>,
+        F: FnOnce(&orchard::pczt::Bundle) -> Result<(), OrchardError<E>>,
     {
         let Pczt {
             global,
