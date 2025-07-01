@@ -22,7 +22,7 @@ runs:
   steps:
     - id: pools
       shell: bash
-      run: echo "features=orchard transparent-inputs sapling" >> $GITHUB_OUTPUT
+      run: echo "features=orchard transparent-inputs" >> $GITHUB_OUTPUT
       if: inputs.all-pools == 'true'
 
     - id: test
