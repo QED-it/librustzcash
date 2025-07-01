@@ -30,9 +30,9 @@ jobs:
           - state: Orchard
             extra_flags: orchard
           - state: all-pools
-            extra_flags: orchard transparent-inputs sapling
+            extra_flags: orchard transparent-inputs
           - state: NU7
-            extra_flags: orchard transparent-inputs sapling
+            extra_flags: orchard transparent-inputs
             rustflags: '--cfg zcash_unstable="nu7"'
 
     env:
@@ -92,9 +92,9 @@ jobs:
           - state: Orchard
             extra_flags: orchard
           - state: all-pools
-            extra_flags: orchard transparent-inputs sapling
+            extra_flags: orchard transparent-inputs
           - state: NU7
-            extra_flags: orchard transparent-inputs sapling
+            extra_flags: orchard transparent-inputs
             rustflags: '--cfg zcash_unstable="nu7"'
 
         exclude:
@@ -155,9 +155,9 @@ jobs:
           - state: Orchard
             extra_flags: orchard
           - state: all-pools
-            extra_flags: orchard transparent-inputs sapling
+            extra_flags: orchard transparent-inputs
           - state: NU7
-            extra_flags: orchard transparent-inputs sapling
+            extra_flags: orchard transparent-inputs
             rustflags: '--cfg zcash_unstable="nu7"'
 
     env:
