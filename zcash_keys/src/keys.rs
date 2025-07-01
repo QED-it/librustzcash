@@ -1943,7 +1943,8 @@ mod tests {
             #[cfg(feature = "orchard")]
             assert!(bool::from(decoded.orchard().ct_eq(usk.orchard())));
 
-            // TODO fix sapling feature - assert_eq!(decoded.sapling(), usk.sapling());
+            #[cfg(feature = "sapling")]
+            assert_eq!(decoded.sapling(), usk.sapling());
 
             #[cfg(feature = "transparent-inputs")]
             assert_eq!(decoded.transparent().to_bytes(), usk.transparent().to_bytes());
