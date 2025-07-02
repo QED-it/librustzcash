@@ -2850,7 +2850,6 @@ dependencies = [
  "tracing",
  "zcash_address",
  "zcash_encoding",
- "zcash_primitives",
  "zcash_protocol",
  "zcash_transparent",
  "zip32",

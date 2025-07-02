@@ -21,7 +21,6 @@ rustdoc-args = ["--cfg", "docsrs"]
 [dependencies]
 zcash_address.workspace = true
 zcash_encoding.workspace = true
-zcash_primitives.workspace = true
 zcash_protocol.workspace = true
 zip32.workspace = true
 
@@ -75,10 +74,9 @@ proptest.workspace = true
 rand_core.workspace = true
 orchard = { workspace = true, features = ["circuit"] }
 zcash_address = { workspace = true, features = ["test-dependencies"] }
-zcash_primitives = { workspace = true, features = ["test-dependencies"] }
 
 [features]
-default = ["std"]
+default = ["std", "sapling"]
 std = ["dep:document-features"]
 
 ## Enables use of transparent key parts and addresses
@@ -99,7 +97,6 @@ test-dependencies = [
     "orchard?/test-dependencies",
     "sapling?/test-dependencies",
     "transparent/test-dependencies",
-    "zcash_primitives/test-dependencies",
 ]
 
 #! ### Experimental features
