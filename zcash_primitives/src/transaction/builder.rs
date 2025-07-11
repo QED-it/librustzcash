@@ -31,10 +31,7 @@ use {
         TransactionData, Unauthorized,
     },
     alloc::vec::Vec,
-    orchard::{
-        builder::Unproven,
-        orchard_flavor::{OrchardFlavor, OrchardVanilla},
-    },
+    orchard::{builder::Unproven, orchard_flavor::OrchardFlavor},
     sapling::prover::{OutputProver, SpendProver},
     transparent::builder::TransparentSigningSet,
 };
@@ -42,6 +39,7 @@ use {
 use crate::transaction::OrchardBundle;
 use orchard::builder::{BundleType, InProgress};
 use orchard::note::AssetBase;
+use orchard::orchard_flavor::OrchardVanilla;
 use orchard::Address;
 
 #[cfg(feature = "transparent-inputs")]
