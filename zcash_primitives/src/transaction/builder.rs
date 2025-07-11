@@ -30,14 +30,14 @@ use {
         txid::TxIdDigester,
         OrchardBundle, TransactionData, Unauthorized,
     },
+    ::sapling::prover::{OutputProver, SpendProver},
+    ::transparent::builder::TransparentSigningSet,
+    alloc::vec::Vec,
     orchard::{
         builder::{InProgress, Unproven},
         bundle::Authorized,
         orchard_flavor::OrchardFlavor,
     },
-    ::sapling::prover::{OutputProver, SpendProver},
-    ::transparent::builder::TransparentSigningSet,
-    alloc::vec::Vec,
 };
 
 use orchard::builder::BundleType;

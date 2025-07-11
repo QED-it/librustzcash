@@ -35,7 +35,7 @@ use self::{
 };
 
 #[cfg(feature = "circuits")]
-use {orchard::builder::Unproven, ::sapling::builder as sapling_builder};
+use {::sapling::builder as sapling_builder, orchard::builder::Unproven};
 
 #[cfg(zcash_unstable = "zfuture")]
 use self::components::tze::{self, TzeIn, TzeOut};
