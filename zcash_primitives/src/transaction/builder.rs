@@ -4,8 +4,8 @@ use core::cmp::Ordering;
 use core::fmt;
 use rand::{CryptoRng, RngCore};
 
-use sapling::{builder::SaplingMetadata, Note, PaymentAddress};
-use transparent::{address::TransparentAddress, builder::TransparentBuilder, bundle::TxOut};
+use ::sapling::{builder::SaplingMetadata, Note, PaymentAddress};
+use ::transparent::{address::TransparentAddress, builder::TransparentBuilder, bundle::TxOut};
 use zcash_protocol::{
     consensus::{self, BlockHeight, BranchId, NetworkUpgrade, Parameters},
     memo::MemoBytes,
@@ -28,16 +28,19 @@ use {
     crate::transaction::{
         sighash::{signature_hash, SignableInput},
         txid::TxIdDigester,
-        TransactionData, Unauthorized,
+        OrchardBundle, TransactionData, Unauthorized,
     },
     alloc::vec::Vec,
-    orchard::{builder::Unproven, orchard_flavor::OrchardFlavor},
-    sapling::prover::{OutputProver, SpendProver},
-    transparent::builder::TransparentSigningSet,
+    orchard::{
+        builder::{InProgress, Unproven},
+        bundle::Authorized,
+        orchard_flavor::OrchardFlavor,
+    },
+    ::sapling::prover::{OutputProver, SpendProver},
+    ::transparent::builder::TransparentSigningSet,
 };
 
-use crate::transaction::OrchardBundle;
-use orchard::builder::{BundleType, InProgress};
+use orchard::builder::BundleType;
 use orchard::note::AssetBase;
 use orchard::orchard_flavor::OrchardVanilla;
 use orchard::Address;
@@ -60,7 +63,6 @@ use crate::{
     },
 };
 use orchard::builder::BuildError::BundleTypeNotSatisfiable;
-use orchard::bundle::Authorized;
 #[cfg(zcash_unstable = "nu7")]
 use orchard::{
     bundle::Authorization,
@@ -1171,6 +1173,7 @@ where
 /// This function returns the first nullifier from the first transfer action in the Orchard bundle.
 /// It can only be called on ZSA bundle, will panic in case of invalid input e.g. Vanilla or empty bundle.
 #[cfg(zcash_unstable = "nu7")]
+#[cfg(feature = "circuits")]
 fn first_nullifier<A: Authorization>(orchard_bundle: &Option<OrchardBundle<A>>) -> &Nullifier {
     match orchard_bundle {
         Some(OrchardBundle::OrchardZSA(b)) => b.actions().first().nullifier(),
@@ -1217,10 +1220,10 @@ mod testing {
     use super::{BuildResult, Builder, Error};
 
     use crate::transaction::fees::zip317;
+    use ::sapling::prover::mock::{MockOutputProver, MockSpendProver};
     use rand::RngCore;
     use rand_core::CryptoRng;
-    use sapling::prover::mock::{MockOutputProver, MockSpendProver};
-    use transparent::builder::TransparentSigningSet;
+    use ::transparent::builder::TransparentSigningSet;
     use zcash_protocol::consensus;
 
     impl<'a, P: consensus::Parameters, U: sapling::builder::ProverProgress> Builder<'a, P, U> {
@@ -1277,8 +1280,8 @@ mod tests {
     use rand_core::OsRng;
 
     use crate::transaction::builder::BuildConfig;
-    use sapling::{zip32::ExtendedSpendingKey, Node, Rseed};
-    use transparent::{address::TransparentAddress, builder::TransparentSigningSet};
+    use ::sapling::{zip32::ExtendedSpendingKey, Node, Rseed};
+    use ::transparent::{address::TransparentAddress, builder::TransparentSigningSet};
     use zcash_protocol::{
         consensus::{NetworkUpgrade, Parameters, TEST_NETWORK},
         memo::MemoBytes,
