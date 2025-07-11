@@ -31,14 +31,17 @@ use {
         TransactionData, Unauthorized,
     },
     alloc::vec::Vec,
+    orchard::{
+        builder::Unproven,
+        orchard_flavor::{OrchardFlavor, OrchardVanilla},
+    },
     sapling::prover::{OutputProver, SpendProver},
     transparent::builder::TransparentSigningSet,
 };
 
 use crate::transaction::OrchardBundle;
-use orchard::builder::{BundleType, InProgress, Unproven};
+use orchard::builder::{BundleType, InProgress};
 use orchard::note::AssetBase;
-use orchard::orchard_flavor::{OrchardFlavor, OrchardVanilla};
 use orchard::Address;
 
 #[cfg(feature = "transparent-inputs")]
@@ -1150,6 +1153,7 @@ impl<P: consensus::Parameters, U: sapling::builder::ProverProgress> Builder<'_, 
     }
 }
 
+#[cfg(feature = "circuits")]
 fn prove_and_sign<D, V, FE>(
     bundle: orchard::Bundle<InProgress<Unproven, orchard::builder::Unauthorized>, V, D>,
     mut rng: &mut (impl RngCore + CryptoRng),
