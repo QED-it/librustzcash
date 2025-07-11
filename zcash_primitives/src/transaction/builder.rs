@@ -4,8 +4,8 @@ use core::cmp::Ordering;
 use core::fmt;
 use rand::{CryptoRng, RngCore};
 
-use ::sapling::{builder::SaplingMetadata, Note, PaymentAddress};
-use ::transparent::{address::TransparentAddress, builder::TransparentBuilder, bundle::TxOut};
+use sapling::{builder::SaplingMetadata, Note, PaymentAddress};
+use transparent::{address::TransparentAddress, builder::TransparentBuilder, bundle::TxOut};
 use zcash_protocol::{
     consensus::{self, BlockHeight, BranchId, NetworkUpgrade, Parameters},
     memo::MemoBytes,
@@ -30,9 +30,9 @@ use {
         txid::TxIdDigester,
         TransactionData, Unauthorized,
     },
-    ::sapling::prover::{OutputProver, SpendProver},
-    ::transparent::builder::TransparentSigningSet,
     alloc::vec::Vec,
+    sapling::prover::{OutputProver, SpendProver},
+    transparent::builder::TransparentSigningSet,
 };
 
 use crate::transaction::OrchardBundle;
@@ -42,7 +42,7 @@ use orchard::orchard_flavor::{OrchardFlavor, OrchardVanilla};
 use orchard::Address;
 
 #[cfg(feature = "transparent-inputs")]
-use ::transparent::builder::TransparentInputInfo;
+use transparent::builder::TransparentInputInfo;
 
 #[cfg(not(feature = "transparent-inputs"))]
 use core::convert::Infallible;
@@ -1122,11 +1122,9 @@ impl<P: consensus::Parameters, U: sapling::builder::ProverProgress> Builder<'_, 
                     #[cfg(not(zcash_unstable = "nu7"))]
                     Err(Error::OrchardBuild(BundleTypeNotSatisfiable))
                 }
-                BundleType::DEFAULT_VANILLA => {
-                    return builder
-                        .build_for_pczt::<OrchardVanilla>(&mut rng)
-                        .map_err(Error::OrchardBuild)
-                }
+                BundleType::DEFAULT_VANILLA => builder
+                    .build_for_pczt::<OrchardVanilla>(&mut rng)
+                    .map_err(Error::OrchardBuild),
                 _ => Err(Error::OrchardBuild(BundleTypeNotSatisfiable)),
             })
             .transpose()?
@@ -1217,9 +1215,9 @@ mod testing {
     use super::{BuildResult, Builder, Error};
 
     use crate::transaction::fees::zip317;
-    use ::sapling::prover::mock::{MockOutputProver, MockSpendProver};
     use rand::RngCore;
     use rand_core::CryptoRng;
+    use sapling::prover::mock::{MockOutputProver, MockSpendProver};
     use transparent::builder::TransparentSigningSet;
     use zcash_protocol::consensus;
 
@@ -1277,8 +1275,8 @@ mod tests {
     use rand_core::OsRng;
 
     use crate::transaction::builder::BuildConfig;
-    use ::sapling::{zip32::ExtendedSpendingKey, Node, Rseed};
-    use ::transparent::{address::TransparentAddress, builder::TransparentSigningSet};
+    use sapling::{zip32::ExtendedSpendingKey, Node, Rseed};
+    use transparent::{address::TransparentAddress, builder::TransparentSigningSet};
     use zcash_protocol::{
         consensus::{NetworkUpgrade, Parameters, TEST_NETWORK},
         memo::MemoBytes,
@@ -1298,7 +1296,7 @@ mod tests {
     #[cfg(feature = "transparent-inputs")]
     use {
         crate::transaction::{builder::DEFAULT_TX_EXPIRY_DELTA, OutPoint, TxOut},
-        ::transparent::keys::{AccountPrivKey, IncomingViewingKey},
+        transparent::keys::{AccountPrivKey, IncomingViewingKey},
         zip32::AccountId,
     };
 
@@ -1308,7 +1306,7 @@ mod tests {
     #[cfg(feature = "transparent-inputs")]
     fn binding_sig_absent_if_no_shielded_spend_or_output() {
         use crate::transaction::builder::{self, TransparentBuilder};
-        use ::transparent::{builder::TransparentSigningSet, keys::NonHardenedChildIndex};
+        use transparent::{builder::TransparentSigningSet, keys::NonHardenedChildIndex};
         use zcash_protocol::consensus::NetworkUpgrade;
 
         let sapling_activation_height = TEST_NETWORK
