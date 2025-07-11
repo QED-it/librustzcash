@@ -30,7 +30,6 @@ use {
         txid::TxIdDigester,
         OrchardBundle, TransactionData, Unauthorized,
     },
-    alloc::vec::Vec,
     orchard::{
         builder::{InProgress, Unproven},
         bundle::Authorized,
@@ -38,6 +37,7 @@ use {
     },
     ::sapling::prover::{OutputProver, SpendProver},
     ::transparent::builder::TransparentSigningSet,
+    alloc::vec::Vec,
 };
 
 use orchard::builder::BundleType;
@@ -46,7 +46,7 @@ use orchard::orchard_flavor::OrchardVanilla;
 use orchard::Address;
 
 #[cfg(feature = "transparent-inputs")]
-use transparent::builder::TransparentInputInfo;
+use ::transparent::builder::TransparentInputInfo;
 
 #[cfg(not(feature = "transparent-inputs"))]
 use core::convert::Infallible;
@@ -1223,7 +1223,7 @@ mod testing {
     use ::sapling::prover::mock::{MockOutputProver, MockSpendProver};
     use rand::RngCore;
     use rand_core::CryptoRng;
-    use ::transparent::builder::TransparentSigningSet;
+    use transparent::builder::TransparentSigningSet;
     use zcash_protocol::consensus;
 
     impl<'a, P: consensus::Parameters, U: sapling::builder::ProverProgress> Builder<'a, P, U> {
@@ -1301,7 +1301,7 @@ mod tests {
     #[cfg(feature = "transparent-inputs")]
     use {
         crate::transaction::{builder::DEFAULT_TX_EXPIRY_DELTA, OutPoint, TxOut},
-        transparent::keys::{AccountPrivKey, IncomingViewingKey},
+        ::transparent::keys::{AccountPrivKey, IncomingViewingKey},
         zip32::AccountId,
     };
 
@@ -1311,7 +1311,7 @@ mod tests {
     #[cfg(feature = "transparent-inputs")]
     fn binding_sig_absent_if_no_shielded_spend_or_output() {
         use crate::transaction::builder::{self, TransparentBuilder};
-        use transparent::{builder::TransparentSigningSet, keys::NonHardenedChildIndex};
+        use ::transparent::{builder::TransparentSigningSet, keys::NonHardenedChildIndex};
         use zcash_protocol::consensus::NetworkUpgrade;
 
         let sapling_activation_height = TEST_NETWORK
