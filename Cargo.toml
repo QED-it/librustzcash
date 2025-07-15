@@ -219,9 +219,6 @@ unexpected_cfgs = { level = "warn", check-cfg = [
 ] }
 
 [patch.crates-io]
-zcash_note_encryption = { version = "0.4", git = "https://github.com/QED-it/zcash_note_encryption", branch = "zsa1" }
+zcash_note_encryption = { version = "0.4.1", git = "https://github.com/zcash/zcash_note_encryption", branch = "main" }
 sapling = { package = "sapling-crypto", version = "0.5", git = "https://github.com/QED-it/sapling-crypto", branch = "zsa1" }
-# FIXME: uncomment the next line, fix rev the and remove the line after it (orchard = { ..., branch = "clean_circuit_flag" }
-# when the PR for clean_circuit_flag branch will be merged
-#orchard = { version = "0.11.0", git = "https://github.com/QED-it/orchard", rev = "c9e513e2b579c48f46ea9f455878aa15b1852948" }
-orchard = { version = "0.11.0", git = "https://github.com/QED-it/orchard", branch = "clean_circuit_flag" }
+orchard = { version = "0.11.0", git = "https://github.com/QED-it/orchard", rev = "1746a4b5c68f205cb93486d264011b69992eb1b5" }
