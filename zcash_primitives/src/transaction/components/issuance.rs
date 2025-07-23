@@ -1,5 +1,4 @@
 use crate::encoding::{ReadBytesExt, WriteBytesExt};
-/// Functions for parsing & serialization of the issuance bundle components.
 use core2::io::{self, Error, ErrorKind, Read, Write};
 use nonempty::NonEmpty;
 use orchard::issuance::{IssueAction, IssueAuth, IssueBundle, Signed};
