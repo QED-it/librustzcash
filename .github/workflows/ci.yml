@@ -476,7 +476,7 @@ jobs:
           --engine llvm
           ${{ steps.prepare.outputs.feature-flags }}
           --release
-          --timeout 600
+          --timeout 300
           --out xml
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v5.3.1
