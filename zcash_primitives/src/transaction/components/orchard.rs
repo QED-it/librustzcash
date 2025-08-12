@@ -1,10 +1,15 @@
-/// Functions for parsing & serialization of Orchard transaction components.
-use std::convert::TryFrom;
-use std::io::{self, Read, Write};
+//! Functions for parsing & serialization of Orchard transaction components.
+use crate::encoding::ReadBytesExt;
 
-use super::Amount;
+#[cfg(zcash_unstable = "nu7")]
+use crate::encoding::WriteBytesExt;
+#[cfg(zcash_unstable = "nu7")]
+use crate::transaction::components::issuance::read_asset;
+
 use crate::transaction::{OrchardBundle, Transaction};
-use byteorder::ReadBytesExt;
+use alloc::vec::Vec;
+use core::convert::TryFrom;
+use core2::io::{self, Read, Write};
 use nonempty::NonEmpty;
 use orchard::{
     bundle::{Authorization, Authorized, Flags},
@@ -15,23 +20,12 @@ use orchard::{
     value::ValueCommitment,
     Action, Anchor, Bundle, Proof,
 };
+#[cfg(zcash_unstable = "nu7")]
+use orchard::{note::AssetBase, orchard_flavor::OrchardZSA, value::NoteValue};
 use zcash_encoding::{Array, CompactSize, Vector};
 use zcash_note_encryption::note_bytes::NoteBytes;
 
 use zcash_protocol::value::ZatBalance;
-#[cfg(zcash_unstable = "nu6" /* TODO nu7 */ )]
-use {
-    crate::transaction::components::issuance::read_asset,
-    byteorder::LittleEndian,
-    byteorder::WriteBytesExt,
-    orchard::orchard_flavor::OrchardZSA,
-    orchard::primitives::redpallas::Binding,
-    orchard::{
-        note::AssetBase,
-        swap_bundle::{ActionGroupAuthorized, SwapBundle},
-        value::NoteValue,
-    },
-};
 
 pub const FLAG_SPENDS_ENABLED: u8 = 0b0000_0001;
 pub const FLAG_OUTPUTS_ENABLED: u8 = 0b0000_0010;
@@ -64,7 +58,7 @@ impl MapAuth<Authorized, Authorized> for () {
 /// Reads an [`orchard::Bundle`] from a v5 transaction format.
 pub fn read_orchard_bundle<R: Read>(
     mut reader: R,
-) -> io::Result<Option<Bundle<Authorized, Amount, OrchardVanilla>>> {
+) -> io::Result<Option<Bundle<Authorized, ZatBalance, OrchardVanilla>>> {
     #[allow(clippy::redundant_closure)]
     let actions_without_auth = Vector::read(&mut reader, |r| read_action_without_auth(r))?;
     if actions_without_auth.is_empty() {
@@ -98,12 +92,12 @@ pub fn read_orchard_bundle<R: Read>(
     }
 }
 
-/// Reads an [`Bundle`] from a v6 transaction format.
-#[cfg(zcash_unstable = "nu6" /* TODO nu7 */ )]
+/// Reads an [`orchard::Bundle`] from a v6 transaction format.
+#[cfg(zcash_unstable = "nu7")]
 pub fn read_orchard_zsa_bundle<R: Read>(
     mut reader: R,
-) -> io::Result<Option<Bundle<Authorized, Amount, OrchardZSA>>> {
-    let num_action_groups: usize = CompactSize::read_t::<_, u32>(&mut reader)? as usize;
+) -> io::Result<Option<orchard::Bundle<Authorized, ZatBalance, OrchardZSA>>> {
+    let num_action_groups: u32 = CompactSize::read_t::<_, u32>(&mut reader)?;
     if num_action_groups == 0 {
         return Ok(None);
     } else if num_action_groups != 1 {
@@ -201,17 +195,17 @@ fn read_action_group_data<R: Read>(
     }
     let flags = read_flags(&mut reader)?;
     let anchor = read_anchor(&mut reader)?;
+    let timelimit = reader.read_u32_le()?;
+    let burn = read_burn(&mut reader)?;
     let proof_bytes = Vector::read(&mut reader, |r| r.read_u8())?;
     let proof = Proof::new(proof_bytes);
-    let timelimit = reader.read_u32::<LittleEndian>()?;
-    let burn = read_burn(&mut reader)?;
     let actions = NonEmpty::from_vec(
         actions_without_auth
             .into_iter()
             .map(|act| act.try_map(|_| read_signature::<_, redpallas::SpendAuth>(&mut reader)))
             .collect::<Result<Vec<_>, _>>()?,
     )
-    .expect("A nonzero number of actions was read from the transaction data.");
+    .expect("The action group must contain at least one action.");
 
     Ok((actions, flags, anchor, proof, timelimit, burn))
 }
@@ -225,13 +219,13 @@ fn read_bundle_balance_metadata<R: Read>(
     Ok((value_balance, binding_signature))
 }
 
-#[cfg(zcash_unstable = "nu6" /* TODO nu7 */ )]
+#[cfg(zcash_unstable = "nu7")]
 fn read_burn_item<R: Read>(reader: &mut R) -> io::Result<(AssetBase, NoteValue)> {
     Ok((read_asset(reader)?, read_note_value(reader)?))
 }
 
 /// Reads burn for OrchardZSA
-#[cfg(zcash_unstable = "nu6" /* TODO nu7 */ )]
+#[cfg(zcash_unstable = "nu7")]
 pub fn read_burn<R: Read>(mut reader: &mut R) -> io::Result<Vec<(AssetBase, NoteValue)>> {
     Vector::read(&mut reader, read_burn_item)
 }
@@ -244,7 +238,7 @@ pub fn read_value_commitment<R: Read>(mut reader: R) -> io::Result<ValueCommitme
     if cv.is_none().into() {
         Err(io::Error::new(
             io::ErrorKind::InvalidInput,
-            "invalid Pallas point for value commitment".to_owned(),
+            "invalid Pallas point for value commitment",
         ))
     } else {
         Ok(cv.unwrap())
@@ -258,7 +252,7 @@ pub fn read_nullifier<R: Read>(mut reader: R) -> io::Result<Nullifier> {
     if nullifier_ctopt.is_none().into() {
         Err(io::Error::new(
             io::ErrorKind::InvalidInput,
-            "invalid Pallas point for nullifier".to_owned(),
+            "invalid Pallas point for nullifier",
         ))
     } else {
         Ok(nullifier_ctopt.unwrap())
@@ -268,12 +262,8 @@ pub fn read_nullifier<R: Read>(mut reader: R) -> io::Result<Nullifier> {
 pub fn read_verification_key<R: Read>(mut reader: R) -> io::Result<VerificationKey<SpendAuth>> {
     let mut bytes = [0u8; 32];
     reader.read_exact(&mut bytes)?;
-    VerificationKey::try_from(bytes).map_err(|_| {
-        io::Error::new(
-            io::ErrorKind::InvalidInput,
-            "invalid verification key".to_owned(),
-        )
-    })
+    VerificationKey::try_from(bytes)
+        .map_err(|_| io::Error::new(io::ErrorKind::InvalidInput, "invalid verification key"))
 }
 
 pub fn read_cmx<R: Read>(mut reader: R) -> io::Result<ExtractedNoteCommitment> {
@@ -283,7 +273,7 @@ pub fn read_cmx<R: Read>(mut reader: R) -> io::Result<ExtractedNoteCommitment> {
     Option::from(cmx).ok_or_else(|| {
         io::Error::new(
             io::ErrorKind::InvalidInput,
-            "invalid Pallas base for field cmx".to_owned(),
+            "invalid Pallas base for field cmx",
         )
     })
 }
@@ -328,23 +318,15 @@ pub fn read_action_without_auth<R: Read, D: OrchardDomainCommon>(
 pub fn read_flags<R: Read>(mut reader: R) -> io::Result<Flags> {
     let mut byte = [0u8; 1];
     reader.read_exact(&mut byte)?;
-    Flags::from_byte(byte[0]).ok_or_else(|| {
-        io::Error::new(
-            io::ErrorKind::InvalidInput,
-            "invalid Orchard flags".to_owned(),
-        )
-    })
+    Flags::from_byte(byte[0])
+        .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "invalid Orchard flags"))
 }
 
 pub fn read_anchor<R: Read>(mut reader: R) -> io::Result<Anchor> {
     let mut bytes = [0u8; 32];
     reader.read_exact(&mut bytes)?;
-    Option::from(Anchor::from_bytes(bytes)).ok_or_else(|| {
-        io::Error::new(
-            io::ErrorKind::InvalidInput,
-            "invalid Orchard anchor".to_owned(),
-        )
-    })
+    Option::from(Anchor::from_bytes(bytes))
+        .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "invalid Orchard anchor"))
 }
 
 pub fn read_signature<R: Read, T: SigType>(mut reader: R) -> io::Result<Signature<T>> {
@@ -353,7 +335,7 @@ pub fn read_signature<R: Read, T: SigType>(mut reader: R) -> io::Result<Signatur
     Ok(Signature::from(bytes))
 }
 
-#[cfg(zcash_unstable = "nu6" /* TODO nu7 */ )]
+#[cfg(zcash_unstable = "nu7")]
 fn read_note_value<R: Read>(mut reader: R) -> io::Result<NoteValue> {
     let mut bytes = [0; 8];
     reader.read_exact(&mut bytes)?;
@@ -361,7 +343,7 @@ fn read_note_value<R: Read>(mut reader: R) -> io::Result<NoteValue> {
 }
 
 /// Writes burn for OrchardZSA
-#[cfg(zcash_unstable = "nu6" /* TODO nu7 */ )]
+#[cfg(zcash_unstable = "nu7")]
 pub fn write_burn<W: Write>(writer: &mut W, burn: &[(AssetBase, NoteValue)]) -> io::Result<()> {
     Vector::write(writer, burn, |w, (asset, amount)| {
         w.write_all(&asset.to_bytes())?;
@@ -378,8 +360,8 @@ pub fn write_orchard_bundle<W: Write>(
 ) -> io::Result<()> {
     if let Some(bundle) = bundle {
         match bundle {
-            OrchardBundle::OrchardVanilla(b) => write_v5_bundle(b, writer)?,
-            #[cfg(zcash_unstable = "nu6" /* TODO nu7 */ )]
+            OrchardBundle::OrchardVanilla(b) => write_orchard_vanilla_bundle(b, writer)?,
+            #[cfg(zcash_unstable = "nu7")]
             OrchardBundle::OrchardZSA(b) => write_orchard_zsa_bundle(writer, b)?,
             #[cfg(zcash_unstable = "nu6" /* TODO swap */ )]
             OrchardBundle::OrchardSwap(b) => write_orchard_swap_bundle(writer, b)?,
@@ -392,7 +374,7 @@ pub fn write_orchard_bundle<W: Write>(
 }
 
 /// Writes an [`orchard::Bundle`] in the v5 transaction format.
-pub fn write_v5_bundle<W: Write>(
+pub fn write_orchard_vanilla_bundle<W: Write>(
     bundle: &Bundle<Authorized, ZatBalance, OrchardVanilla>,
     mut writer: W,
 ) -> io::Result<()> {
@@ -421,10 +403,10 @@ pub fn write_v5_bundle<W: Write>(
 }
 
 /// Writes an [`orchard::Bundle`] in the appropriate transaction format.
-#[cfg(zcash_unstable = "nu6" /* TODO nu7 */ )]
+#[cfg(zcash_unstable = "nu7")]
 pub fn write_orchard_zsa_bundle<W: Write>(
     mut writer: W,
-    bundle: &orchard::Bundle<Authorized, Amount, OrchardZSA>,
+    bundle: &orchard::Bundle<Authorized, ZatBalance, OrchardZSA>,
 ) -> io::Result<()> {
     // Exactly one action group for NU7
     CompactSize::write(&mut writer, 1)?;
@@ -468,21 +450,24 @@ fn write_action_group<W: Write, A: Authorization<SpendAuth = Signature<SpendAuth
 
     writer.write_all(&[bundle.flags().to_byte()])?;
     writer.write_all(&bundle.anchor().to_bytes())?;
+
+    // Timelimit must be zero for NU7
+    writer.write_u32_le(0)?;
+
+    write_burn(&mut writer, bundle.burn())?;
+
     Vector::write(
         &mut writer,
         bundle.authorization().proof().unwrap().as_ref(),
         |w, b| w.write_u8(*b),
     )?;
-    writer.write_u32::<LittleEndian>(bundle.expiry_height())?;
-    Vector::write(&mut writer, bundle.burn(), |w, (asset, amount)| {
-        w.write_all(&asset.to_bytes())?;
-        w.write_all(&amount.to_bytes())
-    })?;
     Array::write(
         &mut writer,
         bundle.actions().iter().map(|a| a.authorization()),
         |w, auth| w.write_all(&<[u8; 64]>::from(*auth)),
-    )
+    );
+
+    Ok(())
 }
 
 #[cfg(zcash_unstable = "nu6" /* TODO nu7 */ )]
@@ -539,17 +524,16 @@ pub fn write_action_without_auth<W: Write, D: OrchardDomainCommon, A>(
 pub mod testing {
     use proptest::prelude::*;
 
-    use crate::transaction::components::amount::testing::arb_amount;
     use crate::transaction::{OrchardBundle, TxVersion};
-    use orchard::bundle::{
-        testing::{self as t_orch},
-        Authorized,
-    };
+    use orchard::bundle::{testing as t_orch, Authorized};
+    use zcash_protocol::value::testing::arb_zat_balance;
+
+    #[cfg(zcash_unstable = "nu7")]
     use orchard::orchard_flavor::OrchardZSA;
 
     prop_compose! {
         pub fn arb_bundle(n_actions: usize)(
-            orchard_value_balance in arb_amount(),
+            orchard_value_balance in arb_zat_balance(),
             bundle in t_orch::BundleArb::arb_bundle(n_actions)
         ) -> OrchardBundle<Authorized> {
             // overwrite the value balance, as we can't guarantee that the
@@ -558,26 +542,29 @@ pub mod testing {
         }
     }
 
+    #[cfg(zcash_unstable = "nu7")]
     prop_compose! {
-        #[allow(unreachable_code)]
         pub fn arb_zsa_bundle(n_actions: usize)(
-            _orchard_value_balance in arb_amount(),
-            _bundle in t_orch::BundleArb::<OrchardZSA>::arb_bundle(n_actions)
+            orchard_value_balance in arb_zat_balance(),
+            bundle in t_orch::BundleArb::<OrchardZSA>::arb_bundle(n_actions)
         ) -> OrchardBundle<Authorized> {
             // overwrite the value balance, as we can't guarantee that the
             // value doesn't exceed the MAX_MONEY bounds.
-            #[cfg(zcash_unstable = "nu6" /* TODO nu7 */ )]
-            return OrchardBundle::OrchardZSA(_bundle.try_map_value_balance::<_, (), _>(|_| Ok(_orchard_value_balance)).unwrap());
-            panic!("ZSA is not supported in this version");
+            OrchardBundle::OrchardZSA(bundle.try_map_value_balance::<_, (), _>(|_| Ok(orchard_value_balance)).unwrap())
         }
     }
 
     pub fn arb_bundle_for_version(
         v: TxVersion,
     ) -> impl Strategy<Value = Option<OrchardBundle<Authorized>>> {
+        #[cfg(zcash_unstable = "nu7")]
         if v.has_orchard_zsa() {
-            Strategy::boxed((1usize..100).prop_flat_map(|n| prop::option::of(arb_zsa_bundle(n))))
-        } else if v.has_orchard() {
+            return Strategy::boxed(
+                (1usize..100).prop_flat_map(|n| prop::option::of(arb_zsa_bundle(n))),
+            );
+        }
+
+        if v.has_orchard() {
             Strategy::boxed((1usize..100).prop_flat_map(|n| prop::option::of(arb_bundle(n))))
         } else {
             Strategy::boxed(Just(None))
