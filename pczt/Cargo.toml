@@ -126,7 +126,7 @@ tx-extractor = [
 
 [[test]]
 name = "end_to_end"
-required-features = ["io-finalizer", "prover", "signer", "tx-extractor"]
+required-features = ["io-finalizer", "prover", "signer", "tx-extractor", "spend-finalizer", "zcp-builder"]
 
 [lints]
 workspace = true

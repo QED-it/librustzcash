@@ -2,7 +2,7 @@ use ::transparent::{
     bundle as transparent,
     keys::{AccountPrivKey, IncomingViewingKey},
 };
-use orchard::domain::OrchardDomain;
+use orchard::primitives::OrchardDomain;
 use orchard::note::AssetBase;
 use orchard::orchard_flavor::OrchardVanilla;
 use orchard::tree::MerkleHashOrchard;
@@ -458,6 +458,7 @@ fn orchard_to_orchard() {
 #[cfg(zcash_unstable = "nu7")]
 #[test]
 fn zsa_to_zsa() {
+    println!("Running ZSA to ZSA test...");
     let mut rng = OsRng;
 
     // Create an Orchard account to receive funds.
