@@ -1,10 +1,13 @@
+use rand_core::OsRng;
+use std::sync::OnceLock;
+
 use ::transparent::{
     bundle as transparent,
     keys::{AccountPrivKey, IncomingViewingKey},
 };
-use orchard::domain::OrchardDomain;
 use orchard::note::AssetBase;
 use orchard::orchard_flavor::OrchardVanilla;
+use orchard::primitives::OrchardDomain;
 use orchard::tree::MerkleHashOrchard;
 use pczt::{
     roles::{
@@ -14,9 +17,7 @@ use pczt::{
     },
     Pczt,
 };
-use rand_core::OsRng;
 use shardtree::{store::memory::MemoryShardStore, ShardTree};
-use std::sync::OnceLock;
 use zcash_note_encryption::try_note_decryption;
 use zcash_primitives::transaction::{
     builder::{BuildConfig, Builder, PcztResult},
@@ -44,6 +45,7 @@ use orchard::{
 use zcash_protocol::consensus::Network::RegtestNetwork;
 
 static ORCHARD_PROVING_KEY: OnceLock<orchard::circuit::ProvingKey> = OnceLock::new();
+static ORCHARD_ZSA_PROVING_KEY: OnceLock<orchard::circuit::ProvingKey> = OnceLock::new();
 
 fn orchard_proving_key() -> &'static orchard::circuit::ProvingKey {
     ORCHARD_PROVING_KEY.get_or_init(orchard::circuit::ProvingKey::build::<OrchardVanilla>)
@@ -51,7 +53,7 @@ fn orchard_proving_key() -> &'static orchard::circuit::ProvingKey {
 
 #[cfg(zcash_unstable = "nu7")]
 fn orchard_zsa_proving_key() -> &'static orchard::circuit::ProvingKey {
-    ORCHARD_PROVING_KEY.get_or_init(orchard::circuit::ProvingKey::build::<OrchardZSA>)
+    ORCHARD_ZSA_PROVING_KEY.get_or_init(orchard::circuit::ProvingKey::build::<OrchardZSA>)
 }
 
 fn check_round_trip(pczt: &Pczt) {
