@@ -6,6 +6,7 @@ use alloc::vec::Vec;
 
 use getset::Getters;
 use serde::{Deserialize, Serialize};
+use serde_with::serde_as;
 
 use crate::roles::combiner::merge_map;
 
@@ -203,6 +204,14 @@ pub(crate) struct Zip32Derivation {
     /// [BIP 44]: https://github.com/bitcoin/bips/blob/master/bip-0044.mediawiki
     /// [ZIP 320]: https://zips.z.cash/zip-0320
     pub(crate) derivation_path: Vec<u32>,
+}
+
+#[serde_as]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub(crate) struct SpendAuthSignatureWithSighashInfo {
+    pub(crate) sighash_info: Vec<u8>,
+    #[serde_as(as = "[_; 64]")]
+    pub(crate) signature: [u8; 64]
 }
 
 /// Determines the lock time for the transaction.
