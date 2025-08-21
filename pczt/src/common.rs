@@ -211,7 +211,7 @@ pub(crate) struct Zip32Derivation {
 pub(crate) struct SpendAuthSignatureWithSighashInfo {
     pub(crate) sighash_info: Vec<u8>,
     #[serde_as(as = "[_; 64]")]
-    pub(crate) signature: [u8; 64]
+    pub(crate) signature: [u8; 64],
 }
 
 /// Determines the lock time for the transaction.

@@ -13,7 +13,7 @@ use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
 
 use crate::{
-    common::{Global, Zip32Derivation, SpendAuthSignatureWithSighashInfo},
+    common::{Global, SpendAuthSignatureWithSighashInfo, Zip32Derivation},
     roles::combiner::{merge_map, merge_optional},
 };
 
