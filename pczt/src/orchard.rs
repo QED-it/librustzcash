@@ -447,12 +447,12 @@ impl Bundle {
                 let spend = orchard::pczt::Spend::parse(
                     action.spend.nullifier,
                     action.spend.rk,
-                    action.spend.spend_auth_sig.map(|z| {
-                        orchard::signature_with_sighash_info::SpendAuthSignatureWithSighashInfo::parse(
-                            z.sighash_info,
-                            z.signature,
-                        )
-                    })
+                    action
+                        .spend
+                        .spend_auth_sig
+                        .map(|z| {
+                            orchard::signature_with_sighash_info::SpendAuthSignatureWithSighashInfo::parse(z.sighash_info, z.signature)
+                        })
                         .transpose()?,
                     action.spend.recipient,
                     action.spend.value,
