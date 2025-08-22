@@ -290,6 +290,19 @@ pub fn read_signature_with_sighash_info<R: Read, T: SigType>(
     ))
 }
 
+#[cfg(zcash_unstable = "nu7")]
+pub fn write_signature_with_sighash_info<W: Write, T: SigType>(
+    writer: &mut W,
+    sig_with_sighash_info: &SignatureWithSighashInfo<T>,
+) -> io::Result<()> {
+    Vector::write(
+        &mut *writer,
+        sig_with_sighash_info.sighash_info().to_bytes().as_slice(),
+        |w, b| w.write_u8(*b),
+    )?;
+    writer.write_all(&<[u8; 64]>::from(sig_with_sighash_info.signature()))
+}
+
 /// Writes an [`orchard::Bundle`] in the v5 transaction format.
 pub fn write_orchard_vanilla_bundle<W: Write>(
     bundle: &Bundle<Authorized, ZatBalance, OrchardVanilla>,
@@ -388,25 +401,12 @@ pub fn write_orchard_zsa_bundle<W: Write>(
     Array::write(
         &mut writer,
         bundle.actions().iter().map(|a| a.authorization()),
-        |w, auth| {
-            Vector::write(w, auth.sighash_info().to_bytes());
-            w.write_all(&<[u8; 64]>::from(*auth.signature()))
-        },
+        |w, auth| write_signature_with_sighash_info(w, auth),
     )?;
 
     writer.write_all(&bundle.value_balance().to_i64_le_bytes())?;
 
-    Vector::write(
-        &mut writer,
-        bundle
-            .authorization()
-            .binding_signature()
-            .sighash_info()
-            .to_bytes(),
-    );
-    writer.write_all(&<[u8; 64]>::from(
-        bundle.authorization().binding_signature().signature(),
-    ))?;
+    write_signature_with_sighash_info(&mut writer, bundle.authorization().binding_signature())?;
 
     Ok(())
 }
