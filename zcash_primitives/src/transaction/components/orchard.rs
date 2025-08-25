@@ -13,7 +13,7 @@ use core2::io::{self, Read, Write};
 use nonempty::NonEmpty;
 use orchard::{
     bundle::{Authorization, Authorized, Flags},
-    domain::OrchardDomainCommon,
+    primitives::OrchardPrimitives,
     note::{ExtractedNoteCommitment, Nullifier, TransmittedNoteCiphertext},
     orchard_flavor::OrchardVanilla,
     primitives::redpallas::{self, SigType, Signature, SpendAuth, VerificationKey},
@@ -26,6 +26,13 @@ use zcash_encoding::{Array, CompactSize, Vector};
 use zcash_note_encryption::note_bytes::NoteBytes;
 
 use zcash_protocol::value::ZatBalance;
+
+#[cfg(zcash_unstable = "nu7" /* TODO swap */ )]
+use orchard::{
+    swap_bundle::{ActionGroupAuthorized, SwapBundle},
+    primitives::redpallas::Binding,
+};
+
 
 pub const FLAG_SPENDS_ENABLED: u8 = 0b0000_0001;
 pub const FLAG_OUTPUTS_ENABLED: u8 = 0b0000_0010;
@@ -123,9 +130,13 @@ pub fn read_orchard_zsa_bundle<R: Read>(
 }
 
 /// Reads an [`orchard::Bundle`] from a v6 transaction format.
-#[cfg(zcash_unstable = "nu6" /* TODO swap */ )]
-pub fn read_orchard_swap_bundle<R: Read>(mut reader: R) -> io::Result<Option<SwapBundle<Amount>>> {
+#[cfg(zcash_unstable = "nu7")]
+pub fn read_orchard_swap_bundle<R: Read>(mut reader: R) -> io::Result<Option<SwapBundle<ZatBalance>>> {
     let action_groups = read_action_groups(&mut reader)?;
+
+    if action_groups.is_empty()  {
+        return Ok(None);
+    }
 
     let (value_balance, binding_signature) = read_bundle_balance_metadata(&mut reader)?;
 
@@ -136,7 +147,7 @@ pub fn read_orchard_swap_bundle<R: Read>(mut reader: R) -> io::Result<Option<Swa
     )))
 }
 
-#[cfg(zcash_unstable = "nu6" /* TODO nu7 */ )]
+#[cfg(zcash_unstable = "nu7")]
 fn read_action_groups<R: Read>(
     mut reader: R,
 ) -> io::Result<Vec<Bundle<ActionGroupAuthorized, ZatBalance, OrchardZSA>>> {
@@ -175,7 +186,7 @@ fn read_action_groups<R: Read>(
     Ok(action_groups.to_vec())
 }
 
-#[cfg(zcash_unstable = "nu6" /* TODO nu7 */ )]
+#[cfg(zcash_unstable = "nu7")]
 fn read_action_group_data<R: Read>(
     mut reader: R,
 ) -> io::Result<(
@@ -210,10 +221,10 @@ fn read_action_group_data<R: Read>(
     Ok((actions, flags, anchor, proof, timelimit, burn))
 }
 
-#[cfg(zcash_unstable = "nu6" /* TODO nu7 */ )]
+#[cfg(zcash_unstable = "nu7")]
 fn read_bundle_balance_metadata<R: Read>(
     mut reader: R,
-) -> io::Result<(Amount, Signature<Binding>)> {
+) -> io::Result<(ZatBalance, Signature<Binding>)> {
     let value_balance = Transaction::read_amount(&mut reader)?;
     let binding_signature = read_signature::<_, redpallas::Binding>(&mut reader)?;
     Ok((value_balance, binding_signature))
@@ -278,27 +289,27 @@ pub fn read_cmx<R: Read>(mut reader: R) -> io::Result<ExtractedNoteCommitment> {
     })
 }
 
-pub fn read_note_ciphertext<R: Read, D: OrchardDomainCommon>(
+pub fn read_note_ciphertext<R: Read, P: OrchardPrimitives>(
     mut reader: R,
-) -> io::Result<TransmittedNoteCiphertext<D>> {
+) -> io::Result<TransmittedNoteCiphertext<P>> {
     let mut epk = [0; 32];
-    let mut enc = vec![0u8; D::ENC_CIPHERTEXT_SIZE];
+    let mut enc = vec![0u8; P::ENC_CIPHERTEXT_SIZE];
     let mut out = [0; 80];
 
     reader.read_exact(&mut epk)?;
     reader.read_exact(&mut enc)?;
     reader.read_exact(&mut out)?;
 
-    Ok(TransmittedNoteCiphertext::<D> {
+    Ok(TransmittedNoteCiphertext::<P> {
         epk_bytes: epk,
-        enc_ciphertext: <D>::NoteCiphertextBytes::from_slice(&enc).unwrap(),
+        enc_ciphertext: <P>::NoteCiphertextBytes::from_slice(&enc).unwrap(),
         out_ciphertext: out,
     })
 }
 
-pub fn read_action_without_auth<R: Read, D: OrchardDomainCommon>(
+pub fn read_action_without_auth<R: Read, P: OrchardPrimitives>(
     mut reader: R,
-) -> io::Result<Action<(), D>> {
+) -> io::Result<Action<(), P>> {
     let cv_net = read_value_commitment(&mut reader)?;
     let nf_old = read_nullifier(&mut reader)?;
     let rk = read_verification_key(&mut reader)?;
@@ -363,7 +374,7 @@ pub fn write_orchard_bundle<W: Write>(
             OrchardBundle::OrchardVanilla(b) => write_orchard_vanilla_bundle(b, writer)?,
             #[cfg(zcash_unstable = "nu7")]
             OrchardBundle::OrchardZSA(b) => write_orchard_zsa_bundle(writer, b)?,
-            #[cfg(zcash_unstable = "nu6" /* TODO swap */ )]
+            #[cfg(zcash_unstable = "nu7")]
             OrchardBundle::OrchardSwap(b) => write_orchard_swap_bundle(writer, b)?,
         }
     } else {
@@ -421,10 +432,10 @@ pub fn write_orchard_zsa_bundle<W: Write>(
 }
 
 /// Writes an [`orchard::Bundle`] in the appropriate transaction format.
-#[cfg(zcash_unstable = "nu6" /* TODO swap */ )]
+#[cfg(zcash_unstable = "nu7")]
 pub fn write_orchard_swap_bundle<W: Write>(
     mut writer: W,
-    bundle: &SwapBundle<Amount>,
+    bundle: &SwapBundle<ZatBalance>,
 ) -> io::Result<()> {
     CompactSize::write(&mut writer, bundle.action_groups().len())?;
     bundle
@@ -439,10 +450,10 @@ pub fn write_orchard_swap_bundle<W: Write>(
     Ok(())
 }
 
-#[cfg(zcash_unstable = "nu6" /* TODO nu7 */ )]
+#[cfg(zcash_unstable = "nu7")]
 fn write_action_group<W: Write, A: Authorization<SpendAuth = Signature<SpendAuth>>>(
     mut writer: W,
-    bundle: &orchard::Bundle<A, Amount, OrchardZSA>,
+    bundle: &orchard::Bundle<A, ZatBalance, OrchardZSA>,
 ) -> io::Result<()> {
     Vector::write_nonempty(&mut writer, bundle.actions(), |w, a| {
         write_action_without_auth(w, a)
@@ -465,12 +476,12 @@ fn write_action_group<W: Write, A: Authorization<SpendAuth = Signature<SpendAuth
         &mut writer,
         bundle.actions().iter().map(|a| a.authorization()),
         |w, auth| w.write_all(&<[u8; 64]>::from(*auth)),
-    );
+    )?;
 
     Ok(())
 }
 
-#[cfg(zcash_unstable = "nu6" /* TODO nu7 */ )]
+#[cfg(zcash_unstable = "nu7")]
 fn write_bundle_balance_metadata<W: Write>(
     mut writer: W,
     value_balance: &ZatBalance,
@@ -499,18 +510,18 @@ pub fn write_cmx<W: Write>(mut writer: W, cmx: &ExtractedNoteCommitment) -> io::
     writer.write_all(&cmx.to_bytes())
 }
 
-pub fn write_note_ciphertext<W: Write, D: OrchardDomainCommon>(
+pub fn write_note_ciphertext<W: Write, P: OrchardPrimitives>(
     mut writer: W,
-    nc: &TransmittedNoteCiphertext<D>,
+    nc: &TransmittedNoteCiphertext<P>,
 ) -> io::Result<()> {
     writer.write_all(&nc.epk_bytes)?;
     writer.write_all(nc.enc_ciphertext.as_ref())?;
     writer.write_all(&nc.out_ciphertext)
 }
 
-pub fn write_action_without_auth<W: Write, D: OrchardDomainCommon, A>(
+pub fn write_action_without_auth<W: Write, P: OrchardPrimitives, A>(
     mut writer: W,
-    act: &Action<A, D>,
+    act: &Action<A, P>,
 ) -> io::Result<()> {
     write_value_commitment(&mut writer, act.cv_net())?;
     write_nullifier(&mut writer, act.nullifier())?;

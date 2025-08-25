@@ -45,13 +45,14 @@ use orchard::orchard_flavor::OrchardVanilla;
 use orchard::Bundle;
 #[cfg(zcash_unstable = "nu7")]
 use orchard::{issuance::IssueBundle, orchard_flavor::OrchardZSA};
+use orchard::note::Nullifier;
 use zcash_protocol::constants::{
     V3_TX_VERSION, V3_VERSION_GROUP_ID, V4_TX_VERSION, V4_VERSION_GROUP_ID, V5_TX_VERSION,
     V5_VERSION_GROUP_ID,
 };
 
 #[cfg(zcash_unstable = "nu7")]
-use zcash_protocol::constants::{V6_TX_VERSION, V6_VERSION_GROUP_ID};
+use zcash_protocol::constants::{V6_TX_VERSION, V6_VERSION_GROUP_ID, VSWAP_TX_VERSION, VSWAP_VERSION_GROUP_ID};
 
 #[cfg(zcash_unstable = "nu7" /* TODO swap */ )]
 use orchard::swap_bundle::SwapBundle;
@@ -89,6 +90,8 @@ pub enum TxVersion {
     /// Transaction version 6, specified in [ZIP 230](https://zips.z.cash/zip-0230).
     #[cfg(zcash_unstable = "nu7")]
     V6,
+    #[cfg(zcash_unstable = "nu7" /* TODO swap */)]
+    VSWAP,
     /// This version is used exclusively for in-development transaction
     /// serialization, and will never be active under the consensus rules.
     /// When new consensus transaction versions are added, all call sites
@@ -111,6 +114,8 @@ impl TxVersion {
                 (V5_TX_VERSION, V5_VERSION_GROUP_ID) => Ok(TxVersion::V5),
                 #[cfg(zcash_unstable = "nu7")]
                 (V6_TX_VERSION, V6_VERSION_GROUP_ID) => Ok(TxVersion::V6),
+                #[cfg(zcash_unstable = "nu7" /* TODO swap */ )]
+                (VSWAP_TX_VERSION, VSWAP_VERSION_GROUP_ID) => Ok(TxVersion::VSWAP),
                 #[cfg(zcash_unstable = "zfuture")]
                 (ZFUTURE_TX_VERSION, ZFUTURE_VERSION_GROUP_ID) => Ok(TxVersion::ZFuture),
                 _ => Err(io::Error::new(
@@ -143,6 +148,8 @@ impl TxVersion {
                 TxVersion::V5 => V5_TX_VERSION,
                 #[cfg(zcash_unstable = "nu7")]
                 TxVersion::V6 => V6_TX_VERSION,
+                #[cfg(zcash_unstable = "nu7" /* TODO swap */ )]
+                TxVersion::VSWAP => VSWAP_TX_VERSION,
                 #[cfg(zcash_unstable = "zfuture")]
                 TxVersion::ZFuture => ZFUTURE_TX_VERSION,
             }
@@ -156,6 +163,8 @@ impl TxVersion {
             TxVersion::V5 => V5_VERSION_GROUP_ID,
             #[cfg(zcash_unstable = "nu7")]
             TxVersion::V6 => V6_VERSION_GROUP_ID,
+            #[cfg(zcash_unstable = "nu7" /* TODO swap */ )]
+            TxVersion::VSWAP => VSWAP_VERSION_GROUP_ID,
             #[cfg(zcash_unstable = "zfuture")]
             TxVersion::ZFuture => ZFUTURE_VERSION_GROUP_ID,
         }
@@ -177,6 +186,8 @@ impl TxVersion {
             TxVersion::V5 => false,
             #[cfg(zcash_unstable = "nu7")]
             TxVersion::V6 => false,
+            #[cfg(zcash_unstable = "nu7" /* TODO swap */ )]
+            TxVersion::VSWAP => false,
             #[cfg(zcash_unstable = "zfuture")]
             TxVersion::ZFuture => false,
         }
@@ -194,6 +205,8 @@ impl TxVersion {
             TxVersion::V5 => true,
             #[cfg(zcash_unstable = "nu7")]
             TxVersion::V6 => true,
+            #[cfg(zcash_unstable = "nu7" /* TODO swap */ )]
+            TxVersion::VSWAP => true,
             #[cfg(zcash_unstable = "zfuture")]
             TxVersion::ZFuture => true,
         }
@@ -206,6 +219,8 @@ impl TxVersion {
             TxVersion::V5 => true,
             #[cfg(zcash_unstable = "nu7")]
             TxVersion::V6 => false,
+            #[cfg(zcash_unstable = "nu7" /* TODO swap */ )]
+            TxVersion::VSWAP => false,
             #[cfg(zcash_unstable = "zfuture")]
             TxVersion::ZFuture => true,
         }
@@ -214,7 +229,7 @@ impl TxVersion {
     pub fn has_orchard_zsa(&self) -> bool {
         match self {
             #[cfg(zcash_unstable = "nu7")]
-            TxVersion::V6 => true,
+            TxVersion::V6 | TxVersion::VSWAP => true,
             _ => false,
         }
     }
@@ -239,7 +254,7 @@ impl TxVersion {
             #[cfg(zcash_unstable = "nu7")]
             BranchId::Nu7 => TxVersion::V6,
             #[cfg(zcash_unstable = "nu7" /* TODO swap */ )]
-            BranchId::Swap => TxVersion::V6,
+            BranchId::Swap => TxVersion::VSWAP,
             #[cfg(zcash_unstable = "zfuture")]
             BranchId::ZFuture => TxVersion::ZFuture,
         }
@@ -337,7 +352,7 @@ impl<A: orchard::bundle::Authorization> OrchardBundle<A> {
             OrchardBundle::OrchardVanilla(b) => b.value_balance(),
             #[cfg(zcash_unstable = "nu7")]
             OrchardBundle::OrchardZSA(b) => b.value_balance(),
-            #[cfg(zcash_unstable = "nu6" /* TODO swap */ )]
+            #[cfg(zcash_unstable = "nu7")]
             OrchardBundle::OrchardSwap(b) => b.value_balance(),
         }
     }
@@ -356,7 +371,7 @@ impl<A: orchard::bundle::Authorization> OrchardBundle<A> {
             OrchardBundle::OrchardZSA(b) => {
                 OrchardBundle::OrchardZSA(b.map_authorization(context, spend_auth, step))
             }
-            #[cfg(zcash_unstable = "nu6" /* TODO swap */ )]
+            #[cfg(zcash_unstable = "nu7")]
             OrchardBundle::OrchardSwap(b) => OrchardBundle::OrchardSwap(b), // TODO check that we actually ever map this particular authorization
         }
     }
@@ -377,8 +392,8 @@ impl<A: orchard::bundle::Authorization> OrchardBundle<A> {
         }
     }
 
-    #[cfg(zcash_unstable = "nu6" /* TODO swap */ )]
-    pub fn as_swap_bundle(&self) -> &SwapBundle<Amount> {
+    #[cfg(zcash_unstable = "nu7")]
+    pub fn as_swap_bundle(&self) -> &SwapBundle<ZatBalance> {
         match self {
             OrchardBundle::OrchardSwap(b) => b,
             _ => panic!("Wrong bundle type"),
@@ -388,9 +403,9 @@ impl<A: orchard::bundle::Authorization> OrchardBundle<A> {
     pub fn first_nullifier(&self) -> Option<&Nullifier> {
         match self {
             OrchardBundle::OrchardVanilla(b) => Some(b.actions().first().nullifier()),
-            #[cfg(zcash_unstable = "nu6" /* TODO nu7 */ )]
+            #[cfg(zcash_unstable = "nu7")]
             OrchardBundle::OrchardZSA(b) => Some(b.actions().first().nullifier()),
-            #[cfg(zcash_unstable = "nu6" /* TODO swap */ )]
+            #[cfg(zcash_unstable = "nu7")]
             OrchardBundle::OrchardSwap(b) => Some(
                 b.action_groups()
                     .first()
@@ -727,7 +742,7 @@ impl Transaction {
             TxVersion::Sprout(_) | TxVersion::V3 | TxVersion::V4 => Self::from_data_v4(data),
             TxVersion::V5 => Ok(Self::from_data_v5(data)),
             #[cfg(zcash_unstable = "nu7")]
-            TxVersion::V6 => Ok(Self::from_data_v6(data)),
+            TxVersion::V6 | TxVersion::VSWAP => Ok(Self::from_data_v6(data)),
             #[cfg(zcash_unstable = "zfuture")]
             TxVersion::ZFuture => Ok(Self::from_data_v5(data)),
         }
@@ -779,6 +794,8 @@ impl Transaction {
             TxVersion::V5 => Self::read_v5(reader.into_base_reader(), version),
             #[cfg(zcash_unstable = "nu7")]
             TxVersion::V6 => Self::read_v6(reader.into_base_reader(), version),
+            #[cfg(zcash_unstable = "nu7" /* TODO swap */ )]
+            TxVersion::VSWAP => Self::read_swap(reader.into_base_reader(), version),
             #[cfg(zcash_unstable = "zfuture")]
             TxVersion::ZFuture => Self::read_v5(reader.into_base_reader(), version),
         }
@@ -948,8 +965,39 @@ impl Transaction {
 
     #[cfg(zcash_unstable = "nu7")]
     fn read_v6<R: Read>(mut reader: R, version: TxVersion) -> io::Result<Self> {
-        let (consensus_branch_id, lock_time, expiry_height) =
-            Self::read_v5_header_fragment(&mut reader)?;
+        let (consensus_branch_id, lock_time, expiry_height) = Self::read_v5_header_fragment(&mut reader)?;
+        let transparent_bundle = Self::read_transparent(&mut reader)?;
+        let sapling_bundle = sapling_serialization::read_v5_bundle(&mut reader)?;
+        let orchard_zsa_bundle = orchard_serialization::read_orchard_zsa_bundle(&mut reader)?;
+        let issue_bundle = issuance::read_v6_bundle(&mut reader)?;
+
+        #[cfg(zcash_unstable = "zfuture")]
+        let tze_bundle = if version.has_tze() {
+            Self::read_tze(&mut reader)?
+        } else {
+            None
+        };
+
+        let data = TransactionData {
+            version,
+            consensus_branch_id,
+            lock_time,
+            expiry_height,
+            transparent_bundle,
+            sprout_bundle: None,
+            sapling_bundle,
+            orchard_bundle: orchard_zsa_bundle.map(|b| OrchardBundle::OrchardZSA(b)),
+            issue_bundle,
+            #[cfg(zcash_unstable = "zfuture")]
+            tze_bundle,
+        };
+
+        Ok(Self::from_data_v6(data))
+    }
+
+    #[cfg(zcash_unstable = "nu7" /* TODO swap */ )]
+    fn read_swap<R: Read>(mut reader: R, version: TxVersion) -> io::Result<Self> {
+        let (consensus_branch_id, lock_time, expiry_height) = Self::read_v5_header_fragment(&mut reader)?;
         let transparent_bundle = Self::read_transparent(&mut reader)?;
         let sapling_bundle = sapling_serialization::read_v5_bundle(&mut reader)?;
         let orchard_zsa_bundle = orchard_serialization::read_orchard_swap_bundle(&mut reader)?;
@@ -999,7 +1047,7 @@ impl Transaction {
             TxVersion::Sprout(_) | TxVersion::V3 | TxVersion::V4 => self.write_v4(writer),
             TxVersion::V5 => self.write_v5(writer),
             #[cfg(zcash_unstable = "nu7")]
-            TxVersion::V6 => self.write_v6(writer),
+            TxVersion::V6 | TxVersion::VSWAP => self.write_v6(writer),
             #[cfg(zcash_unstable = "zfuture")]
             TxVersion::ZFuture => self.write_v5(writer),
         }

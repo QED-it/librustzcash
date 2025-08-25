@@ -545,7 +545,7 @@ impl TransactionDigest<Authorized> for BlockTxCommitmentDigester {
                 OrchardZSA(bundle) => bundle.authorizing_commitment().0,
                 #[cfg(zcash_unstable = "nu7" /* TODO swap */ )]
                 OrchardSwap(bundle) => bundle.commitment().0, // TODO double check this is a right commitment. possibly rename for uniformity
-            }
+            },
         )
     }
 

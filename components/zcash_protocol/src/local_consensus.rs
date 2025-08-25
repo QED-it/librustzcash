@@ -44,6 +44,8 @@ pub struct LocalNetwork {
     pub nu6_1: Option<BlockHeight>,
     #[cfg(zcash_unstable = "nu7")]
     pub nu7: Option<BlockHeight>,
+    #[cfg(zcash_unstable = "nu7" /* TODO swap */ )]
+    pub swap: Option<BlockHeight>,
     #[cfg(zcash_unstable = "zfuture")]
     pub z_future: Option<BlockHeight>,
 }
@@ -67,6 +69,8 @@ impl Parameters for LocalNetwork {
             NetworkUpgrade::Nu6_1 => self.nu6_1,
             #[cfg(zcash_unstable = "nu7")]
             NetworkUpgrade::Nu7 => self.nu7,
+            #[cfg(zcash_unstable = "nu7" /* TODO swap */ )]
+            NetworkUpgrade::Swap => self.swap,
             #[cfg(zcash_unstable = "zfuture")]
             NetworkUpgrade::ZFuture => self.z_future,
         }
@@ -94,6 +98,8 @@ mod tests {
         let expected_nu6_1 = BlockHeight::from_u32(8);
         #[cfg(zcash_unstable = "nu7")]
         let expected_nu7 = BlockHeight::from_u32(8);
+        #[cfg(zcash_unstable = "nu7" /* TODO swap */ )]
+        let expected_swap = BlockHeight::from_u32(8);
         #[cfg(zcash_unstable = "zfuture")]
         let expected_z_future = BlockHeight::from_u32(8);
 
@@ -109,6 +115,8 @@ mod tests {
             nu6_1: Some(expected_nu6_1),
             #[cfg(zcash_unstable = "nu7")]
             nu7: Some(expected_nu7),
+            #[cfg(zcash_unstable = "nu7" /* TODO swap */ )]
+            swap: Some(expected_swap),
             #[cfg(zcash_unstable = "zfuture")]
             z_future: Some(expected_z_future),
         };
@@ -141,6 +149,8 @@ mod tests {
         let expected_nu6_1 = BlockHeight::from_u32(8);
         #[cfg(zcash_unstable = "nu7")]
         let expected_nu7 = BlockHeight::from_u32(8);
+        #[cfg(zcash_unstable = "nu7" /* TODO swap */ )]
+        let expected_swap = BlockHeight::from_u32(8);
         #[cfg(zcash_unstable = "zfuture")]
         let expected_z_future = BlockHeight::from_u32(8);
 
@@ -156,6 +166,8 @@ mod tests {
             nu6_1: Some(expected_nu6_1),
             #[cfg(zcash_unstable = "nu7")]
             nu7: Some(expected_nu7),
+            #[cfg(zcash_unstable = "nu7" /* TODO swap */ )]
+            swap: Some(expected_swap),
             #[cfg(zcash_unstable = "zfuture")]
             z_future: Some(expected_z_future),
         };
@@ -198,6 +210,11 @@ mod tests {
             regtest.activation_height(NetworkUpgrade::Nu7),
             Some(expected_nu7)
         );
+        #[cfg(zcash_unstable = "nu7" /* TODO swap */ )]
+        assert_eq!(
+            regtest.activation_height(NetworkUpgrade::Swap),
+            Some(expected_swap)
+        );
         #[cfg(zcash_unstable = "zfuture")]
         assert_eq!(
             regtest.activation_height(NetworkUpgrade::ZFuture),
@@ -218,6 +235,8 @@ mod tests {
         let expected_nu6_1 = BlockHeight::from_u32(8);
         #[cfg(zcash_unstable = "nu7")]
         let expected_nu7 = BlockHeight::from_u32(8);
+        #[cfg(zcash_unstable = "nu7" /* TODO swap */ )]
+        let expected_swap = BlockHeight::from_u32(8);
         #[cfg(zcash_unstable = "zfuture")]
         let expected_z_future = BlockHeight::from_u32(8);
 
@@ -233,6 +252,8 @@ mod tests {
             nu6_1: Some(expected_nu6_1),
             #[cfg(zcash_unstable = "nu7")]
             nu7: Some(expected_nu7),
+            #[cfg(zcash_unstable = "nu7" /* TODO swap */ )]
+            swap: Some(expected_swap),
             #[cfg(zcash_unstable = "zfuture")]
             z_future: Some(expected_z_future),
         };

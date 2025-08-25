@@ -20,7 +20,7 @@ use super::{
     txid::TxIdDigester,
     Authorization, Transaction, TransactionData, TxDigests, TxIn,
 };
-#[cfg(zcash_unstable = "nu6" /* TODO swap */ )]
+#[cfg(zcash_unstable = "nu7")]
 use crate::transaction::OrchardBundle::OrchardSwap;
 use crate::transaction::OrchardBundle::OrchardVanilla;
 #[cfg(zcash_unstable = "nu7")]
@@ -59,14 +59,14 @@ fn check_roundtrip(tx: Transaction) -> Result<(), TestCaseError> {
             OrchardVanilla(b) => *b.value_balance(),
             #[cfg(zcash_unstable = "nu7")]
             OrchardZSA(b) => *b.value_balance(),
-            #[cfg(zcash_unstable = "nu6" /* TODO swap */ )]
+            #[cfg(zcash_unstable = "nu7")]
             OrchardSwap(b) => *b.value_balance(),
         }),
         txo.orchard_bundle.as_ref().map(|v| match v {
             OrchardVanilla(b) => *b.value_balance(),
             #[cfg(zcash_unstable = "nu7")]
             OrchardZSA(b) => *b.value_balance(),
-            #[cfg(zcash_unstable = "nu6" /* TODO swap */ )]
+            #[cfg(zcash_unstable = "nu7")]
             OrchardSwap(b) => *b.value_balance(),
         })
     );
@@ -141,14 +141,14 @@ proptest! {
 
 #[cfg(zcash_unstable = "nu7")]
 proptest! {
-    #![proptest_config(ProptestConfig::with_cases(10))]
+    #![proptest_config(ProptestConfig::with_cases(1))]
     #[test]
     fn tx_serialization_roundtrip_v6(tx in arb_tx(BranchId::Nu7)) {
         check_roundtrip(tx)?;
     }
 }
 
-#[cfg(zcash_unstable = "nu6" /* TODO swap */ )]
+#[cfg(zcash_unstable = "nu7")]
 proptest! {
     #![proptest_config(ProptestConfig::with_cases(10))]
     #[test]

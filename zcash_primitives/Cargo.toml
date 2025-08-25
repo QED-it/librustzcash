@@ -113,7 +113,7 @@ zcash_protocol = { workspace = true, features = ["test-dependencies"] }
 pprof = { version = "0.14", features = ["criterion", "flamegraph"] }
 
 [features]
-default = ["multicore", "std", "circuits"]
+default = ["multicore", "std", "circuits", "non-standard-fees"]
 std = ["document-features", "redjubjub/std"]
 
 ## Enables creating proofs
