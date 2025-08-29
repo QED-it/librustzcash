@@ -269,22 +269,26 @@ pub fn read_anchor<R: Read>(mut reader: R) -> io::Result<Anchor> {
 
 pub fn read_signature<R: Read, T: SigType>(
     mut reader: R,
-) -> io::Result<SignatureWithSighashInfo<T>> {
+) -> io::Result<SignatureWithSighashInfo<Signature<T>>> {
     let mut bytes = [0u8; 64];
     reader.read_exact(&mut bytes)?;
-    Ok(SignatureWithSighashInfo::<T>::new_with_default_sighash_info(Signature::from(bytes)))
+    Ok(
+        SignatureWithSighashInfo::<Signature<T>>::new_with_default_sighash_info(Signature::from(
+            bytes,
+        )),
+    )
 }
 
 #[cfg(zcash_unstable = "nu7")]
 pub fn read_signature_with_sighash_info<R: Read, T: SigType>(
     mut reader: R,
-) -> io::Result<SignatureWithSighashInfo<T>> {
+) -> io::Result<SignatureWithSighashInfo<Signature<T>>> {
     let sighash_info_bytes = Vector::read(&mut reader, |r| r.read_u8())?;
     let sighash_info = SighashInfo::from_bytes(&sighash_info_bytes)
         .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "invalid sighash info"))?;
     let mut signature_bytes = [0u8; 64];
     reader.read_exact(&mut signature_bytes)?;
-    Ok(SignatureWithSighashInfo::<T>::new(
+    Ok(SignatureWithSighashInfo::<Signature<T>>::new(
         sighash_info,
         Signature::from(signature_bytes),
     ))
@@ -293,7 +297,7 @@ pub fn read_signature_with_sighash_info<R: Read, T: SigType>(
 #[cfg(zcash_unstable = "nu7")]
 pub fn write_signature_with_sighash_info<W: Write, T: SigType>(
     writer: &mut W,
-    sig_with_sighash_info: &SignatureWithSighashInfo<T>,
+    sig_with_sighash_info: &SignatureWithSighashInfo<Signature<T>>,
 ) -> io::Result<()> {
     Vector::write(
         &mut *writer,
