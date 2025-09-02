@@ -533,7 +533,7 @@ impl<'a, P: consensus::Parameters> Builder<'a, P, ()> {
         issue_info: Option<IssueInfo>,
         first_issuance: bool,
     ) -> Result<(), Error<FE>> {
-        if self.build_config.orchard_bundle_type()? != BundleType::DEFAULT_ZSA {
+        if self.build_config.orchard_bundle_type()? == BundleType::DEFAULT_VANILLA {
             return Err(Error::OrchardBuild(BundleTypeNotSatisfiable));
         }
 
@@ -565,7 +565,7 @@ impl<'a, P: consensus::Parameters> Builder<'a, P, ()> {
         value: orchard::value::NoteValue,
         first_issuance: bool,
     ) -> Result<(), Error<FE>> {
-        if self.build_config.orchard_bundle_type()? != BundleType::DEFAULT_ZSA {
+        if self.build_config.orchard_bundle_type()? == BundleType::DEFAULT_VANILLA {
             return Err(Error::OrchardBuild(BundleTypeNotSatisfiable));
         }
         self.issuance_builder
@@ -580,7 +580,7 @@ impl<'a, P: consensus::Parameters> Builder<'a, P, ()> {
     /// Finalizes a given asset
     #[cfg(zcash_unstable = "nu7")]
     pub fn finalize_asset<FE>(&mut self, asset_desc_hash: &[u8; 32]) -> Result<(), Error<FE>> {
-        if self.build_config.orchard_bundle_type()? != BundleType::DEFAULT_ZSA {
+        if self.build_config.orchard_bundle_type()? == BundleType::DEFAULT_VANILLA {
             return Err(Error::OrchardBuild(BundleTypeNotSatisfiable));
         }
         self.issuance_builder
@@ -595,7 +595,7 @@ impl<'a, P: consensus::Parameters> Builder<'a, P, ()> {
     /// Adds a Burn action to the transaction.
     #[cfg(zcash_unstable = "nu7")]
     pub fn add_burn<FE>(&mut self, value: u64, asset: AssetBase) -> Result<(), Error<FE>> {
-        if self.build_config.orchard_bundle_type()? != BundleType::DEFAULT_ZSA {
+        if self.build_config.orchard_bundle_type()? == BundleType::DEFAULT_VANILLA {
             return Err(Error::OrchardBuild(BundleTypeNotSatisfiable));
         }
         self.orchard_builder
