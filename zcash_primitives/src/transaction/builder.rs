@@ -980,7 +980,7 @@ impl<P: consensus::Parameters, U: sapling::builder::ProverProgress> Builder<'_, 
             if bundle_type == BundleType::DEFAULT_SWAP {
                 #[cfg(zcash_unstable = "nu7")]
                 {
-                    if !builder.is_empty() {
+                    if !builder.is_empty()  || self.action_groups.is_empty() {
                         // TODO should build empty too
                         let timelimit: u32 = (self.target_height + 10).into(); // TODO default(?) timelimit
 
