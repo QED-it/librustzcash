@@ -13,7 +13,7 @@ use serde::{Deserialize, Serialize};
 use serde_with::serde_as;
 
 use crate::{
-    common::{Global, SpendAuthSignatureWithSighashInfo, Zip32Derivation},
+    common::{Global, VerSpendAuthSig, Zip32Derivation},
     roles::combiner::{merge_map, merge_optional},
 };
 
@@ -116,7 +116,7 @@ pub struct Spend {
     /// The spend authorization signature.
     ///
     /// This is set by the Signer.
-    pub(crate) spend_auth_sig: Option<SpendAuthSignatureWithSighashInfo>,
+    pub(crate) spend_auth_sig: Option<VerSpendAuthSig>,
 
     /// The [raw encoding] of the Orchard payment address that received the note being spent.
     ///
@@ -451,7 +451,10 @@ impl Bundle {
                         .spend
                         .spend_auth_sig
                         .map(|z| {
-                            orchard::signature_with_sighash_info::SpendAuthSignatureWithSighashInfo::parse(z.sighash_info, z.signature)
+                            orchard::pczt::parse::parse_ver_spend_auth_sig(
+                                z.sighash_info,
+                                z.signature,
+                            )
                         })
                         .transpose()?,
                     action.spend.recipient,
@@ -531,11 +534,9 @@ impl Bundle {
                     spend: Spend {
                         nullifier: spend.nullifier().to_bytes(),
                         rk: spend.rk().into(),
-                        spend_auth_sig: spend.spend_auth_sig().as_ref().map(|s| {
-                            SpendAuthSignatureWithSighashInfo {
-                                sighash_info: s.sighash_info().to_bytes().to_vec(),
-                                signature: s.signature().into(),
-                            }
+                        spend_auth_sig: spend.spend_auth_sig().as_ref().map(|s| VerSpendAuthSig {
+                            sighash_info: s.version().to_bytes().to_vec(),
+                            signature: s.sig().into(),
                         }),
                         recipient: action
                             .spend()

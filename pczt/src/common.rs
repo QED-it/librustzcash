@@ -208,7 +208,7 @@ pub(crate) struct Zip32Derivation {
 
 #[serde_as]
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-pub(crate) struct SpendAuthSignatureWithSighashInfo {
+pub(crate) struct VerSpendAuthSig {
     pub(crate) sighash_info: Vec<u8>,
     #[serde_as(as = "[_; 64]")]
     pub(crate) signature: [u8; 64],

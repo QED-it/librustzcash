@@ -17,17 +17,16 @@ use orchard::{
     orchard_flavor::OrchardVanilla,
     primitives::redpallas::{self, SigType, Signature, SpendAuth, VerificationKey},
     primitives::OrchardPrimitives,
-    signature_with_sighash_info::SignatureWithSighashInfo,
     value::ValueCommitment,
     Action, Anchor, Bundle,
 };
 #[cfg(zcash_unstable = "nu7")]
-use orchard::{
-    note::AssetBase, orchard_flavor::OrchardZSA, signature_with_sighash_info::SighashInfo,
-    value::NoteValue,
-};
+use orchard::{note::AssetBase, orchard_flavor::OrchardZSA, value::NoteValue};
 use zcash_encoding::{Array, CompactSize, Vector};
 use zcash_note_encryption::note_bytes::NoteBytes;
+#[cfg(zcash_unstable = "nu7")]
+use zcash_spec::sighash_versioning::SighashVersion;
+use zcash_spec::sighash_versioning::{VersionedSig, SIGHASH_V0};
 
 use zcash_protocol::value::ZatBalance;
 
@@ -133,9 +132,7 @@ pub fn read_orchard_zsa_bundle<R: Read>(
         actions_without_auth
             .into_iter()
             .map(|act| {
-                act.try_map(|_| {
-                    read_signature_with_sighash_info::<_, redpallas::SpendAuth>(&mut reader)
-                })
+                act.try_map(|_| read_versioned_signature::<_, redpallas::SpendAuth>(&mut reader))
             })
             .collect::<Result<Vec<_>, _>>()?,
     )
@@ -143,7 +140,7 @@ pub fn read_orchard_zsa_bundle<R: Read>(
 
     let value_balance = Transaction::read_amount(&mut reader)?;
 
-    let binding_signature = read_signature_with_sighash_info::<_, redpallas::Binding>(&mut reader)?;
+    let binding_signature = read_versioned_signature::<_, redpallas::Binding>(&mut reader)?;
 
     let authorization = Authorized::from_parts(orchard::Proof::new(proof_bytes), binding_signature);
 
@@ -269,42 +266,41 @@ pub fn read_anchor<R: Read>(mut reader: R) -> io::Result<Anchor> {
 
 pub fn read_signature<R: Read, T: SigType>(
     mut reader: R,
-) -> io::Result<SignatureWithSighashInfo<Signature<T>>> {
+) -> io::Result<VersionedSig<Signature<T>>> {
     let mut bytes = [0u8; 64];
     reader.read_exact(&mut bytes)?;
-    Ok(
-        SignatureWithSighashInfo::<Signature<T>>::new_with_default_sighash_info(Signature::from(
-            bytes,
-        )),
-    )
+    Ok(VersionedSig::<Signature<T>>::new(
+        SIGHASH_V0,
+        Signature::from(bytes),
+    ))
 }
 
 #[cfg(zcash_unstable = "nu7")]
-pub fn read_signature_with_sighash_info<R: Read, T: SigType>(
+pub fn read_versioned_signature<R: Read, T: SigType>(
     mut reader: R,
-) -> io::Result<SignatureWithSighashInfo<Signature<T>>> {
+) -> io::Result<VersionedSig<Signature<T>>> {
     let sighash_info_bytes = Vector::read(&mut reader, |r| r.read_u8())?;
-    let sighash_info = SighashInfo::from_bytes(&sighash_info_bytes)
+    let sighash_info = SighashVersion::from_bytes(&sighash_info_bytes)
         .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "invalid sighash info"))?;
     let mut signature_bytes = [0u8; 64];
     reader.read_exact(&mut signature_bytes)?;
-    Ok(SignatureWithSighashInfo::<Signature<T>>::new(
+    Ok(VersionedSig::<Signature<T>>::new(
         sighash_info,
         Signature::from(signature_bytes),
     ))
 }
 
 #[cfg(zcash_unstable = "nu7")]
-pub fn write_signature_with_sighash_info<W: Write, T: SigType>(
+pub fn write_versioned_signature<W: Write, T: SigType>(
     writer: &mut W,
-    sig_with_sighash_info: &SignatureWithSighashInfo<Signature<T>>,
+    versioned_sig: &VersionedSig<Signature<T>>,
 ) -> io::Result<()> {
     Vector::write(
         &mut *writer,
-        sig_with_sighash_info.sighash_info().to_bytes().as_slice(),
+        versioned_sig.version().to_bytes().as_slice(),
         |w, b| w.write_u8(*b),
     )?;
-    writer.write_all(&<[u8; 64]>::from(sig_with_sighash_info.signature()))
+    writer.write_all(&<[u8; 64]>::from(versioned_sig.sig()))
 }
 
 /// Writes an [`orchard::Bundle`] in the v5 transaction format.
@@ -326,14 +322,11 @@ pub fn write_orchard_vanilla_bundle<W: Write>(
     )?;
     Array::write(
         &mut writer,
-        bundle
-            .actions()
-            .iter()
-            .map(|a| a.authorization().signature()),
+        bundle.actions().iter().map(|a| a.authorization().sig()),
         |w, auth| w.write_all(&<[u8; 64]>::from(*auth)),
     )?;
     writer.write_all(&<[u8; 64]>::from(
-        bundle.authorization().binding_signature().signature(),
+        bundle.authorization().binding_signature().sig(),
     ))?;
 
     Ok(())
@@ -405,12 +398,12 @@ pub fn write_orchard_zsa_bundle<W: Write>(
     Array::write(
         &mut writer,
         bundle.actions().iter().map(|a| a.authorization()),
-        |w, auth| write_signature_with_sighash_info(w, auth),
+        |w, auth| write_versioned_signature(w, auth),
     )?;
 
     writer.write_all(&bundle.value_balance().to_i64_le_bytes())?;
 
-    write_signature_with_sighash_info(&mut writer, bundle.authorization().binding_signature())?;
+    write_versioned_signature(&mut writer, bundle.authorization().binding_signature())?;
 
     Ok(())
 }

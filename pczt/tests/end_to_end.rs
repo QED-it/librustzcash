@@ -45,6 +45,7 @@ use orchard::{
 use zcash_protocol::consensus::Network::RegtestNetwork;
 
 static ORCHARD_PROVING_KEY: OnceLock<orchard::circuit::ProvingKey> = OnceLock::new();
+#[cfg(zcash_unstable = "nu7")]
 static ORCHARD_ZSA_PROVING_KEY: OnceLock<orchard::circuit::ProvingKey> = OnceLock::new();
 
 fn orchard_proving_key() -> &'static orchard::circuit::ProvingKey {
