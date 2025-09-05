@@ -32,7 +32,7 @@ fn read_ik<R: Read>(mut reader: R) -> io::Result<IssueValidatingKey<ZSASchnorr>>
     IssueValidatingKey::<ZSASchnorr>::decode(&ik_bytes).map_err(|_| {
         Error::new(
             ErrorKind::InvalidData,
-            "Invalid IssuanceValidatingKey encoding",
+            "Invalid IssueValidatingKey encoding",
         )
     })
 }
