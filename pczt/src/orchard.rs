@@ -451,10 +451,7 @@ impl Bundle {
                         .spend
                         .spend_auth_sig
                         .map(|z| {
-                            orchard::pczt::parse::parse_ver_spend_auth_sig(
-                                z.sighash_info,
-                                z.signature,
-                            )
+                            orchard::pczt::parse_ver_spend_auth_sig(z.sighash_info, z.signature)
                         })
                         .transpose()?,
                     action.spend.recipient,
