@@ -496,7 +496,7 @@ fn zsa_to_zsa() {
         note
     };
 
-    let isk = IssueAuthKey::from_bytes([1; 32]).unwrap();
+    let isk = IssueAuthKey::from_bytes(&[1u8; 32]).unwrap();
     let ik = IssueValidatingKey::from(&isk);
     let value = orchard::value::NoteValue::from_raw(1_000_000);
     let asset = AssetBase::derive(
