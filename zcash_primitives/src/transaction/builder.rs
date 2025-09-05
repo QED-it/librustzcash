@@ -40,10 +40,12 @@ use {
     },
 };
 
-use orchard::builder::BundleType;
-use orchard::note::AssetBase;
-use orchard::orchard_flavor::OrchardVanilla;
-use orchard::Address;
+use orchard::{
+    builder::{BuildError::BundleTypeNotSatisfiable, BundleType},
+    note::AssetBase,
+    orchard_flavor::OrchardVanilla,
+    Address,
+};
 
 #[cfg(feature = "transparent-inputs")]
 use ::transparent::builder::TransparentInputInfo;
@@ -62,7 +64,7 @@ use crate::{
         fees::FutureFeeRule,
     },
 };
-use orchard::builder::BuildError::BundleTypeNotSatisfiable;
+
 #[cfg(zcash_unstable = "nu7")]
 use orchard::{
     bundle::Authorization,
@@ -72,6 +74,7 @@ use orchard::{
     note::Nullifier,
     orchard_flavor::OrchardZSA,
 };
+#[cfg(zcash_unstable = "nu7")]
 use rand_core::OsRng;
 
 use super::components::sapling::zip212_enforcement;
