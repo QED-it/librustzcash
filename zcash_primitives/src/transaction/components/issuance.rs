@@ -127,8 +127,12 @@ pub fn write_v6_bundle<W: Write>(
 ) -> io::Result<()> {
     if let Some(bundle) = bundle {
         Vector::write_nonempty(&mut writer, bundle.actions(), write_action)?;
-        writer.write_all(&bundle.ik().encode())?;
-        writer.write_all(&bundle.authorization().signature().encode())?;
+        Vector::write(&mut writer, &bundle.ik().encode(), |w, b| w.write_u8(*b))?;
+        Vector::write(
+            &mut writer,
+            &bundle.authorization().signature().encode(),
+            |w, b| w.write_u8(*b),
+        )?;
     } else {
         CompactSize::write(&mut writer, 0)?;
     }
