@@ -222,3 +222,4 @@ unexpected_cfgs = { level = "warn", check-cfg = [
 zcash_note_encryption = { version = "0.4.1", git = "https://github.com/zcash/zcash_note_encryption", rev = "668ea44cf59a226715a5f3cb1bf88710a8c188a3" }
 sapling = { package = "sapling-crypto", version = "0.5", git = "https://github.com/QED-it/sapling-crypto", rev = "b0d2e4c1139f23fb7e9e410f2e5d986d5662ee03" }
 orchard = { git = "https://github.com/QED-it/orchard", branch = "sighash_version" }
+zcash_spec = { git = "https://github.com/QED-it/zcash_spec", rev = "842d697048a8960348adcde704c24438fc5b4544" }
