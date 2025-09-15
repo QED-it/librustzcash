@@ -72,7 +72,8 @@ fn read_action<R: Read>(
             "Invalid Asset Description Hash in IssueAction",
         )
     })?;
-    let notes = Vector::read(&mut reader, |r| read_note(r, ik, &asset_desc_hash))?;
+    let asset = AssetBase::derive(ik, &asset_desc_hash);
+    let notes = Vector::read(&mut reader, |r| read_note(r, asset))?;
     let finalize = match reader.read_u8()? {
         0 => false,
         1 => true,
@@ -86,19 +87,13 @@ fn read_action<R: Read>(
     Ok(IssueAction::from_parts(asset_desc_hash, notes, finalize))
 }
 
-pub fn read_note<R: Read>(
-    mut reader: R,
-    ik: &IssueValidatingKey<ZSASchnorr>,
-    asset_desc_hash: &[u8; 32],
-) -> io::Result<Note> {
+pub fn read_note<R: Read>(mut reader: R, asset: AssetBase) -> io::Result<Note> {
     let recipient = read_recipient(&mut reader)?;
     let mut tmp = [0; 8];
     reader.read_exact(&mut tmp)?;
     let value = u64::from_le_bytes(tmp);
     let rho = read_rho(&mut reader)?;
     let rseed = read_rseed(&mut reader, &rho)?;
-
-    let asset = AssetBase::derive(ik, asset_desc_hash);
 
     Option::from(Note::from_parts(
         recipient,
