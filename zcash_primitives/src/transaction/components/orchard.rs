@@ -463,7 +463,7 @@ fn write_action_group<W: Write, A: Authorization<SpendAuth = Signature<SpendAuth
     writer.write_all(&bundle.anchor().to_bytes())?;
 
     // Timelimit must be zero for NU7
-    writer.write_u32_le(0)?;
+    writer.write_u32_le(bundle.expiry_height())?;
 
     write_burn(&mut writer, bundle.burn())?;
 
