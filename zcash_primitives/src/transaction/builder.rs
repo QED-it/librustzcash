@@ -28,12 +28,22 @@ use {
     crate::transaction::{
         sighash::{signature_hash, SignableInput},
         txid::TxIdDigester,
-        TransactionData, Unauthorized,
+        OrchardBundle, TransactionData, Unauthorized,
     },
     ::sapling::prover::{OutputProver, SpendProver},
     ::transparent::builder::TransparentSigningSet,
     alloc::vec::Vec,
+    orchard::{
+        builder::{InProgress, Unproven},
+        bundle::Authorized,
+        orchard_flavor::OrchardFlavor,
+    },
 };
+
+use orchard::builder::BundleType;
+use orchard::note::AssetBase;
+use orchard::orchard_flavor::OrchardVanilla;
+use orchard::Address;
 
 #[cfg(feature = "transparent-inputs")]
 use ::transparent::builder::TransparentInputInfo;
@@ -52,6 +62,18 @@ use crate::{
         fees::FutureFeeRule,
     },
 };
+use orchard::builder::BuildError::BundleTypeNotSatisfiable;
+#[cfg(zcash_unstable = "nu7")]
+use orchard::{
+    bundle::Authorization,
+    issuance,
+    issuance::{IssueBundle, IssueInfo},
+    issuance_auth::{IssueAuthKey, IssueValidatingKey, ZSASchnorr},
+    note::Nullifier,
+    orchard_flavor::OrchardZSA,
+};
+#[cfg(zcash_unstable = "nu7")]
+use rand_core::OsRng;
 
 use super::components::sapling::zip212_enforcement;
 
@@ -104,6 +126,18 @@ pub enum Error<FE> {
     /// The builder was constructed with a target height before NU5 activation, but an Orchard
     /// spend or output was added.
     OrchardBuilderNotAvailable,
+    /// The issuance bundle not initialized.
+    #[cfg(zcash_unstable = "nu7")]
+    IssuanceBuilderNotAvailable,
+    /// The issuance key not initialized.
+    #[cfg(zcash_unstable = "nu7")]
+    IssuanceKeyNotAvailable,
+    /// An error occurred in constructing the Issuance bundle.
+    #[cfg(zcash_unstable = "nu7")]
+    IssuanceBundle(issuance::Error),
+    /// Issuance bundle already initialized.
+    #[cfg(zcash_unstable = "nu7")]
+    IssuanceBundleAlreadyInitialized,
     /// An error occurred in constructing the TZE parts of a transaction.
     #[cfg(zcash_unstable = "zfuture")]
     TzeBuild(tze::builder::Error),
@@ -134,6 +168,23 @@ impl<FE: fmt::Display> fmt::Display for Error<FE> {
             Error::OrchardBuilderNotAvailable => write!(
                 f,
                 "Cannot create Orchard transactions without an Orchard anchor, or before NU5 activation"
+            ),
+            #[cfg(zcash_unstable = "nu7" )]
+            Error::IssuanceBuilderNotAvailable => write!(
+                f,
+                "Issuance bundle not initialized"
+            ),
+            #[cfg(zcash_unstable = "nu7" )]
+            Error::IssuanceKeyNotAvailable => write!(
+                f,
+                "Issuance key not initialized"
+            ),
+            #[cfg(zcash_unstable = "nu7" )]
+            Error::IssuanceBundle(err) => write!(f, "Issuance bundle internal error: {:?}", err),
+            #[cfg(zcash_unstable = "nu7" )]
+            Error::IssuanceBundleAlreadyInitialized => write!(
+                f,
+                "Issuance bundle already initialized"
             ),
             #[cfg(zcash_unstable = "zfuture")]
             Error::TzeBuild(err) => err.fmt(f),
@@ -205,7 +256,12 @@ impl Progress {
 /// Rules for how the builder should be configured for each shielded pool.
 #[derive(Clone, Copy)]
 pub enum BuildConfig {
-    Standard {
+    TxV5 {
+        sapling_anchor: Option<sapling::Anchor>,
+        orchard_anchor: Option<orchard::Anchor>,
+    },
+    #[cfg(zcash_unstable = "nu7")]
+    TxV6 {
         sapling_anchor: Option<sapling::Anchor>,
         orchard_anchor: Option<orchard::Anchor>,
     },
@@ -218,7 +274,11 @@ impl BuildConfig {
         &self,
     ) -> Option<(sapling::builder::BundleType, sapling::Anchor)> {
         match self {
-            BuildConfig::Standard { sapling_anchor, .. } => sapling_anchor
+            BuildConfig::TxV5 { sapling_anchor, .. } => sapling_anchor
+                .as_ref()
+                .map(|a| (sapling::builder::BundleType::DEFAULT, *a)),
+            #[cfg(zcash_unstable = "nu7")]
+            BuildConfig::TxV6 { sapling_anchor, .. } => sapling_anchor
                 .as_ref()
                 .map(|a| (sapling::builder::BundleType::DEFAULT, *a)),
             BuildConfig::Coinbase => Some((
@@ -229,18 +289,24 @@ impl BuildConfig {
     }
 
     /// Returns the Orchard bundle type and anchor for this configuration.
-    pub fn orchard_builder_config(
-        &self,
-    ) -> Option<(orchard::builder::BundleType, orchard::Anchor)> {
+    pub fn orchard_builder_config(&self) -> Option<(BundleType, orchard::Anchor)> {
         match self {
-            BuildConfig::Standard { orchard_anchor, .. } => orchard_anchor
+            BuildConfig::TxV5 { orchard_anchor, .. } => orchard_anchor
                 .as_ref()
-                .map(|a| (orchard::builder::BundleType::DEFAULT, *a)),
-            BuildConfig::Coinbase => Some((
-                orchard::builder::BundleType::Coinbase,
-                orchard::Anchor::empty_tree(),
-            )),
+                .map(|a| (BundleType::DEFAULT_VANILLA, *a)),
+            #[cfg(zcash_unstable = "nu7")]
+            BuildConfig::TxV6 { orchard_anchor, .. } => orchard_anchor
+                .as_ref()
+                .map(|a| (BundleType::DEFAULT_ZSA, *a)),
+            BuildConfig::Coinbase => Some((BundleType::Coinbase, orchard::Anchor::empty_tree())),
         }
+    }
+
+    pub fn orchard_bundle_type<FE>(&self) -> Result<BundleType, Error<FE>> {
+        let (bundle_type, _) = self
+            .orchard_builder_config()
+            .ok_or(Error::OrchardBuilderNotAvailable)?;
+        Ok(bundle_type)
     }
 }
 
@@ -270,6 +336,11 @@ impl BuildResult {
     /// Actions that contain them in the Orchard bundle in the newly constructed transaction.
     pub fn orchard_meta(&self) -> &orchard::builder::BundleMetadata {
         &self.orchard_meta
+    }
+
+    /// Creates the transaction that was constructed by the builder.
+    pub fn into_transaction(self) -> Transaction {
+        self.transaction
     }
 }
 
@@ -306,6 +377,10 @@ pub struct Builder<'a, P, U: sapling::builder::ProverProgress> {
     transparent_builder: TransparentBuilder,
     sapling_builder: Option<sapling::builder::Builder>,
     orchard_builder: Option<orchard::builder::Builder>,
+    #[cfg(zcash_unstable = "nu7")]
+    issuance_builder: Option<IssueBundle<issuance::AwaitingNullifier>>,
+    #[cfg(zcash_unstable = "nu7")]
+    issuance_isk: Option<orchard::issuance_auth::IssueAuthKey<ZSASchnorr>>,
     #[cfg(zcash_unstable = "zfuture")]
     tze_builder: TzeBuilder<'a, TransactionData<Unauthorized>>,
     #[cfg(not(zcash_unstable = "zfuture"))]
@@ -389,6 +464,10 @@ impl<'a, P: consensus::Parameters> Builder<'a, P, ()> {
             transparent_builder: TransparentBuilder::empty(),
             sapling_builder,
             orchard_builder,
+            #[cfg(zcash_unstable = "nu7")]
+            issuance_builder: None,
+            #[cfg(zcash_unstable = "nu7")]
+            issuance_isk: None,
             #[cfg(zcash_unstable = "zfuture")]
             tze_builder: TzeBuilder::empty(),
             #[cfg(not(zcash_unstable = "zfuture"))]
@@ -416,9 +495,95 @@ impl<'a, P: consensus::Parameters> Builder<'a, P, ()> {
             transparent_builder: self.transparent_builder,
             sapling_builder: self.sapling_builder,
             orchard_builder: self.orchard_builder,
+            #[cfg(zcash_unstable = "nu7")]
+            issuance_builder: self.issuance_builder,
+            #[cfg(zcash_unstable = "nu7")]
+            issuance_isk: self.issuance_isk,
             tze_builder: self.tze_builder,
             _progress_notifier,
         }
+    }
+
+    /// Creates IssuanceBundle and adds an Issuance action to the transaction.
+    #[cfg(zcash_unstable = "nu7")]
+    pub fn init_issuance_bundle<FE>(
+        &mut self,
+        ik: IssueAuthKey<ZSASchnorr>,
+        asset_desc_hash: [u8; 32],
+        issue_info: Option<IssueInfo>,
+        first_issuance: bool,
+    ) -> Result<(), Error<FE>> {
+        if self.build_config.orchard_bundle_type()? != BundleType::DEFAULT_ZSA {
+            return Err(Error::OrchardBuild(BundleTypeNotSatisfiable));
+        }
+
+        if self.issuance_builder.is_some() {
+            return Err(Error::IssuanceBundleAlreadyInitialized);
+        }
+
+        let (bundle, _) = IssueBundle::new(
+            IssueValidatingKey::<ZSASchnorr>::from(&ik),
+            asset_desc_hash,
+            issue_info,
+            first_issuance,
+            OsRng,
+        );
+
+        self.issuance_builder = Some(bundle);
+        self.issuance_isk = Some(ik);
+
+        Ok(())
+    }
+
+    /// Adds an Issuance action to the transaction.
+    #[cfg(zcash_unstable = "nu7")]
+    pub fn add_recipient<FE>(
+        &mut self,
+        asset_desc_hash: [u8; 32],
+        recipient: Address,
+        value: orchard::value::NoteValue,
+        first_issuance: bool,
+    ) -> Result<(), Error<FE>> {
+        if self.build_config.orchard_bundle_type()? != BundleType::DEFAULT_ZSA {
+            return Err(Error::OrchardBuild(BundleTypeNotSatisfiable));
+        }
+        self.issuance_builder
+            .as_mut()
+            .ok_or(Error::IssuanceBuilderNotAvailable)?
+            .add_recipient(asset_desc_hash, recipient, value, first_issuance, OsRng)
+            .map_err(Error::IssuanceBundle)?;
+
+        Ok(())
+    }
+
+    /// Finalizes a given asset
+    #[cfg(zcash_unstable = "nu7")]
+    pub fn finalize_asset<FE>(&mut self, asset_desc_hash: &[u8; 32]) -> Result<(), Error<FE>> {
+        if self.build_config.orchard_bundle_type()? != BundleType::DEFAULT_ZSA {
+            return Err(Error::OrchardBuild(BundleTypeNotSatisfiable));
+        }
+        self.issuance_builder
+            .as_mut()
+            .ok_or(Error::IssuanceBuilderNotAvailable)?
+            .finalize_action(asset_desc_hash)
+            .map_err(Error::IssuanceBundle)?;
+
+        Ok(())
+    }
+
+    /// Adds a Burn action to the transaction.
+    #[cfg(zcash_unstable = "nu7")]
+    pub fn add_burn<FE>(&mut self, value: u64, asset: AssetBase) -> Result<(), Error<FE>> {
+        if self.build_config.orchard_bundle_type()? != BundleType::DEFAULT_ZSA {
+            return Err(Error::OrchardBuild(BundleTypeNotSatisfiable));
+        }
+        self.orchard_builder
+            .as_mut()
+            .ok_or(Error::OrchardBuilderNotAvailable)?
+            .add_burn(asset, orchard::value::NoteValue::from_raw(value))
+            .map_err(Error::OrchardBuild)?;
+
+        Ok(())
     }
 }
 
@@ -445,10 +610,15 @@ impl<P: consensus::Parameters, U: sapling::builder::ProverProgress> Builder<'_, 
     pub fn add_orchard_output<FE>(
         &mut self,
         ovk: Option<orchard::keys::OutgoingViewingKey>,
-        recipient: orchard::Address,
+        recipient: Address,
         value: u64,
+        asset: AssetBase,
         memo: MemoBytes,
     ) -> Result<(), Error<FE>> {
+        let bundle_type = self.build_config.orchard_bundle_type()?;
+        if bundle_type == BundleType::DEFAULT_VANILLA && !bool::from(asset.is_native()) {
+            return Err(Error::OrchardBuild(BundleTypeNotSatisfiable));
+        }
         self.orchard_builder
             .as_mut()
             .ok_or(Error::OrchardBuilderNotAvailable)?
@@ -456,7 +626,8 @@ impl<P: consensus::Parameters, U: sapling::builder::ProverProgress> Builder<'_, 
                 ovk,
                 recipient,
                 orchard::value::NoteValue::from_raw(value),
-                memo.into_bytes(),
+                asset,
+                *memo.as_array(),
             )
             .map_err(Error::OrchardRecipient)
     }
@@ -494,7 +665,7 @@ impl<P: consensus::Parameters, U: sapling::builder::ProverProgress> Builder<'_, 
                 ovk,
                 to,
                 sapling::value::NoteValue::from_raw(value.into()),
-                memo.into_bytes(),
+                Some(*memo.as_array()),
             )
             .map_err(Error::SaplingBuild)
     }
@@ -767,22 +938,35 @@ impl<P: consensus::Parameters, U: sapling::builder::ProverProgress> Builder<'_, 
             None => (None, SaplingMetadata::empty()),
         };
 
-        let (orchard_bundle, orchard_meta) = match self
-            .orchard_builder
-            .and_then(|builder| {
-                builder
-                    .build(&mut rng)
-                    .map_err(Error::OrchardBuild)
-                    .transpose()
-            })
-            .transpose()?
-        {
-            Some((bundle, meta)) => (Some(bundle), meta),
-            None => (None, orchard::builder::BundleMetadata::empty()),
+        let mut unproven_orchard_bundle = None;
+        let mut orchard_meta = orchard::builder::BundleMetadata::empty();
+
+        if let Some(builder) = self.orchard_builder {
+            let bundle_type = self.build_config.orchard_bundle_type()?;
+            if bundle_type == BundleType::DEFAULT_ZSA {
+                #[cfg(zcash_unstable = "nu7")]
+                {
+                    let (bundle, meta) = builder.build(&mut rng).map_err(Error::OrchardBuild)?;
+
+                    unproven_orchard_bundle = Some(OrchardBundle::OrchardZSA(bundle));
+                    orchard_meta = meta;
+                }
+                #[cfg(not(zcash_unstable = "nu7"))]
+                return Err(Error::OrchardBuild(BundleTypeNotSatisfiable));
+            } else {
+                let (bundle, meta) = builder.build(&mut rng).map_err(Error::OrchardBuild)?;
+                unproven_orchard_bundle = Some(OrchardBundle::OrchardVanilla(bundle));
+                orchard_meta = meta;
+            }
         };
 
         #[cfg(zcash_unstable = "zfuture")]
         let (tze_bundle, tze_signers) = self.tze_builder.build();
+
+        #[cfg(zcash_unstable = "nu7")]
+        let issue_bundle_awaiting_sighash = self
+            .issuance_builder
+            .map(|b| b.update_rho(first_nullifier(&unproven_orchard_bundle)));
 
         let unauthed_tx: TransactionData<Unauthorized> = TransactionData {
             version,
@@ -792,7 +976,9 @@ impl<P: consensus::Parameters, U: sapling::builder::ProverProgress> Builder<'_, 
             transparent_bundle,
             sprout_bundle: None,
             sapling_bundle,
-            orchard_bundle,
+            orchard_bundle: unproven_orchard_bundle,
+            #[cfg(zcash_unstable = "nu7")]
+            issue_bundle: issue_bundle_awaiting_sighash,
             #[cfg(zcash_unstable = "zfuture")]
             tze_bundle,
         };
@@ -845,20 +1031,40 @@ impl<P: consensus::Parameters, U: sapling::builder::ProverProgress> Builder<'_, 
             .transpose()
             .map_err(Error::SaplingBuild)?;
 
-        let orchard_bundle = unauthed_tx
-            .orchard_bundle
-            .map(|b| {
-                b.create_proof(&orchard::circuit::ProvingKey::build(), &mut rng)
-                    .and_then(|b| {
-                        b.apply_signatures(
-                            &mut rng,
-                            *shielded_sig_commitment.as_ref(),
-                            orchard_saks,
-                        )
-                    })
-            })
-            .transpose()
-            .map_err(Error::OrchardBuild)?;
+        let orchard_bundle: Option<OrchardBundle<_>> = match unauthed_tx.orchard_bundle {
+            Some(OrchardBundle::OrchardVanilla(b)) => {
+                Some(OrchardBundle::OrchardVanilla(prove_and_sign(
+                    b,
+                    &mut rng,
+                    &orchard::circuit::ProvingKey::build::<OrchardVanilla>(),
+                    shielded_sig_commitment.as_ref(),
+                    orchard_saks,
+                )?))
+            }
+
+            #[cfg(zcash_unstable = "nu7")]
+            Some(OrchardBundle::OrchardZSA(b)) => Some(OrchardBundle::OrchardZSA(prove_and_sign(
+                b,
+                &mut rng,
+                &orchard::circuit::ProvingKey::build::<OrchardZSA>(),
+                shielded_sig_commitment.as_ref(),
+                orchard_saks,
+            )?)),
+
+            None => None,
+        };
+
+        #[cfg(zcash_unstable = "nu7")]
+        let issue_bundle = if let Some(bundle) = unauthed_tx.issue_bundle {
+            let prepared = bundle.prepare(*shielded_sig_commitment.as_ref());
+            let isk = self
+                .issuance_isk
+                .as_ref()
+                .ok_or_else(|| Error::IssuanceKeyNotAvailable)?;
+            Some(prepared.sign(isk).map_err(Error::IssuanceBundle)?)
+        } else {
+            None
+        };
 
         let authorized_tx = TransactionData {
             version: unauthed_tx.version,
@@ -869,6 +1075,8 @@ impl<P: consensus::Parameters, U: sapling::builder::ProverProgress> Builder<'_, 
             sprout_bundle: unauthed_tx.sprout_bundle,
             sapling_bundle,
             orchard_bundle,
+            #[cfg(zcash_unstable = "nu7")]
+            issue_bundle,
             #[cfg(zcash_unstable = "zfuture")]
             tze_bundle,
         };
@@ -935,10 +1143,19 @@ impl<P: consensus::Parameters, U: sapling::builder::ProverProgress> Builder<'_, 
 
         let (orchard_bundle, orchard_meta) = match self
             .orchard_builder
-            .map(|builder| {
-                builder
-                    .build_for_pczt(&mut rng)
-                    .map_err(Error::OrchardBuild)
+            .map(|builder| match self.build_config.orchard_bundle_type()? {
+                BundleType::DEFAULT_ZSA => {
+                    #[cfg(zcash_unstable = "nu7")]
+                    return builder
+                        .build_for_pczt::<OrchardZSA>(&mut rng)
+                        .map_err(Error::OrchardBuild);
+                    #[cfg(not(zcash_unstable = "nu7"))]
+                    Err(Error::OrchardBuild(BundleTypeNotSatisfiable))
+                }
+                BundleType::DEFAULT_VANILLA => builder
+                    .build_for_pczt::<OrchardVanilla>(&mut rng)
+                    .map_err(Error::OrchardBuild),
+                _ => Err(Error::OrchardBuild(BundleTypeNotSatisfiable)),
             })
             .transpose()?
         {
@@ -960,6 +1177,34 @@ impl<P: consensus::Parameters, U: sapling::builder::ProverProgress> Builder<'_, 
             sapling_meta,
             orchard_meta,
         })
+    }
+}
+
+#[cfg(feature = "circuits")]
+fn prove_and_sign<FL, V, FE>(
+    bundle: orchard::Bundle<InProgress<Unproven, orchard::builder::Unauthorized>, V, FL>,
+    mut rng: &mut (impl RngCore + CryptoRng),
+    proving_key: &orchard::circuit::ProvingKey,
+    shielded_sig_commitment: &[u8; 32],
+    orchard_saks: &[orchard::keys::SpendAuthorizingKey],
+) -> Result<orchard::Bundle<Authorized, V, FL>, Error<FE>>
+where
+    FL: OrchardFlavor,
+{
+    bundle
+        .create_proof(proving_key, &mut rng)
+        .and_then(|b| b.apply_signatures(&mut rng, *shielded_sig_commitment, orchard_saks))
+        .map_err(Error::OrchardBuild)
+}
+
+/// This function returns the first nullifier from the first transfer action in the Orchard bundle.
+/// It can only be called on ZSA bundle, will panic in case of invalid input e.g. Vanilla or empty bundle.
+#[cfg(zcash_unstable = "nu7")]
+#[cfg(feature = "circuits")]
+fn first_nullifier<A: Authorization>(orchard_bundle: &Option<OrchardBundle<A>>) -> &Nullifier {
+    match orchard_bundle {
+        Some(OrchardBundle::OrchardZSA(b)) => b.actions().first().nullifier(),
+        _ => panic!("first_nullifier: called on non-ZSA bundle or empty bundle; expected OrchardZSA with at least one action"),
     }
 }
 
@@ -999,17 +1244,16 @@ impl<'a, P: consensus::Parameters, U: sapling::builder::ProverProgress> Extensio
 
 #[cfg(any(test, feature = "test-dependencies"))]
 mod testing {
+    use super::{BuildResult, Builder, Error};
+
+    use crate::transaction::fees::zip317;
+    use ::sapling::prover::mock::{MockOutputProver, MockSpendProver};
     use rand::RngCore;
     use rand_core::CryptoRng;
-
-    use ::sapling::prover::mock::{MockOutputProver, MockSpendProver};
-    use ::transparent::builder::TransparentSigningSet;
+    use transparent::builder::TransparentSigningSet;
     use zcash_protocol::consensus;
 
-    use super::{BuildResult, Builder, Error};
-    use crate::transaction::fees::zip317;
-
-    impl<P: consensus::Parameters, U: sapling::builder::ProverProgress> Builder<'_, P, U> {
+    impl<'a, P: consensus::Parameters, U: sapling::builder::ProverProgress> Builder<'a, P, U> {
         /// Build the transaction using mocked randomness and proving capabilities.
         /// DO NOT USE EXCEPT FOR UNIT TESTING.
         pub fn mock_build<R: RngCore>(
@@ -1062,9 +1306,7 @@ mod tests {
     use incrementalmerkletree::{frontier::CommitmentTree, witness::IncrementalWitness};
     use rand_core::OsRng;
 
-    use super::{Builder, Error};
     use crate::transaction::builder::BuildConfig;
-
     use ::sapling::{zip32::ExtendedSpendingKey, Node, Rseed};
     use ::transparent::{address::TransparentAddress, builder::TransparentSigningSet};
     use zcash_protocol::{
@@ -1072,6 +1314,12 @@ mod tests {
         memo::MemoBytes,
         value::{BalanceError, ZatBalance, Zatoshis},
     };
+
+    use super::{Builder, Error};
+
+    #[cfg(zcash_unstable = "nu7")]
+    #[cfg(not(feature = "transparent-inputs"))]
+    use crate::zip32::AccountId;
 
     #[cfg(zcash_unstable = "zfuture")]
     #[cfg(feature = "transparent-inputs")]
@@ -1100,7 +1348,7 @@ mod tests {
         // Create a builder with 0 fee, so we can construct t outputs
         let mut builder = builder::Builder {
             params: TEST_NETWORK,
-            build_config: BuildConfig::Standard {
+            build_config: BuildConfig::TxV5 {
                 sapling_anchor: Some(sapling::Anchor::empty_tree()),
                 orchard_anchor: Some(orchard::Anchor::empty_tree()),
             },
@@ -1114,6 +1362,10 @@ mod tests {
             tze_builder: core::marker::PhantomData,
             _progress_notifier: (),
             orchard_builder: None,
+            #[cfg(zcash_unstable = "nu7")]
+            issuance_builder: None,
+            #[cfg(zcash_unstable = "nu7")]
+            issuance_isk: None,
         };
 
         let mut transparent_signing_set = TransparentSigningSet::new();
@@ -1172,7 +1424,7 @@ mod tests {
             .activation_height(NetworkUpgrade::Sapling)
             .unwrap();
 
-        let build_config = BuildConfig::Standard {
+        let build_config = BuildConfig::TxV5 {
             sapling_anchor: Some(witness1.root().into()),
             orchard_anchor: None,
         };
@@ -1212,7 +1464,7 @@ mod tests {
         // Fails with no inputs or outputs
         // 0.0001 t-ZEC fee
         {
-            let build_config = BuildConfig::Standard {
+            let build_config = BuildConfig::TxV5 {
                 sapling_anchor: None,
                 orchard_anchor: None,
             };
@@ -1232,7 +1484,7 @@ mod tests {
         // Fail if there is only a Sapling output
         // 0.0005 z-ZEC out, 0.0001 t-ZEC fee
         {
-            let build_config = BuildConfig::Standard {
+            let build_config = BuildConfig::TxV5 {
                 sapling_anchor: Some(sapling::Anchor::empty_tree()),
                 orchard_anchor: Some(orchard::Anchor::empty_tree()),
             };
@@ -1255,7 +1507,7 @@ mod tests {
         // Fail if there is only a transparent output
         // 0.0005 t-ZEC out, 0.0001 t-ZEC fee
         {
-            let build_config = BuildConfig::Standard {
+            let build_config = BuildConfig::TxV5 {
                 sapling_anchor: Some(sapling::Anchor::empty_tree()),
                 orchard_anchor: Some(orchard::Anchor::empty_tree()),
             };
@@ -1285,7 +1537,7 @@ mod tests {
         // Fail if there is insufficient input
         // 0.0003 z-ZEC out, 0.0002 t-ZEC out, 0.0001 t-ZEC fee, 0.00059999 z-ZEC in
         {
-            let build_config = BuildConfig::Standard {
+            let build_config = BuildConfig::TxV5 {
                 sapling_anchor: Some(witness1.root().into()),
                 orchard_anchor: Some(orchard::Anchor::empty_tree()),
             };
@@ -1329,7 +1581,7 @@ mod tests {
         // Succeeds if there is sufficient input
         // 0.0003 z-ZEC out, 0.00015 t-ZEC out, 0.00015 t-ZEC fee, 0.0006 z-ZEC in
         {
-            let build_config = BuildConfig::Standard {
+            let build_config = BuildConfig::TxV5 {
                 sapling_anchor: Some(witness1.root().into()),
                 orchard_anchor: Some(orchard::Anchor::empty_tree()),
             };
