@@ -47,7 +47,7 @@ pub const V6_VERSION_GROUP_ID: u32 = 0x77777777;
 pub const VSWAP_TX_VERSION: u32 = 8;
 /// The version group ID for Zcash v6 transactions.
 #[cfg(zcash_unstable = "nu7")]
-pub const VSWAP_VERSION_GROUP_ID: u32 = 0x88888888;
+pub const VSWAP_VERSION_GROUP_ID: u32 = 0x08888888;
 
 /// This version is used exclusively for in-development transaction
 /// serialization, and will never be active under the consensus rules.
