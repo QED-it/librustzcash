@@ -446,6 +446,40 @@ pub fn write_action_without_auth<W: Write, P: OrchardPrimitives>(
     Ok(())
 }
 
+#[cfg(test)]
+mod tests {
+    #[cfg(zcash_unstable = "nu7")]
+    use {
+        super::{read_versioned_signature, write_versioned_signature},
+        alloc::vec::Vec,
+        orchard::primitives::redpallas,
+        rand::rngs::OsRng,
+        rand::RngCore,
+        std::io::Cursor,
+        zcash_spec::sighash_versioning::{VersionedSig, SIGHASH_V0},
+    };
+
+    #[cfg(zcash_unstable = "nu7")]
+    #[test]
+    fn write_read_versioned_signature_roundtrip() {
+        let mut sig_bytes = [0u8; 64];
+        OsRng.fill_bytes(&mut sig_bytes);
+        let sig = redpallas::Signature::<redpallas::SpendAuth>::from(sig_bytes);
+        let versioned_sig = VersionedSig::new(SIGHASH_V0, sig);
+
+        // Write the versioned signature to a buffer
+        let mut buf = Vec::new();
+        write_versioned_signature(&mut buf, &versioned_sig).unwrap();
+
+        // Read the versioned signature back from the buffer
+        let mut reader = Cursor::new(buf);
+        let read_versioned_sig =
+            read_versioned_signature::<_, redpallas::SpendAuth>(&mut reader).unwrap();
+
+        assert_eq!(versioned_sig, read_versioned_sig);
+    }
+}
+
 #[cfg(any(test, feature = "test-dependencies"))]
 pub mod testing {
     use proptest::prelude::*;
