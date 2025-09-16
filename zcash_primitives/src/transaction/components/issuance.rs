@@ -29,7 +29,7 @@ pub fn read_v6_bundle<R: Read>(mut reader: R) -> io::Result<Option<IssueBundle<S
 
 fn read_ik<R: Read>(mut reader: R) -> io::Result<IssueValidatingKey<ZSASchnorr>> {
     let ik_bytes = Vector::read(&mut reader, |r| r.read_u8())?;
-    IssueValidatingKey::<ZSASchnorr>::decode(&ik_bytes).map_err(|_| {
+    IssueValidatingKey::decode(&ik_bytes).map_err(|_| {
         Error::new(
             ErrorKind::InvalidData,
             "Invalid IssueValidatingKey encoding",
@@ -44,7 +44,7 @@ fn read_authorization<R: Read>(mut reader: R) -> io::Result<Signed> {
         "Invalid SighashInfo encoding",
     ))?;
     let sig_bytes = Vector::read(&mut reader, |r| r.read_u8())?;
-    let sig = IssueAuthSig::<ZSASchnorr>::decode(&sig_bytes).map_err(|_| {
+    let sig = IssueAuthSig::decode(&sig_bytes).map_err(|_| {
         Error::new(
             ErrorKind::InvalidData,
             "Invalid signature for IssuanceAuthorization",
