@@ -4,6 +4,8 @@ use crate::encoding::ReadBytesExt;
 #[cfg(zcash_unstable = "nu7")]
 use crate::encoding::WriteBytesExt;
 #[cfg(zcash_unstable = "nu7")]
+use crate::sighash_versioning::{SighashInfo, ORCHARD_SIGHASH_VERSION_TO_INFO};
+#[cfg(zcash_unstable = "nu7")]
 use crate::transaction::components::issuance::read_asset;
 
 use crate::transaction::{OrchardBundle, Transaction};
@@ -15,6 +17,7 @@ use orchard::{
     bundle::{Authorization, Authorized, Flags},
     note::{ExtractedNoteCommitment, Nullifier, TransmittedNoteCiphertext},
     orchard_flavor::OrchardVanilla,
+    orchard_sighash_versioning::{OrchardSighashVersion, OrchardVersionedSig},
     primitives::redpallas::{self, SigType, Signature, SpendAuth, VerificationKey},
     primitives::OrchardPrimitives,
     value::ValueCommitment,
@@ -24,9 +27,6 @@ use orchard::{
 use orchard::{note::AssetBase, orchard_flavor::OrchardZSA, value::NoteValue};
 use zcash_encoding::{Array, CompactSize, Vector};
 use zcash_note_encryption::note_bytes::NoteBytes;
-#[cfg(zcash_unstable = "nu7")]
-use zcash_spec::sighash_versioning::SighashVersion;
-use zcash_spec::sighash_versioning::{VersionedSig, SIGHASH_V0};
 
 use zcash_protocol::value::ZatBalance;
 
@@ -264,13 +264,11 @@ pub fn read_anchor<R: Read>(mut reader: R) -> io::Result<Anchor> {
         .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "invalid Orchard anchor"))
 }
 
-pub fn read_signature<R: Read, T: SigType>(
-    mut reader: R,
-) -> io::Result<VersionedSig<Signature<T>>> {
+pub fn read_signature<R: Read, T: SigType>(mut reader: R) -> io::Result<OrchardVersionedSig<T>> {
     let mut bytes = [0u8; 64];
     reader.read_exact(&mut bytes)?;
-    Ok(VersionedSig::<Signature<T>>::new(
-        SIGHASH_V0,
+    Ok(OrchardVersionedSig::new(
+        OrchardSighashVersion::UNKNOWN,
         Signature::from(bytes),
     ))
 }
@@ -278,28 +276,36 @@ pub fn read_signature<R: Read, T: SigType>(
 #[cfg(zcash_unstable = "nu7")]
 pub fn read_versioned_signature<R: Read, T: SigType>(
     mut reader: R,
-) -> io::Result<VersionedSig<Signature<T>>> {
+) -> io::Result<OrchardVersionedSig<T>> {
     let sighash_info_bytes = Vector::read(&mut reader, |r| r.read_u8())?;
-    let sighash_info = SighashVersion::from_bytes(&sighash_info_bytes)
+    let sighash_info = SighashInfo::from_bytes(&sighash_info_bytes)
         .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "invalid sighash info"))?;
+    let sighash_version = sighash_info.to_orchard_version().ok_or_else(|| {
+        io::Error::new(io::ErrorKind::InvalidInput, "Unknown Orchard sighash info")
+    })?;
+
     let mut signature_bytes = [0u8; 64];
     reader.read_exact(&mut signature_bytes)?;
-    Ok(VersionedSig::<Signature<T>>::new(
-        sighash_info,
+    Ok(OrchardVersionedSig::new(
+        sighash_version,
         Signature::from(signature_bytes),
     ))
 }
 
 #[cfg(zcash_unstable = "nu7")]
 pub fn write_versioned_signature<W: Write, T: SigType>(
-    writer: &mut W,
-    versioned_sig: &VersionedSig<Signature<T>>,
+    mut writer: W,
+    versioned_sig: &OrchardVersionedSig<T>,
 ) -> io::Result<()> {
-    Vector::write(
-        &mut *writer,
-        versioned_sig.version().to_bytes().as_slice(),
-        |w, b| w.write_u8(*b),
-    )?;
+    let sighash_info = ORCHARD_SIGHASH_VERSION_TO_INFO
+        .get(versioned_sig.version())
+        .ok_or_else(|| {
+            io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "Unknown Orchard sighash version",
+            )
+        })?;
+    Vector::write(&mut writer, &sighash_info.to_bytes(), |w, b| w.write_u8(*b))?;
     writer.write_all(&<[u8; 64]>::from(versioned_sig.sig()))
 }
 
@@ -446,6 +452,39 @@ pub fn write_action_without_auth<W: Write, P: OrchardPrimitives>(
     write_cmx(&mut writer, act.cmx())?;
     write_note_ciphertext(&mut writer, act.encrypted_note())?;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    #[cfg(zcash_unstable = "nu7")]
+    use {
+        super::{read_versioned_signature, write_versioned_signature},
+        alloc::vec::Vec,
+        orchard::orchard_sighash_versioning::{OrchardSighashVersion, OrchardVersionedSig},
+        orchard::primitives::redpallas,
+        rand::rngs::OsRng,
+        rand::RngCore,
+        std::io::Cursor,
+    };
+
+    #[cfg(zcash_unstable = "nu7")]
+    #[test]
+    fn write_read_versioned_signature_roundtrip() {
+        let mut sig_bytes = [0u8; 64];
+        OsRng.fill_bytes(&mut sig_bytes);
+        let sig = redpallas::Signature::<redpallas::SpendAuth>::from(sig_bytes);
+        let versioned_sig = OrchardVersionedSig::new(OrchardSighashVersion::V0, sig);
+
+        // Write the versioned signature to a buffer
+        let mut buf = Vec::new();
+        write_versioned_signature(&mut buf, &versioned_sig).unwrap();
+
+        // Read the versioned signature back from the buffer
+        let mut reader = Cursor::new(buf);
+        let read_versioned_sig =
+            read_versioned_signature::<_, redpallas::SpendAuth>(&mut reader).unwrap();
+        assert_eq!(versioned_sig, read_versioned_sig);
+    }
 }
 
 #[cfg(any(test, feature = "test-dependencies"))]
