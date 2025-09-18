@@ -1,13 +1,14 @@
 use crate::encoding::{ReadBytesExt, WriteBytesExt};
+use crate::sighash_versioning::{SighashInfo, ISSUE_SIGHASH_VERSION_TO_INFO};
 use core2::io::{self, Error, ErrorKind, Read, Write};
 use nonempty::NonEmpty;
-use orchard::issuance::{IssueAction, IssueAuth, IssueBundle, Signed, VerBIP340IssueAuthSig};
+use orchard::issuance::{IssueAction, IssueAuth, IssueBundle, Signed};
 use orchard::issuance_auth::{IssueAuthSig, IssueValidatingKey, ZSASchnorr};
+use orchard::issuance_sighash_versioning::VerBIP340IssueAuthSig;
 use orchard::note::{AssetBase, RandomSeed, Rho};
 use orchard::value::NoteValue;
 use orchard::{Address, Note};
 use zcash_encoding::{CompactSize, Vector};
-use zcash_spec::sighash_versioning::SighashVersion;
 
 /// Reads an [`orchard::Bundle`] from a v6 transaction format.
 pub fn read_v6_bundle<R: Read>(mut reader: R) -> io::Result<Option<IssueBundle<Signed>>> {
@@ -47,10 +48,15 @@ pub fn read_v6_bundle<R: Read>(mut reader: R) -> io::Result<Option<IssueBundle<S
 
 fn read_authorization<R: Read>(mut reader: R) -> io::Result<Signed> {
     let sighash_info_bytes = Vector::read(&mut reader, |r| r.read_u8())?;
-    let sighash_info = SighashVersion::from_bytes(&sighash_info_bytes).ok_or(Error::new(
+    let sighash_info = SighashInfo::from_bytes(&sighash_info_bytes).ok_or(Error::new(
         ErrorKind::InvalidData,
         "Invalid SighashInfo encoding",
     ))?;
+    let sighash_version = sighash_info.to_issuance_version().ok_or(Error::new(
+        ErrorKind::InvalidData,
+        "Unknown issuance sighash version",
+    ))?;
+
     let sig_bytes = Vector::read(&mut reader, |r| r.read_u8())?;
     let sig = IssueAuthSig::<ZSASchnorr>::decode(&sig_bytes).map_err(|_| {
         Error::new(
@@ -58,7 +64,11 @@ fn read_authorization<R: Read>(mut reader: R) -> io::Result<Signed> {
             "Invalid signature for IssuanceAuthorization",
         )
     })?;
-    Ok(Signed::new(VerBIP340IssueAuthSig::new(sighash_info, sig)))
+
+    Ok(Signed::new(VerBIP340IssueAuthSig::new(
+        sighash_version,
+        sig,
+    )))
 }
 
 fn read_action<R: Read>(
@@ -145,11 +155,13 @@ pub fn write_v6_bundle<W: Write>(
     if let Some(bundle) = bundle {
         Vector::write(&mut writer, &bundle.ik().encode(), |w, b| w.write_u8(*b))?;
         Vector::write_nonempty(&mut writer, bundle.actions(), write_action)?;
-        Vector::write(
-            &mut writer,
-            &bundle.authorization().signature().version().to_bytes(),
-            |w, b| w.write_u8(*b),
-        )?;
+        let sighash_info = ISSUE_SIGHASH_VERSION_TO_INFO
+            .get(bundle.authorization().signature().version())
+            .ok_or(Error::new(
+                ErrorKind::InvalidData,
+                "Unkown issuance sighash version",
+            ))?;
+        Vector::write(&mut writer, &sighash_info.to_bytes(), |w, b| w.write_u8(*b))?;
         Vector::write(
             &mut writer,
             &bundle.authorization().signature().sig().encode(),

@@ -1,4 +1,5 @@
 use crate::encoding::{StateWrite, WriteBytesExt};
+use alloc::collections::BTreeMap;
 use core::borrow::Borrow;
 use core::convert::TryFrom;
 use core2::io::Write;
@@ -28,6 +29,7 @@ use crate::transaction::{
 };
 #[cfg(zcash_unstable = "nu7")]
 use {
+    crate::sighash_versioning::{ISSUE_SIGHASH_VERSION_TO_INFO, ORCHARD_SIGHASH_VERSION_TO_INFO},
     crate::transaction::OrchardBundle::OrchardZSA,
     orchard::issuance::{IssueBundle, Signed},
 };
@@ -536,9 +538,18 @@ impl TransactionDigest<Authorized> for BlockTxCommitmentDigester {
         orchard_bundle.map_or_else(
             orchard_bundle::commitments::hash_bundle_auth_empty,
             |b| match b {
-                OrchardVanilla(bundle) => bundle.authorizing_commitment().0,
+                OrchardVanilla(bundle) => bundle.authorizing_commitment(BTreeMap::new()).0,
                 #[cfg(zcash_unstable = "nu7")]
-                OrchardZSA(bundle) => bundle.authorizing_commitment().0,
+                OrchardZSA(bundle) => {
+                    bundle
+                        .authorizing_commitment(
+                            ORCHARD_SIGHASH_VERSION_TO_INFO
+                                .iter()
+                                .map(|(k, v)| (k.clone(), v.to_bytes()))
+                                .collect::<BTreeMap<_, _>>(),
+                        )
+                        .0
+                }
             },
         )
     }
@@ -547,7 +558,15 @@ impl TransactionDigest<Authorized> for BlockTxCommitmentDigester {
     fn digest_issue(&self, issue_bundle: Option<&IssueBundle<Signed>>) -> Self::IssueDigest {
         issue_bundle.map_or_else(
             orchard_bundle::commitments::hash_issue_bundle_auth_empty,
-            |b| b.authorizing_commitment().0,
+            |b| {
+                b.authorizing_commitment(
+                    ISSUE_SIGHASH_VERSION_TO_INFO
+                        .iter()
+                        .map(|(k, v)| (k.clone(), v.to_bytes()))
+                        .collect::<BTreeMap<_, _>>(),
+                )
+                .0
+            },
         )
     }
 
