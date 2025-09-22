@@ -62,6 +62,16 @@ lazy_static! {
         map
     };
 }
+
+lazy_static! {
+    pub(crate) static ref ORCHARD_SIGHASH_VERSION_TO_BYTES: BTreeMap<OrchardSighashVersion, Vec<u8>> = {
+        ORCHARD_SIGHASH_VERSION_TO_INFO
+            .iter()
+            .map(|(k, v)| (k.clone(), v.to_bytes()))
+            .collect::<BTreeMap<_, _>>()
+    };
+}
+
 lazy_static! {
     pub(crate) static ref ISSUE_SIGHASH_VERSION_TO_INFO: BTreeMap<IssueSighashVersion, SighashInfo> = {
         let mut map: BTreeMap<IssueSighashVersion, SighashInfo> = BTreeMap::new();
@@ -73,6 +83,15 @@ lazy_static! {
             },
         );
         map
+    };
+}
+
+lazy_static! {
+    pub(crate) static ref ISSUE_SIGHASH_VERSION_TO_BYTES: BTreeMap<IssueSighashVersion, Vec<u8>> = {
+        ISSUE_SIGHASH_VERSION_TO_INFO
+            .iter()
+            .map(|(k, v)| (k.clone(), v.to_bytes()))
+            .collect::<BTreeMap<_, _>>()
     };
 }
 
