@@ -268,7 +268,7 @@ pub fn read_signature<R: Read, T: SigType>(mut reader: R) -> io::Result<OrchardV
     let mut bytes = [0u8; 64];
     reader.read_exact(&mut bytes)?;
     Ok(OrchardVersionedSig::new(
-        OrchardSighashVersion::UNKNOWN,
+        OrchardSighashVersion::NoVersion,
         Signature::from(bytes),
     ))
 }
