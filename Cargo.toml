@@ -182,7 +182,7 @@ pre-release-commit-message = "{{crate_name}} {{version}}"
 tag-message = "Release {{crate_name}} version {{version}}"
 tag-name = "{{prefix}}{{version}}"
 pre-release-replacements = [
-  {file="CHANGELOG.md", search="## \\[Unreleased\\]", replace="## [Unreleased]\n\n## [{{version}}] - {{date}}"},
+    { file = "CHANGELOG.md", search = "## \\[Unreleased\\]", replace = "## [Unreleased]\n\n## [{{version}}] - {{date}}" },
 ]
 pre-release-hook = ["cargo", "vet"]
 # Remove the following options once we're happy to use `cargo-release` without review.
@@ -214,13 +214,13 @@ debug = true
 
 [workspace.lints.rust]
 unexpected_cfgs = { level = "warn", check-cfg = [
-  'cfg(zcash_unstable, values("zfuture", "nu6.1", "nu7"))',
-  'cfg(live_network_tests)',
+    'cfg(zcash_unstable, values("zfuture", "nu6.1", "nu7"))',
+    'cfg(live_network_tests)',
 ] }
 
 [patch.crates-io]
 sapling = { package = "sapling-crypto", git = "https://github.com/QED-it/sapling-crypto", rev = "9393f93fe547d1b3738c9f4618c0f8a2fffed29f" }
-orchard = { git = "https://github.com/QED-it/orchard", rev = "7f730c59f3bcd18b5c624395dd62fc6960848d9a" }
+orchard = { git = "https://github.com/QED-it/orchard", rev = "78b6f7696bcc24b3493f404811221fc4d728a92f" }
 zcash_spec = { git = "https://github.com/QED-it/zcash_spec", rev = "842d697048a8960348adcde704c24438fc5b4544" }
 sinsemilla = { git = "https://github.com/zcash/sinsemilla", rev = "aabb707e862bc3d7b803c77d14e5a771bcee3e8c" }
 zcash_note_encryption = { git = "https://github.com/zcash/zcash_note_encryption", rev = "9f7e93d42cef839d02b9d75918117941d453f8cb" }

@@ -52,7 +52,7 @@ fn read_authorization<R: Read>(mut reader: R) -> io::Result<Signed> {
         "Invalid SighashInfo encoding",
     ))?;
     let sig_bytes = Vector::read(&mut reader, |r| r.read_u8())?;
-    let sig = IssueAuthSig::<ZSASchnorr>::decode(&sig_bytes).map_err(|_| {
+    let sig = IssueAuthSig::decode(&sig_bytes).map_err(|_| {
         Error::new(
             ErrorKind::InvalidData,
             "Invalid signature for IssuanceAuthorization",

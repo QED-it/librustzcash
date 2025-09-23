@@ -136,7 +136,10 @@ pub fn read_orchard_zsa_bundle<R: Read>(
             })
             .collect::<Result<Vec<_>, _>>()?,
     )
-    .expect("The action group must contain at least one action.");
+    .ok_or(io::Error::new(
+        io::ErrorKind::InvalidInput,
+        "The action group must contain at least one action.",
+    ))?;
 
     let value_balance = Transaction::read_amount(&mut reader)?;
 
@@ -269,10 +272,7 @@ pub fn read_signature<R: Read, T: SigType>(
 ) -> io::Result<VersionedSig<Signature<T>>> {
     let mut bytes = [0u8; 64];
     reader.read_exact(&mut bytes)?;
-    Ok(VersionedSig::<Signature<T>>::new(
-        SIGHASH_V0,
-        Signature::from(bytes),
-    ))
+    Ok(VersionedSig::new(SIGHASH_V0, Signature::from(bytes)))
 }
 
 #[cfg(zcash_unstable = "nu7")]
@@ -284,7 +284,7 @@ pub fn read_versioned_signature<R: Read, T: SigType>(
         .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "invalid sighash info"))?;
     let mut signature_bytes = [0u8; 64];
     reader.read_exact(&mut signature_bytes)?;
-    Ok(VersionedSig::<Signature<T>>::new(
+    Ok(VersionedSig::new(
         sighash_info,
         Signature::from(signature_bytes),
     ))
@@ -292,14 +292,12 @@ pub fn read_versioned_signature<R: Read, T: SigType>(
 
 #[cfg(zcash_unstable = "nu7")]
 pub fn write_versioned_signature<W: Write, T: SigType>(
-    writer: &mut W,
+    mut writer: W,
     versioned_sig: &VersionedSig<Signature<T>>,
 ) -> io::Result<()> {
-    Vector::write(
-        &mut *writer,
-        versioned_sig.version().to_bytes().as_slice(),
-        |w, b| w.write_u8(*b),
-    )?;
+    Vector::write(&mut writer, &versioned_sig.version().to_bytes(), |w, b| {
+        w.write_u8(*b)
+    })?;
     writer.write_all(&<[u8; 64]>::from(versioned_sig.sig()))
 }
 
@@ -446,6 +444,40 @@ pub fn write_action_without_auth<W: Write, P: OrchardPrimitives>(
     write_cmx(&mut writer, act.cmx())?;
     write_note_ciphertext(&mut writer, act.encrypted_note())?;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    #[cfg(zcash_unstable = "nu7")]
+    use {
+        super::{read_versioned_signature, write_versioned_signature},
+        alloc::vec::Vec,
+        orchard::primitives::redpallas,
+        rand::rngs::OsRng,
+        rand::RngCore,
+        std::io::Cursor,
+        zcash_spec::sighash_versioning::{VersionedSig, SIGHASH_V0},
+    };
+
+    #[cfg(zcash_unstable = "nu7")]
+    #[test]
+    fn write_read_versioned_signature_roundtrip() {
+        let mut sig_bytes = [0u8; 64];
+        OsRng.fill_bytes(&mut sig_bytes);
+        let sig = redpallas::Signature::<redpallas::SpendAuth>::from(sig_bytes);
+        let versioned_sig = VersionedSig::new(SIGHASH_V0, sig);
+
+        // Write the versioned signature to a buffer
+        let mut buf = Vec::new();
+        write_versioned_signature(&mut buf, &versioned_sig).unwrap();
+
+        // Read the versioned signature back from the buffer
+        let mut reader = Cursor::new(buf);
+        let read_versioned_sig =
+            read_versioned_signature::<_, redpallas::SpendAuth>(&mut reader).unwrap();
+
+        assert_eq!(versioned_sig, read_versioned_sig);
+    }
 }
 
 #[cfg(any(test, feature = "test-dependencies"))]

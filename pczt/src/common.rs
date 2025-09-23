@@ -206,6 +206,10 @@ pub(crate) struct Zip32Derivation {
     pub(crate) derivation_path: Vec<u32>,
 }
 
+/// A versioned Orchard SpendAuth signature.
+///
+/// A easily serializable structure representing the serializable version of
+/// `orchard::builder::VerSpendAuthSig` struct.
 #[serde_as]
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub(crate) struct VerSpendAuthSig {
