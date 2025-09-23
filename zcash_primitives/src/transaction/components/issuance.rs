@@ -156,8 +156,10 @@ pub fn write_bundle<W: Write>(
             |w, b| w.write_u8(*b),
         )?;
     } else {
-        CompactSize::write(&mut writer, 0)?; // empty issuer
-        CompactSize::write(&mut writer, 0)?; // empty vIssueActions
+        // Empty issuer
+        CompactSize::write(&mut writer, 0)?;
+        // Empty vIssueActions
+        CompactSize::write(&mut writer, 0)?;
     }
     Ok(())
 }
