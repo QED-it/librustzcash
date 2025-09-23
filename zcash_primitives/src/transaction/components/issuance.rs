@@ -9,8 +9,8 @@ use orchard::{Address, Note};
 use zcash_encoding::{CompactSize, Vector};
 use zcash_spec::sighash_versioning::SighashVersion;
 
-/// Reads an [`orchard::Bundle`] from a v6 transaction format.
-pub fn read_v6_bundle<R: Read>(mut reader: R) -> io::Result<Option<IssueBundle<Signed>>> {
+/// Reads an [`orchard::IssueBundle`] from a v6 transaction format.
+pub fn read_bundle<R: Read>(mut reader: R) -> io::Result<Option<IssueBundle<Signed>>> {
     let issuer_bytes = Vector::read(&mut reader, |r| r.read_u8())?;
     if issuer_bytes.is_empty() {
         let n_actions = CompactSize::read(&mut reader)?;
@@ -137,8 +137,8 @@ fn read_rseed<R: Read>(mut reader: R, nullifier: &Rho) -> io::Result<RandomSeed>
         .ok_or(Error::new(ErrorKind::InvalidData, "Invalid rseed"))
 }
 
-/// Writes an [`IssueBundle`] in the v6 transaction format.
-pub fn write_v6_bundle<W: Write>(
+/// Writes an [`orchard::IssueBundle`] in the v6 transaction format.
+pub fn write_bundle<W: Write>(
     bundle: Option<&IssueBundle<Signed>>,
     mut writer: W,
 ) -> io::Result<()> {
