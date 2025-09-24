@@ -10,8 +10,8 @@ use orchard::value::NoteValue;
 use orchard::{Address, Note};
 use zcash_encoding::{CompactSize, Vector};
 
-/// Reads an [`orchard::Bundle`] from a v6 transaction format.
-pub fn read_v6_bundle<R: Read>(mut reader: R) -> io::Result<Option<IssueBundle<Signed>>> {
+/// Reads an [`IssueBundle`] from a v6 transaction format.
+pub fn read_bundle<R: Read>(mut reader: R) -> io::Result<Option<IssueBundle<Signed>>> {
     let issuer_bytes = Vector::read(&mut reader, |r| r.read_u8())?;
     if issuer_bytes.is_empty() {
         let n_actions = CompactSize::read(&mut reader)?;
@@ -58,7 +58,7 @@ fn read_authorization<R: Read>(mut reader: R) -> io::Result<Signed> {
     ))?;
 
     let sig_bytes = Vector::read(&mut reader, |r| r.read_u8())?;
-    let sig = IssueAuthSig::<ZSASchnorr>::decode(&sig_bytes).map_err(|_| {
+    let sig = IssueAuthSig::decode(&sig_bytes).map_err(|_| {
         Error::new(
             ErrorKind::InvalidData,
             "Invalid signature for IssuanceAuthorization",
@@ -148,7 +148,7 @@ fn read_rseed<R: Read>(mut reader: R, nullifier: &Rho) -> io::Result<RandomSeed>
 }
 
 /// Writes an [`IssueBundle`] in the v6 transaction format.
-pub fn write_v6_bundle<W: Write>(
+pub fn write_bundle<W: Write>(
     bundle: Option<&IssueBundle<Signed>>,
     mut writer: W,
 ) -> io::Result<()> {
@@ -162,14 +162,17 @@ pub fn write_v6_bundle<W: Write>(
                 "Unkown issuance sighash version",
             ))?;
         Vector::write(&mut writer, &sighash_info.to_bytes(), |w, b| w.write_u8(*b))?;
+
         Vector::write(
             &mut writer,
             &bundle.authorization().signature().sig().encode(),
             |w, b| w.write_u8(*b),
         )?;
     } else {
-        CompactSize::write(&mut writer, 0)?; // empty issuer
-        CompactSize::write(&mut writer, 0)?; // empty vIssueActions
+        // Empty issuer
+        CompactSize::write(&mut writer, 0)?;
+        // Empty vIssueActions
+        CompactSize::write(&mut writer, 0)?;
     }
     Ok(())
 }

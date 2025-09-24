@@ -136,7 +136,10 @@ pub fn read_orchard_zsa_bundle<R: Read>(
             })
             .collect::<Result<Vec<_>, _>>()?,
     )
-    .expect("The action group must contain at least one action.");
+    .ok_or(io::Error::new(
+        io::ErrorKind::InvalidInput,
+        "The action group must contain at least one action.",
+    ))?;
 
     let value_balance = Transaction::read_amount(&mut reader)?;
 
@@ -483,6 +486,7 @@ mod tests {
         let mut reader = Cursor::new(buf);
         let read_versioned_sig =
             read_versioned_signature::<_, redpallas::SpendAuth>(&mut reader).unwrap();
+
         assert_eq!(versioned_sig, read_versioned_sig);
     }
 }
