@@ -2,7 +2,7 @@
 use {
     crate::{
         encoding::{ReadBytesExt, WriteBytesExt},
-        sighash_versioning::{to_issuance_version, ISSUE_SIGHASH_VERSION_TO_BYTES},
+        sighash_versioning::{to_issuance_version, ISSUE_SIGHASH_VERSION_TO_SIGHASH_INFO_BYTES},
     },
     core2::io::{self, Error, ErrorKind, Read, Write},
     nonempty::NonEmpty,
@@ -167,7 +167,7 @@ pub fn write_bundle<W: Write>(
     if let Some(bundle) = bundle {
         Vector::write(&mut writer, &bundle.ik().encode(), |w, b| w.write_u8(*b))?;
         Vector::write_nonempty(&mut writer, bundle.actions(), write_action)?;
-        let sighash_info_bytes = ISSUE_SIGHASH_VERSION_TO_BYTES
+        let sighash_info_bytes = ISSUE_SIGHASH_VERSION_TO_SIGHASH_INFO_BYTES
             .get(bundle.authorization().signature().version())
             .ok_or(Error::new(
                 ErrorKind::InvalidData,

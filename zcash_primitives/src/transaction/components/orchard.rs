@@ -4,7 +4,9 @@ use crate::encoding::ReadBytesExt;
 #[cfg(zcash_unstable = "nu7")]
 use crate::encoding::WriteBytesExt;
 #[cfg(zcash_unstable = "nu7")]
-use crate::sighash_versioning::{to_orchard_version, ORCHARD_SIGHASH_VERSION_TO_BYTES};
+use crate::sighash_versioning::{
+    to_orchard_version, ORCHARD_SIGHASH_VERSION_TO_SIGHASH_INFO_BYTES,
+};
 #[cfg(zcash_unstable = "nu7")]
 use crate::transaction::components::issuance::read_asset;
 
@@ -298,7 +300,7 @@ pub fn write_versioned_signature<W: Write, T: SigType>(
     mut writer: W,
     versioned_sig: &OrchardVersionedSig<T>,
 ) -> io::Result<()> {
-    let sighash_info_bytes = ORCHARD_SIGHASH_VERSION_TO_BYTES
+    let sighash_info_bytes = ORCHARD_SIGHASH_VERSION_TO_SIGHASH_INFO_BYTES
         .get(versioned_sig.version())
         .ok_or_else(|| {
             io::Error::new(
