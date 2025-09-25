@@ -21,7 +21,7 @@ use super::{
     components::tze::{self, TzeIn, TzeOut},
     TzeDigests,
 };
-use crate::sighash_versioning::ORCHARD_SIGHASH_VERSION_TO_SIGHASH_INFO_BYTES;
+use crate::sighash_versioning::ORCHARD_SIGHASH_VERSION_TO_INFO_BYTES;
 use crate::transaction::OrchardBundle::OrchardVanilla;
 use crate::transaction::{
     Authorization, Authorized, OrchardBundle, TransactionDigest, TransparentDigests, TxDigests,
@@ -29,7 +29,7 @@ use crate::transaction::{
 };
 #[cfg(zcash_unstable = "nu7")]
 use {
-    crate::sighash_versioning::ISSUE_SIGHASH_VERSION_TO_SIGHASH_INFO_BYTES,
+    crate::sighash_versioning::ISSUE_SIGHASH_VERSION_TO_INFO_BYTES,
     crate::transaction::OrchardBundle::OrchardZSA,
     orchard::issuance::{IssueBundle, Signed},
 };
@@ -540,13 +540,13 @@ impl TransactionDigest<Authorized> for BlockTxCommitmentDigester {
             |b| match b {
                 OrchardVanilla(bundle) => {
                     bundle
-                        .authorizing_commitment(&ORCHARD_SIGHASH_VERSION_TO_SIGHASH_INFO_BYTES)
+                        .authorizing_commitment(&ORCHARD_SIGHASH_VERSION_TO_INFO_BYTES)
                         .0
                 }
                 #[cfg(zcash_unstable = "nu7")]
                 OrchardZSA(bundle) => {
                     bundle
-                        .authorizing_commitment(&ORCHARD_SIGHASH_VERSION_TO_SIGHASH_INFO_BYTES)
+                        .authorizing_commitment(&ORCHARD_SIGHASH_VERSION_TO_INFO_BYTES)
                         .0
                 }
             },
@@ -558,7 +558,7 @@ impl TransactionDigest<Authorized> for BlockTxCommitmentDigester {
         issue_bundle.map_or_else(
             orchard_bundle::commitments::hash_issue_bundle_auth_empty,
             |b| {
-                b.authorizing_commitment(&ISSUE_SIGHASH_VERSION_TO_SIGHASH_INFO_BYTES)
+                b.authorizing_commitment(&ISSUE_SIGHASH_VERSION_TO_INFO_BYTES)
                     .0
             },
         )
