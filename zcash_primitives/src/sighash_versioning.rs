@@ -11,7 +11,7 @@ use orchard::orchard_sighash_versioning::OrchardSighashVersion;
 use orchard::issuance_sighash_versioning::IssueSighashVersion;
 
 /// Orchard `SighashInfo` for V0:
-/// sighashInfo = ([sighashVersion] || associatedData) = ([0] || [])
+/// sighashInfo = (\[sighashVersion\] || associatedData) = (\[0\] || [])
 const ORCHARD_SIGHASH_INFO_V0: [u8; 1] = [0];
 
 lazy_static! {
@@ -29,7 +29,7 @@ pub(crate) fn to_orchard_version(bytes: Vec<u8>) -> Option<OrchardSighashVersion
 }
 
 /// Issuance `SighashInfo` for V0:
-/// sighashInfo = ([sighashVersion] || associatedData) = ([0] || [])
+/// sighashInfo = (\[sighashVersion\] || associatedData) = (\[0\] || [])
 #[cfg(zcash_unstable = "nu7")]
 const ISSUE_SIGHASH_INFO_V0: [u8; 1] = [0];
 
