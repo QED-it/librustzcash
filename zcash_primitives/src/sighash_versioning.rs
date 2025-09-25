@@ -18,6 +18,7 @@ pub(crate) fn to_orchard_version(bytes: Vec<u8>) -> Option<OrchardSighashVersion
         .map(|(k, _)| k.clone())
 }
 
+#[cfg(zcash_unstable = "nu7")]
 pub(crate) fn to_issuance_version(bytes: Vec<u8>) -> Option<IssueSighashVersion> {
     ISSUE_SIGHASH_VERSION_TO_BYTES
         .iter()
