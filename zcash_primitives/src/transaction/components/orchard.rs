@@ -4,7 +4,7 @@ use crate::encoding::ReadBytesExt;
 #[cfg(zcash_unstable = "nu7")]
 use crate::encoding::WriteBytesExt;
 #[cfg(zcash_unstable = "nu7")]
-use crate::sighash_versioning::{SighashInfo, ORCHARD_SIGHASH_VERSION_TO_INFO};
+use crate::sighash_versioning::{to_orchard_version, ORCHARD_SIGHASH_VERSION_TO_BYTES};
 #[cfg(zcash_unstable = "nu7")]
 use crate::transaction::components::issuance::read_asset;
 
@@ -281,9 +281,7 @@ pub fn read_versioned_signature<R: Read, T: SigType>(
     mut reader: R,
 ) -> io::Result<OrchardVersionedSig<T>> {
     let sighash_info_bytes = Vector::read(&mut reader, |r| r.read_u8())?;
-    let sighash_info = SighashInfo::from_bytes(&sighash_info_bytes)
-        .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "invalid sighash info"))?;
-    let sighash_version = sighash_info.to_orchard_version().ok_or_else(|| {
+    let sighash_version = to_orchard_version(sighash_info_bytes).ok_or_else(|| {
         io::Error::new(io::ErrorKind::InvalidInput, "Unknown Orchard sighash info")
     })?;
 
@@ -300,7 +298,7 @@ pub fn write_versioned_signature<W: Write, T: SigType>(
     mut writer: W,
     versioned_sig: &OrchardVersionedSig<T>,
 ) -> io::Result<()> {
-    let sighash_info = ORCHARD_SIGHASH_VERSION_TO_INFO
+    let sighash_info_bytes = ORCHARD_SIGHASH_VERSION_TO_BYTES
         .get(versioned_sig.version())
         .ok_or_else(|| {
             io::Error::new(
@@ -308,7 +306,7 @@ pub fn write_versioned_signature<W: Write, T: SigType>(
                 "Unknown Orchard sighash version",
             )
         })?;
-    Vector::write(&mut writer, &sighash_info.to_bytes(), |w, b| w.write_u8(*b))?;
+    Vector::write(&mut writer, sighash_info_bytes, |w, b| w.write_u8(*b))?;
     writer.write_all(&<[u8; 64]>::from(versioned_sig.sig()))
 }
 

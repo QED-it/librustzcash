@@ -1,5 +1,5 @@
 use crate::encoding::{ReadBytesExt, WriteBytesExt};
-use crate::sighash_versioning::{SighashInfo, ISSUE_SIGHASH_VERSION_TO_INFO};
+use crate::sighash_versioning::{to_issuance_version, ISSUE_SIGHASH_VERSION_TO_BYTES};
 use core2::io::{self, Error, ErrorKind, Read, Write};
 use nonempty::NonEmpty;
 use orchard::issuance::{IssueAction, IssueAuth, IssueBundle, Signed};
@@ -48,11 +48,7 @@ pub fn read_bundle<R: Read>(mut reader: R) -> io::Result<Option<IssueBundle<Sign
 
 fn read_authorization<R: Read>(mut reader: R) -> io::Result<Signed> {
     let sighash_info_bytes = Vector::read(&mut reader, |r| r.read_u8())?;
-    let sighash_info = SighashInfo::from_bytes(&sighash_info_bytes).ok_or(Error::new(
-        ErrorKind::InvalidData,
-        "Invalid SighashInfo encoding",
-    ))?;
-    let sighash_version = sighash_info.to_issuance_version().ok_or(Error::new(
+    let sighash_version = to_issuance_version(sighash_info_bytes).ok_or(Error::new(
         ErrorKind::InvalidData,
         "Unknown issuance sighash version",
     ))?;
@@ -155,13 +151,13 @@ pub fn write_bundle<W: Write>(
     if let Some(bundle) = bundle {
         Vector::write(&mut writer, &bundle.ik().encode(), |w, b| w.write_u8(*b))?;
         Vector::write_nonempty(&mut writer, bundle.actions(), write_action)?;
-        let sighash_info = ISSUE_SIGHASH_VERSION_TO_INFO
+        let sighash_info_bytes = ISSUE_SIGHASH_VERSION_TO_BYTES
             .get(bundle.authorization().signature().version())
             .ok_or(Error::new(
                 ErrorKind::InvalidData,
-                "Unkown issuance sighash version",
+                "Unknown issuance sighash version",
             ))?;
-        Vector::write(&mut writer, &sighash_info.to_bytes(), |w, b| w.write_u8(*b))?;
+        Vector::write(&mut writer, sighash_info_bytes, |w, b| w.write_u8(*b))?;
 
         Vector::write(
             &mut writer,
