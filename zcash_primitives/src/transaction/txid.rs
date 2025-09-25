@@ -1,5 +1,4 @@
 use crate::encoding::{StateWrite, WriteBytesExt};
-use alloc::collections::BTreeMap;
 use core::borrow::Borrow;
 use core::convert::TryFrom;
 use core2::io::Write;
@@ -22,6 +21,7 @@ use super::{
     components::tze::{self, TzeIn, TzeOut},
     TzeDigests,
 };
+use crate::sighash_versioning::ORCHARD_SIGHASH_VERSION_TO_BYTES;
 use crate::transaction::OrchardBundle::OrchardVanilla;
 use crate::transaction::{
     Authorization, Authorized, OrchardBundle, TransactionDigest, TransparentDigests, TxDigests,
@@ -29,7 +29,7 @@ use crate::transaction::{
 };
 #[cfg(zcash_unstable = "nu7")]
 use {
-    crate::sighash_versioning::{ISSUE_SIGHASH_VERSION_TO_BYTES, ORCHARD_SIGHASH_VERSION_TO_BYTES},
+    crate::sighash_versioning::ISSUE_SIGHASH_VERSION_TO_BYTES,
     crate::transaction::OrchardBundle::OrchardZSA,
     orchard::issuance::{IssueBundle, Signed},
 };
@@ -538,7 +538,11 @@ impl TransactionDigest<Authorized> for BlockTxCommitmentDigester {
         orchard_bundle.map_or_else(
             orchard_bundle::commitments::hash_bundle_auth_empty,
             |b| match b {
-                OrchardVanilla(bundle) => bundle.authorizing_commitment(&BTreeMap::new()).0,
+                OrchardVanilla(bundle) => {
+                    bundle
+                        .authorizing_commitment(&ORCHARD_SIGHASH_VERSION_TO_BYTES)
+                        .0
+                }
                 #[cfg(zcash_unstable = "nu7")]
                 OrchardZSA(bundle) => {
                     bundle
