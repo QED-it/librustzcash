@@ -15,17 +15,17 @@ lazy_static! {
         BTreeMap::from([(OrchardSighashVersion::V0, vec![0],)]);
 }
 
-lazy_static! {
-    pub(crate) static ref ISSUE_SIGHASH_VERSION_TO_BYTES: BTreeMap<IssueSighashVersion, Vec<u8>> =
-        BTreeMap::from([(IssueSighashVersion::V0, vec![0],)]);
-}
-
 #[cfg(zcash_unstable = "nu7")]
 pub(crate) fn to_orchard_version(bytes: Vec<u8>) -> Option<OrchardSighashVersion> {
     ORCHARD_SIGHASH_VERSION_TO_BYTES
         .iter()
         .find(|(_, v)| **v == bytes)
         .map(|(k, _)| k.clone())
+}
+
+lazy_static! {
+    pub(crate) static ref ISSUE_SIGHASH_VERSION_TO_BYTES: BTreeMap<IssueSighashVersion, Vec<u8>> =
+        BTreeMap::from([(IssueSighashVersion::V0, vec![0],)]);
 }
 
 #[cfg(zcash_unstable = "nu7")]
