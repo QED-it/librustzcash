@@ -2872,7 +2872,7 @@ checksum = "04744f49eae99ab78e0d5c0b603ab218f515ea8cfe5a456d7629ad883a3b6e7d"
 [[package]]
 name = "orchard"
 version = "0.11.0"
-source = "git+https://github.com/QED-it/orchard?rev=cf6d3b6f6c674505b97cd16f5630ff7349139ed4#cf6d3b6f6c674505b97cd16f5630ff7349139ed4"
+source = "git+https://github.com/QED-it/orchard?branch=add_spend_auth_sigs_auth_digest#9d0c43a26b31f8181abf77d537c9cbe94fe0be16"
 dependencies = [
  "aes",
  "bitvec",
