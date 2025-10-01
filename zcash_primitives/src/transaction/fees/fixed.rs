@@ -39,6 +39,8 @@ impl super::FeeRule for FeeRule {
         _sapling_input_count: usize,
         _sapling_output_count: usize,
         _orchard_action_count: usize,
+        #[cfg(zcash_unstable = "nu7")] _asset_creation_count: usize,
+        #[cfg(zcash_unstable = "nu7")] _issue_note_count: usize,
     ) -> Result<Zatoshis, Self::Error> {
         Ok(self.fixed_fee)
     }

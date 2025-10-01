@@ -759,6 +759,18 @@ impl<P: consensus::Parameters, U: sapling::builder::ProverProgress> Builder<'_, 
                             .num_actions(builder.spends().len(), builder.outputs().len())
                             .map_err(FeeError::Bundle)
                     })?,
+                #[cfg(zcash_unstable = "nu7")]
+                self.issuance_builder.as_ref().map_or(0, |bundle| {
+                    bundle
+                        .actions()
+                        .iter()
+                        .filter(|&action| action.get_reference_note().is_some())
+                        .count()
+                }),
+                #[cfg(zcash_unstable = "nu7")]
+                self.issuance_builder
+                    .as_ref()
+                    .map_or(0, |bundle| bundle.get_all_notes().len()),
             )
             .map_err(FeeError::FeeRule)
     }

@@ -34,6 +34,8 @@ pub trait FeeRule {
         sapling_input_count: usize,
         sapling_output_count: usize,
         orchard_action_count: usize,
+        #[cfg(zcash_unstable = "nu7")] asset_creation_count: usize,
+        #[cfg(zcash_unstable = "nu7")] issue_note_count: usize,
     ) -> Result<Zatoshis, Self::Error>;
 }
 
