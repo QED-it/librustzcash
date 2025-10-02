@@ -8,7 +8,10 @@ use lazy_static::lazy_static;
 use orchard::orchard_sighash_versioning::OrchardSighashVersion;
 
 #[cfg(zcash_unstable = "nu7")]
-use orchard::issuance_sighash_versioning::IssueSighashVersion;
+use {
+    ::sapling::sapling_sighash_versioning::SaplingSighashVersion,
+    orchard::issuance_sighash_versioning::IssueSighashVersion,
+};
 
 /// Orchard `SighashInfo` for V0:
 /// sighashInfo = (\[sighashVersion\] || associatedData) = (\[0\] || [])
@@ -43,6 +46,26 @@ lazy_static! {
 #[cfg(zcash_unstable = "nu7")]
 pub(crate) fn to_issuance_version(bytes: Vec<u8>) -> Option<IssueSighashVersion> {
     ISSUE_SIGHASH_VERSION_TO_INFO_BYTES
+        .iter()
+        .find(|(_, v)| **v == bytes)
+        .map(|(k, _)| k.clone())
+}
+
+/// Sapling `SighashInfo` for V0:
+/// sighashInfo = (\[sighashVersion\] || associatedData) = (\[0\] || [])
+#[cfg(zcash_unstable = "nu7")]
+const SAPLING_SIGHASH_INFO_V0: [u8; 1] = [0];
+
+#[cfg(zcash_unstable = "nu7")]
+lazy_static! {
+    /// Mapping from an `SaplingSighashVersion` to the raw byte representation of the corresponding `SighashInfo`.
+    pub(crate) static ref SAPLING_SIGHASH_VERSION_TO_INFO_BYTES: BTreeMap<SaplingSighashVersion, Vec<u8>> =
+        BTreeMap::from([(SaplingSighashVersion::V0, SAPLING_SIGHASH_INFO_V0.to_vec())]);
+}
+
+#[cfg(zcash_unstable = "nu7")]
+pub(crate) fn to_sapling_version(bytes: Vec<u8>) -> Option<SaplingSighashVersion> {
+    SAPLING_SIGHASH_VERSION_TO_INFO_BYTES
         .iter()
         .find(|(_, v)| **v == bytes)
         .map(|(k, _)| k.clone())

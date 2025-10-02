@@ -71,8 +71,8 @@ pub struct Spend {
     /// The spend authorization signature.
     ///
     /// This is set by the Signer.
-    #[serde_as(as = "Option<[_; 64]>")]
-    pub(crate) spend_auth_sig: Option<[u8; 64]>,
+    #[serde_as(as = "Option<(_, [_; 64])>")]
+    pub(crate) spend_auth_sig: Option<(u8, [u8; 64])>,
 
     /// The [raw encoding] of the Sapling payment address that received the note being spent.
     ///
@@ -530,7 +530,11 @@ impl Bundle {
                     nullifier: spend.nullifier().0,
                     rk: (*spend.rk()).into(),
                     zkproof: *spend.zkproof(),
-                    spend_auth_sig: spend.spend_auth_sig().map(|s| s.into()),
+                    spend_auth_sig: spend.spend_auth_sig().as_ref().map(|s| {
+                        let version = s.version().clone() as u8;
+                        let sig = (*s.sig()).into();
+                        (version, sig)
+                    }),
                     recipient: spend.recipient().map(|recipient| recipient.to_bytes()),
                     value: spend.value().map(|value| value.inner()),
                     rcm,

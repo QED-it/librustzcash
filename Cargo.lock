@@ -3945,7 +3945,7 @@ dependencies = [
 [[package]]
 name = "sapling-crypto"
 version = "0.5.0"
-source = "git+https://github.com/QED-it/sapling-crypto?rev=9393f93fe547d1b3738c9f4618c0f8a2fffed29f#9393f93fe547d1b3738c9f4618c0f8a2fffed29f"
+source = "git+https://github.com/QED-it/sapling-crypto?branch=sighash_version#9fb73cafdc3278321eff020ac8cacc596302f473"
 dependencies = [
  "aes",
  "bellman",

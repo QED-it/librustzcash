@@ -31,9 +31,12 @@ use crate::transaction::{
 };
 #[cfg(zcash_unstable = "nu7")]
 use {
-    crate::sighash_versioning::ISSUE_SIGHASH_VERSION_TO_INFO_BYTES,
+    crate::sighash_versioning::{
+        ISSUE_SIGHASH_VERSION_TO_INFO_BYTES, SAPLING_SIGHASH_VERSION_TO_INFO_BYTES,
+    },
     crate::transaction::OrchardBundle::OrchardZSA,
     orchard::issuance::{IssueBundle, Signed},
+    zcash_encoding::Vector,
 };
 
 /// TxId tree root personalization
@@ -353,6 +356,7 @@ impl<A: Authorization> TransactionDigest<A> for TxIdDigester {
 
     fn digest_sapling(
         &self,
+        _version: TxVersion,
         sapling_bundle: Option<&sapling::Bundle<A::SaplingAuth, ZatBalance>>,
     ) -> Self::SaplingDigest {
         sapling_bundle.map(hash_sapling_txid_data)
@@ -526,6 +530,7 @@ impl TransactionDigest<Authorized> for BlockTxCommitmentDigester {
 
     fn digest_sapling(
         &self,
+        version: TxVersion,
         sapling_bundle: Option<&sapling::Bundle<sapling::bundle::Authorized, ZatBalance>>,
     ) -> Blake2bHash {
         let mut h = hasher(ZCASH_SAPLING_SIGS_HASH_PERSONALIZATION);
@@ -534,17 +539,57 @@ impl TransactionDigest<Authorized> for BlockTxCommitmentDigester {
                 h.write_all(spend.zkproof()).unwrap();
             }
 
-            for spend in bundle.shielded_spends() {
-                h.write_all(&<[u8; 64]>::from(*spend.spend_auth_sig()))
-                    .unwrap();
+            match version {
+                TxVersion::V3 | TxVersion::V4 | TxVersion::V5 => {
+                    for spend in bundle.shielded_spends() {
+                        h.write_all(&<[u8; 64]>::from(*spend.spend_auth_sig().sig()))
+                            .unwrap();
+                    }
+                }
+                #[cfg(zcash_unstable = "nu7")]
+                TxVersion::V6 => {
+                    for spend in bundle.shielded_spends() {
+                        let sighash_info_bytes = SAPLING_SIGHASH_VERSION_TO_INFO_BYTES
+                            .get(spend.spend_auth_sig().version())
+                            .unwrap();
+                        Vector::write(&mut h, sighash_info_bytes, |w, b| w.write_u8(*b)).unwrap();
+                        h.write_all(&<[u8; 64]>::from(*spend.spend_auth_sig().sig()))
+                            .unwrap();
+                    }
+                }
+                _ => {
+                    panic!(
+                        "Unknown transaction version for Sapling digest: {:?}",
+                        version
+                    );
+                }
             }
 
             for output in bundle.shielded_outputs() {
                 h.write_all(output.zkproof()).unwrap();
             }
 
-            h.write_all(&<[u8; 64]>::from(bundle.authorization().binding_sig))
-                .unwrap();
+            match version {
+                TxVersion::V3 | TxVersion::V4 | TxVersion::V5 => {
+                    h.write_all(&<[u8; 64]>::from(*bundle.authorization().binding_sig.sig()))
+                        .unwrap();
+                }
+                #[cfg(zcash_unstable = "nu7")]
+                TxVersion::V6 => {
+                    let sighash_info_bytes = SAPLING_SIGHASH_VERSION_TO_INFO_BYTES
+                        .get(bundle.authorization().binding_sig.version())
+                        .unwrap();
+                    Vector::write(&mut h, sighash_info_bytes, |w, b| w.write_u8(*b)).unwrap();
+                    h.write_all(&<[u8; 64]>::from(*bundle.authorization().binding_sig.sig()))
+                        .unwrap();
+                }
+                _ => {
+                    panic!(
+                        "Unknown transaction version for Sapling digest: {:?}",
+                        version
+                    );
+                }
+            }
         }
         h.finalize()
     }

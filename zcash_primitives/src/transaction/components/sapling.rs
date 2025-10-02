@@ -9,6 +9,7 @@ use ::sapling::{
     },
     note::ExtractedNoteCommitment,
     note_encryption::Zip212Enforcement,
+    sapling_sighash_versioning::{SaplingSighashVersion, VerBindingSig, VerSpendAuthSig},
     value::ValueCommitment,
     Nullifier,
 };
@@ -23,6 +24,14 @@ use zcash_protocol::{
 
 use super::GROTH_PROOF_SIZE;
 use crate::transaction::Transaction;
+
+#[cfg(zcash_unstable = "nu7")]
+use {
+    crate::encoding::{ReadBytesExt, WriteBytesExt},
+    crate::sighash_versioning::{to_sapling_version, SAPLING_SIGHASH_VERSION_TO_INFO_BYTES},
+    ::sapling::sapling_sighash_versioning::SaplingVersionedSig,
+    redjubjub::{SigType, Signature},
+};
 
 /// Returns the enforcement policy for ZIP 212 at the given height.
 pub fn zip212_enforcement(params: &impl Parameters, height: BlockHeight) -> Zip212Enforcement {
@@ -153,10 +162,47 @@ fn read_rk<R: Read>(mut reader: R) -> io::Result<redjubjub::VerificationKey<Spen
 /// Consensus rules (§4.4):
 /// - Canonical encoding is enforced here.
 /// - Signature validity is enforced in SaplingVerificationContext::check_spend()
-fn read_spend_auth_sig<R: Read>(mut reader: R) -> io::Result<redjubjub::Signature<SpendAuth>> {
+fn read_spend_auth_sig<R: Read>(mut reader: R) -> io::Result<VerSpendAuthSig> {
     let mut sig = [0; 64];
     reader.read_exact(&mut sig)?;
-    Ok(redjubjub::Signature::from(sig))
+    Ok(VerSpendAuthSig::new(
+        SaplingSighashVersion::NoVersion,
+        redjubjub::Signature::from(sig),
+    ))
+}
+
+#[cfg(zcash_unstable = "nu7")]
+pub fn read_versioned_signature<R: Read, T: SigType>(
+    mut reader: R,
+) -> io::Result<SaplingVersionedSig<T>> {
+    let sighash_info_bytes = Vector::read(&mut reader, |r| r.read_u8())?;
+    let sighash_version = to_sapling_version(sighash_info_bytes).ok_or_else(|| {
+        io::Error::new(io::ErrorKind::InvalidInput, "Unknown Sapling sighash info")
+    })?;
+
+    let mut signature_bytes = [0u8; 64];
+    reader.read_exact(&mut signature_bytes)?;
+    Ok(SaplingVersionedSig::new(
+        sighash_version,
+        Signature::from(signature_bytes),
+    ))
+}
+
+#[cfg(zcash_unstable = "nu7")]
+pub fn write_versioned_signature<W: Write, T: SigType>(
+    mut writer: W,
+    versioned_sig: &SaplingVersionedSig<T>,
+) -> io::Result<()> {
+    let sighash_info_bytes = SAPLING_SIGHASH_VERSION_TO_INFO_BYTES
+        .get(versioned_sig.version())
+        .ok_or_else(|| {
+            io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "Unknown Sapling sighash version",
+            )
+        })?;
+    Vector::write(&mut writer, sighash_info_bytes, |w, b| w.write_u8(*b))?;
+    writer.write_all(&<[u8; 64]>::from(*versioned_sig.sig()))
 }
 
 #[cfg(feature = "temporary-zcashd")]
@@ -196,7 +242,7 @@ fn write_spend_v4<W: Write>(mut writer: W, spend: &SpendDescription<Authorized>)
     writer.write_all(&spend.nullifier().0)?;
     writer.write_all(&<[u8; 32]>::from(*spend.rk()))?;
     writer.write_all(spend.zkproof())?;
-    writer.write_all(&<[u8; 64]>::from(*spend.spend_auth_sig()))
+    writer.write_all(&<[u8; 64]>::from(*spend.spend_auth_sig().sig()))
 }
 
 fn write_spend_v5_without_witness_data<W: Write>(
@@ -419,7 +465,69 @@ pub(crate) fn read_v5_bundle<R: Read>(
     let binding_sig = if n_spends > 0 || n_outputs > 0 {
         let mut sig = [0; 64];
         reader.read_exact(&mut sig)?;
-        Some(redjubjub::Signature::from(sig))
+        Some(VerBindingSig::new(
+            SaplingSighashVersion::NoVersion,
+            redjubjub::Signature::from(sig),
+        ))
+    } else {
+        None
+    };
+
+    let shielded_spends = sd_v5s
+        .into_iter()
+        .zip(v_spend_proofs.into_iter().zip(v_spend_auth_sigs))
+        .map(|(sd_5, (zkproof, spend_auth_sig))| {
+            // the following `unwrap` is safe because we know n_spends > 0.
+            sd_5.into_spend_description(anchor.unwrap(), zkproof, spend_auth_sig)
+        })
+        .collect();
+
+    let shielded_outputs = od_v5s
+        .into_iter()
+        .zip(v_output_proofs)
+        .map(|(od_5, zkproof)| od_5.into_output_description(zkproof))
+        .collect();
+
+    Ok(binding_sig.and_then(|binding_sig| {
+        Bundle::from_parts(
+            shielded_spends,
+            shielded_outputs,
+            value_balance,
+            Authorized { binding_sig },
+        )
+    }))
+}
+
+/// Reads a [`Bundle`] from a v6 transaction format.
+#[cfg(zcash_unstable = "nu7")]
+#[allow(clippy::redundant_closure)]
+pub(crate) fn read_v6_bundle<R: Read>(
+    mut reader: R,
+) -> io::Result<Option<Bundle<Authorized, ZatBalance>>> {
+    let sd_v5s = Vector::read(&mut reader, read_spend_v5)?;
+    let od_v5s = Vector::read(&mut reader, read_output_v5)?;
+    let n_spends = sd_v5s.len();
+    let n_outputs = od_v5s.len();
+    let value_balance = if n_spends > 0 || n_outputs > 0 {
+        Transaction::read_amount(&mut reader)?
+    } else {
+        ZatBalance::zero()
+    };
+
+    let anchor = if n_spends > 0 {
+        Some(read_base(&mut reader, "anchor")?)
+    } else {
+        None
+    };
+
+    let v_spend_proofs = Array::read(&mut reader, n_spends, |r| read_zkproof(r))?;
+    let v_spend_auth_sigs = Array::read(&mut reader, n_spends, |r| {
+        read_versioned_signature::<_, redjubjub::SpendAuth>(r)
+    })?;
+    let v_output_proofs = Array::read(&mut reader, n_outputs, |r| read_zkproof(r))?;
+
+    let binding_sig = if n_spends > 0 || n_outputs > 0 {
+        Some(read_versioned_signature::<_, redjubjub::Binding>(reader)?)
     } else {
         None
     };
@@ -477,7 +585,10 @@ pub(crate) fn write_v5_bundle<W: Write>(
         )?;
         Array::write(
             &mut writer,
-            bundle.shielded_spends().iter().map(|s| s.spend_auth_sig()),
+            bundle
+                .shielded_spends()
+                .iter()
+                .map(|s| s.spend_auth_sig().sig()),
             |w, e| w.write_all(&<[u8; 64]>::from(**e)),
         )?;
 
@@ -488,7 +599,58 @@ pub(crate) fn write_v5_bundle<W: Write>(
         )?;
 
         if !(bundle.shielded_spends().is_empty() && bundle.shielded_outputs().is_empty()) {
-            writer.write_all(&<[u8; 64]>::from(bundle.authorization().binding_sig))?;
+            writer.write_all(&<[u8; 64]>::from(*bundle.authorization().binding_sig.sig()))?;
+        }
+    } else {
+        CompactSize::write(&mut writer, 0)?;
+        CompactSize::write(&mut writer, 0)?;
+    }
+
+    Ok(())
+}
+
+/// Writes a [`Bundle`] in the v6 transaction format.
+#[cfg(zcash_unstable = "nu7")]
+pub(crate) fn write_v6_bundle<W: Write>(
+    mut writer: W,
+    sapling_bundle: Option<&Bundle<Authorized, ZatBalance>>,
+) -> io::Result<()> {
+    if let Some(bundle) = sapling_bundle {
+        Vector::write(&mut writer, bundle.shielded_spends(), |w, e| {
+            write_spend_v5_without_witness_data(w, e)
+        })?;
+
+        Vector::write(&mut writer, bundle.shielded_outputs(), |w, e| {
+            write_output_v5_without_proof(w, e)
+        })?;
+
+        if !(bundle.shielded_spends().is_empty() && bundle.shielded_outputs().is_empty()) {
+            writer.write_all(&bundle.value_balance().to_i64_le_bytes())?;
+        }
+        if !bundle.shielded_spends().is_empty() {
+            writer.write_all(bundle.shielded_spends()[0].anchor().to_repr().as_ref())?;
+        }
+
+        Array::write(
+            &mut writer,
+            bundle.shielded_spends().iter().map(|s| &s.zkproof()[..]),
+            |w, e| w.write_all(e),
+        )?;
+
+        Array::write(
+            &mut writer,
+            bundle.shielded_spends().iter().map(|s| s.spend_auth_sig()),
+            |w, auth| write_versioned_signature(w, auth),
+        )?;
+
+        Array::write(
+            &mut writer,
+            bundle.shielded_outputs().iter().map(|s| &s.zkproof()[..]),
+            |w, e| w.write_all(e),
+        )?;
+
+        if !(bundle.shielded_spends().is_empty() && bundle.shielded_outputs().is_empty()) {
+            write_versioned_signature(&mut writer, &bundle.authorization().binding_sig)?;
         }
     } else {
         CompactSize::write(&mut writer, 0)?;

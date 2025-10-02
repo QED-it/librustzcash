@@ -21,6 +21,7 @@ use core::fmt::Debug;
 use core::ops::Deref;
 use core2::io::{self, Read, Write};
 
+use ::sapling::sapling_sighash_versioning::{SaplingSighashVersion, VerBindingSig};
 use ::transparent::bundle::{self as transparent, OutPoint, TxIn, TxOut};
 use zcash_encoding::{CompactSize, Vector};
 use zcash_protocol::{
@@ -567,7 +568,7 @@ impl<A: Authorization> TransactionData<A> {
                 &self.zip233_amount,
             ),
             digester.digest_transparent(self.transparent_bundle.as_ref()),
-            digester.digest_sapling(self.sapling_bundle.as_ref()),
+            digester.digest_sapling(self.version, self.sapling_bundle.as_ref()),
             self.digest_orchard(&digester),
             #[cfg(zcash_unstable = "nu7")]
             digester.digest_issue(self.issue_bundle.as_ref()),
@@ -877,7 +878,12 @@ impl Transaction {
                         shielded_spends,
                         shielded_outputs,
                         value_balance,
-                        sapling::bundle::Authorized { binding_sig },
+                        sapling::bundle::Authorized {
+                            binding_sig: VerBindingSig::new(
+                                SaplingSighashVersion::NoVersion,
+                                binding_sig,
+                            ),
+                        },
                     )
                 }),
                 orchard_bundle: None,
@@ -945,7 +951,7 @@ impl Transaction {
         let header_fragment = Self::read_v6_header_fragment(&mut reader)?;
 
         let transparent_bundle = Self::read_transparent(&mut reader)?;
-        let sapling_bundle = sapling_serialization::read_v5_bundle(&mut reader)?;
+        let sapling_bundle = sapling_serialization::read_v6_bundle(&mut reader)?;
         let orchard_bundle = orchard_serialization::read_v6_bundle(&mut reader)?;
         let issue_bundle = issuance::read_bundle(&mut reader)?;
 
@@ -1083,7 +1089,7 @@ impl Transaction {
 
         if self.version.has_sapling() {
             if let Some(bundle) = self.sapling_bundle.as_ref() {
-                writer.write_all(&<[u8; 64]>::from(bundle.authorization().binding_sig))?;
+                writer.write_all(&<[u8; 64]>::from(*bundle.authorization().binding_sig.sig()))?;
             }
         }
 
@@ -1111,7 +1117,7 @@ impl Transaction {
         }
         self.write_header(&mut writer)?;
         self.write_transparent(&mut writer)?;
-        self.write_v5_sapling(&mut writer)?;
+        sapling_serialization::write_v5_bundle(&mut writer, self.sapling_bundle.as_ref())?;
         orchard_serialization::write_v5_bundle(self.orchard_bundle.as_ref(), &mut writer)?;
 
         Ok(())
@@ -1128,7 +1134,7 @@ impl Transaction {
         self.write_v6_header(&mut writer)?;
 
         self.write_transparent(&mut writer)?;
-        self.write_v5_sapling(&mut writer)?;
+        sapling_serialization::write_v6_bundle(&mut writer, self.sapling_bundle.as_ref())?;
         orchard_serialization::write_v6_bundle(&mut writer, self.orchard_bundle.as_ref())?;
         issuance::write_bundle(self.issue_bundle.as_ref(), &mut writer)?;
 
@@ -1163,10 +1169,6 @@ impl Transaction {
         writer: W,
     ) -> io::Result<()> {
         sapling_serialization::write_v5_bundle(writer, sapling_bundle)
-    }
-
-    pub fn write_v5_sapling<W: Write>(&self, writer: W) -> io::Result<()> {
-        sapling_serialization::write_v5_bundle(writer, self.sapling_bundle.as_ref())
     }
 
     #[cfg(zcash_unstable = "zfuture")]
@@ -1244,6 +1246,7 @@ pub trait TransactionDigest<A: Authorization> {
 
     fn digest_sapling(
         &self,
+        version: TxVersion,
         sapling_bundle: Option<&sapling::Bundle<A::SaplingAuth, ZatBalance>>,
     ) -> Self::SaplingDigest;
 
