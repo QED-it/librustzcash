@@ -542,7 +542,7 @@ impl TransactionDigest<Authorized> for BlockTxCommitmentDigester {
             match version {
                 TxVersion::V3 | TxVersion::V4 | TxVersion::V5 => {
                     for spend in bundle.shielded_spends() {
-                        h.write_all(&<[u8; 64]>::from(*spend.spend_auth_sig().sig()))
+                        h.write_all(&<[u8; 64]>::from(*spend.spend_auth().sig()))
                             .unwrap();
                     }
                 }
@@ -550,10 +550,10 @@ impl TransactionDigest<Authorized> for BlockTxCommitmentDigester {
                 TxVersion::V6 => {
                     for spend in bundle.shielded_spends() {
                         let sighash_info_bytes = SAPLING_SIGHASH_VERSION_TO_INFO_BYTES
-                            .get(spend.spend_auth_sig().version())
+                            .get(spend.spend_auth().version())
                             .unwrap();
                         Vector::write(&mut h, sighash_info_bytes, |w, b| w.write_u8(*b)).unwrap();
-                        h.write_all(&<[u8; 64]>::from(*spend.spend_auth_sig().sig()))
+                        h.write_all(&<[u8; 64]>::from(*spend.spend_auth().sig()))
                             .unwrap();
                     }
                 }

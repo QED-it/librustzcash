@@ -242,7 +242,7 @@ fn write_spend_v4<W: Write>(mut writer: W, spend: &SpendDescription<Authorized>)
     writer.write_all(&spend.nullifier().0)?;
     writer.write_all(&<[u8; 32]>::from(*spend.rk()))?;
     writer.write_all(spend.zkproof())?;
-    writer.write_all(&<[u8; 64]>::from(*spend.spend_auth_sig().sig()))
+    writer.write_all(&<[u8; 64]>::from(*spend.spend_auth().sig()))
 }
 
 fn write_spend_v5_without_witness_data<W: Write>(
@@ -588,7 +588,7 @@ pub(crate) fn write_v5_bundle<W: Write>(
             bundle
                 .shielded_spends()
                 .iter()
-                .map(|s| s.spend_auth_sig().sig()),
+                .map(|s| s.spend_auth().sig()),
             |w, e| w.write_all(&<[u8; 64]>::from(**e)),
         )?;
 
@@ -639,7 +639,7 @@ pub(crate) fn write_v6_bundle<W: Write>(
 
         Array::write(
             &mut writer,
-            bundle.shielded_spends().iter().map(|s| s.spend_auth_sig()),
+            bundle.shielded_spends().iter().map(|s| s.spend_auth()),
             |w, auth| write_versioned_signature(w, auth),
         )?;
 
