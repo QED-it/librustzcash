@@ -721,7 +721,11 @@ impl<P: consensus::Parameters, U: sapling::builder::ProverProgress> Builder<'_, 
     ///
     /// This fee is a function of the spends and outputs that have been added to the builder,
     /// pursuant to the specified [`FeeRule`].
-    pub fn get_fee<FR: FeeRule>(&self, fee_rule: &FR) -> Result<Zatoshis, FeeError<FR::Error>> {
+    pub fn get_fee<FR: FeeRule>(
+        &self,
+        fee_rule: &FR,
+        #[cfg(zcash_unstable = "nu7")] is_asset_newly_created: impl Fn(&AssetBase) -> bool,
+    ) -> Result<Zatoshis, FeeError<FR::Error>> {
         #[cfg(feature = "transparent-inputs")]
         let transparent_inputs = self.transparent_builder.inputs();
 
@@ -764,8 +768,13 @@ impl<P: consensus::Parameters, U: sapling::builder::ProverProgress> Builder<'_, 
                     bundle
                         .actions()
                         .iter()
-                        .filter(|&action| action.get_reference_note().is_some())
-                        .count()
+                        .filter(|&action| {
+                            is_asset_newly_created(&AssetBase::derive(
+                                bundle.ik(),
+                                action.asset_desc_hash(),
+                            ))
+                        })
+                        .len()
                 }),
                 #[cfg(zcash_unstable = "nu7")]
                 self.issuance_builder
@@ -838,8 +847,15 @@ impl<P: consensus::Parameters, U: sapling::builder::ProverProgress> Builder<'_, 
         spend_prover: &SP,
         output_prover: &OP,
         fee_rule: &FR,
+        #[cfg(zcash_unstable = "nu7")] is_asset_newly_created: impl Fn(&AssetBase) -> bool,
     ) -> Result<BuildResult, Error<FR::Error>> {
-        let fee = self.get_fee(fee_rule).map_err(Error::Fee)?;
+        let fee = self
+            .get_fee(
+                fee_rule,
+                #[cfg(zcash_unstable = "nu7")]
+                is_asset_newly_created,
+            )
+            .map_err(Error::Fee)?;
         self.build_internal(
             transparent_signing_set,
             sapling_extsks,
@@ -1111,8 +1127,15 @@ impl<P: consensus::Parameters, U: sapling::builder::ProverProgress> Builder<'_, 
         self,
         mut rng: R,
         fee_rule: &FR,
+        #[cfg(zcash_unstable = "nu7")] is_asset_newly_created: impl Fn(&AssetBase) -> bool,
     ) -> Result<PcztResult<P>, Error<FR::Error>> {
-        let fee = self.get_fee(fee_rule).map_err(Error::Fee)?;
+        let fee = self
+            .get_fee(
+                fee_rule,
+                #[cfg(zcash_unstable = "nu7")]
+                is_asset_newly_created,
+            )
+            .map_err(Error::Fee)?;
         let consensus_branch_id = BranchId::for_height(&self.params, self.target_height);
 
         // determine transaction version
