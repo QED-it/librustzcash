@@ -774,7 +774,7 @@ impl<P: consensus::Parameters, U: sapling::builder::ProverProgress> Builder<'_, 
                                 action.asset_desc_hash(),
                             ))
                         })
-                        .len()
+                        .count()
                 }),
                 #[cfg(zcash_unstable = "nu7")]
                 self.issuance_builder
@@ -1283,6 +1283,7 @@ mod testing {
 
     use crate::transaction::fees::zip317;
     use ::sapling::prover::mock::{MockOutputProver, MockSpendProver};
+    use orchard::note::AssetBase;
     use rand::RngCore;
     use rand_core::CryptoRng;
     use transparent::builder::TransparentSigningSet;
@@ -1296,6 +1297,7 @@ mod testing {
             transparent_signing_set: &TransparentSigningSet,
             sapling_extsks: &[sapling::zip32::ExtendedSpendingKey],
             orchard_saks: &[orchard::keys::SpendAuthorizingKey],
+            #[cfg(zcash_unstable = "nu7")] is_asset_newly_created: impl Fn(&AssetBase) -> bool,
             rng: R,
         ) -> Result<BuildResult, Error<zip317::FeeError>> {
             struct FakeCryptoRng<R: RngCore>(R);
@@ -1327,6 +1329,8 @@ mod testing {
                 &MockOutputProver,
                 #[allow(deprecated)]
                 &zip317::FeeRule::standard(),
+                #[cfg(zcash_unstable = "nu7")]
+                is_asset_newly_created,
             )
         }
     }
@@ -1432,7 +1436,14 @@ mod tests {
             .unwrap();
 
         let res = builder
-            .mock_build(&transparent_signing_set, &[], &[], OsRng)
+            .mock_build(
+                &transparent_signing_set,
+                &[],
+                &[],
+                #[cfg(zcash_unstable = "nu7")]
+                |_| false, //TODO: more details?
+                OsRng,
+            )
             .unwrap();
         // No binding signature, because only t input and outputs
         assert!(res.transaction().sapling_bundle.is_none());
@@ -1479,7 +1490,14 @@ mod tests {
 
         // A binding signature (and bundle) is present because there is a Sapling spend.
         let res = builder
-            .mock_build(&TransparentSigningSet::new(), &[extsk], &[], OsRng)
+            .mock_build(
+                &TransparentSigningSet::new(),
+                &[extsk],
+                &[],
+                #[cfg(zcash_unstable = "nu7")]
+                |_| false, //TODO: more details?
+                OsRng,
+            )
             .unwrap();
         assert!(res.transaction().sapling_bundle().is_some());
     }
@@ -1505,7 +1523,14 @@ mod tests {
             };
             let builder = Builder::new(TEST_NETWORK, tx_height, build_config);
             assert_matches!(
-                builder.mock_build(&TransparentSigningSet::new(), &[], &[], OsRng),
+                builder.mock_build(
+                    &TransparentSigningSet::new(),
+                    &[],
+                    &[],
+                    #[cfg(zcash_unstable = "nu7")]
+                    |_| false, //TODO: more details?
+                    OsRng,
+                ),
                 Err(Error::InsufficientFunds(expected)) if expected == MINIMUM_FEE.into()
             );
         }
@@ -1533,7 +1558,14 @@ mod tests {
                 )
                 .unwrap();
             assert_matches!(
-                builder.mock_build(&TransparentSigningSet::new(), extsks, &[], OsRng),
+                builder.mock_build(
+                    &TransparentSigningSet::new(),
+                    extsks,
+                    &[],
+                    #[cfg(zcash_unstable = "nu7")]
+                    |_| false, //TODO: more details?
+                    OsRng
+                ),
                 Err(Error::InsufficientFunds(expected)) if
                     expected == (Zatoshis::const_from_u64(50000) + MINIMUM_FEE).unwrap().into()
             );
@@ -1554,7 +1586,14 @@ mod tests {
                 )
                 .unwrap();
             assert_matches!(
-                builder.mock_build(&TransparentSigningSet::new(), extsks, &[], OsRng),
+                builder.mock_build(
+                    &TransparentSigningSet::new(),
+                    extsks,
+                    &[],
+                    #[cfg(zcash_unstable = "nu7")]
+                    |_| false, //TODO: more details?
+                    OsRng
+                ),
                 Err(Error::InsufficientFunds(expected)) if expected ==
                     (Zatoshis::const_from_u64(50000) + MINIMUM_FEE).unwrap().into()
             );
@@ -1599,7 +1638,14 @@ mod tests {
                 )
                 .unwrap();
             assert_matches!(
-                builder.mock_build(&TransparentSigningSet::new(), extsks, &[], OsRng),
+                builder.mock_build(
+                    &TransparentSigningSet::new(),
+                    extsks,
+                    &[],
+                    #[cfg(zcash_unstable = "nu7")]
+                    |_| false, //TODO: more details?
+                    OsRng
+                ),
                 Err(Error::InsufficientFunds(expected)) if expected == ZatBalance::const_from_i64(1)
             );
         }
@@ -1650,7 +1696,14 @@ mod tests {
                 )
                 .unwrap();
             let res = builder
-                .mock_build(&TransparentSigningSet::new(), extsks, &[], OsRng)
+                .mock_build(
+                    &TransparentSigningSet::new(),
+                    extsks,
+                    &[],
+                    #[cfg(zcash_unstable = "nu7")]
+                    |_| false, //TODO: more details?
+                    OsRng,
+                )
                 .unwrap();
             assert_eq!(
                 res.transaction()
