@@ -1283,7 +1283,6 @@ mod testing {
 
     use crate::transaction::fees::zip317;
     use ::sapling::prover::mock::{MockOutputProver, MockSpendProver};
-    use orchard::note::AssetBase;
     use rand::RngCore;
     use rand_core::CryptoRng;
     use transparent::builder::TransparentSigningSet;
@@ -1297,7 +1296,9 @@ mod testing {
             transparent_signing_set: &TransparentSigningSet,
             sapling_extsks: &[sapling::zip32::ExtendedSpendingKey],
             orchard_saks: &[orchard::keys::SpendAuthorizingKey],
-            #[cfg(zcash_unstable = "nu7")] is_asset_newly_created: impl Fn(&AssetBase) -> bool,
+            #[cfg(zcash_unstable = "nu7")] is_asset_newly_created: impl Fn(
+                &orchard::note::AssetBase,
+            ) -> bool,
             rng: R,
         ) -> Result<BuildResult, Error<zip317::FeeError>> {
             struct FakeCryptoRng<R: RngCore>(R);
