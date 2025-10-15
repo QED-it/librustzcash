@@ -125,7 +125,12 @@ fn transparent_to_orchard() {
         )
         .unwrap();
     let PcztResult { pczt_parts, .. } = builder
-        .build_for_pczt(rng, &zip317::FeeRule::standard())
+        .build_for_pczt(
+            rng,
+            &zip317::FeeRule::standard(),
+            #[cfg(zcash_unstable = "nu7")]
+            |_| false, //TODO: more details?
+        )
         .unwrap();
 
     // Create the base PCZT.
@@ -258,7 +263,12 @@ fn sapling_to_orchard() {
         sapling_meta,
         ..
     } = builder
-        .build_for_pczt(OsRng, &zip317::FeeRule::standard())
+        .build_for_pczt(
+            OsRng,
+            &zip317::FeeRule::standard(),
+            #[cfg(zcash_unstable = "nu7")]
+            |_| false, //TODO: more details?
+        )
         .unwrap();
 
     // Create the base PCZT.
@@ -427,7 +437,12 @@ fn orchard_to_orchard() {
         orchard_meta,
         ..
     } = builder
-        .build_for_pczt(OsRng, &zip317::FeeRule::standard())
+        .build_for_pczt(
+            OsRng,
+            &zip317::FeeRule::standard(),
+            #[cfg(zcash_unstable = "nu7")]
+            |_| false, //TODO: more details?
+        )
         .unwrap();
 
     // Create the base PCZT.
@@ -582,7 +597,12 @@ fn zsa_to_zsa() {
         orchard_meta,
         ..
     } = builder
-        .build_for_pczt(OsRng, &zip317::FeeRule::standard())
+        .build_for_pczt(
+            OsRng,
+            &zip317::FeeRule::standard(),
+            #[cfg(zcash_unstable = "nu7")]
+            |_| false, //TODO: more details?
+        )
         .unwrap();
 
     // Create the base PCZT.

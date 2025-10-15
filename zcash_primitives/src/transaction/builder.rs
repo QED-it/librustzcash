@@ -1638,8 +1638,8 @@ mod tests {
 
             assert_matches!(
                 builder.mock_build(
-                    &TransparentSigningSet::new(), 
-                    extsks, 
+                    &TransparentSigningSet::new(),
+                    extsks,
                     &[],
                      #[cfg(zcash_unstable = "nu7")]
                     |_| false, //TODO: more details?
@@ -1734,8 +1734,8 @@ mod tests {
             builder.set_zip233_amount(Zatoshis::const_from_u64(10000));
             assert_matches!(
                 builder.mock_build(
-                    &TransparentSigningSet::new(), 
-                    extsks, 
+                    &TransparentSigningSet::new(),
+                    extsks,
                     &[],
                      #[cfg(zcash_unstable = "nu7")]
                     |_| false, //TODO: more details?
