@@ -1637,7 +1637,14 @@ mod tests {
             builder.set_zip233_amount(Zatoshis::const_from_u64(50000));
 
             assert_matches!(
-                builder.mock_build(&TransparentSigningSet::new(), extsks, &[], OsRng),
+                builder.mock_build(
+                    &TransparentSigningSet::new(), 
+                    extsks, 
+                    &[],
+                     #[cfg(zcash_unstable = "nu7")]
+                    |_| false, //TODO: more details?
+                    OsRng
+                ),
                 Err(Error::InsufficientFunds(expected)) if expected ==
                     (Zatoshis::const_from_u64(50000) + MINIMUM_FEE).unwrap().into()
             );
@@ -1726,7 +1733,14 @@ mod tests {
                 .unwrap();
             builder.set_zip233_amount(Zatoshis::const_from_u64(10000));
             assert_matches!(
-                builder.mock_build(&TransparentSigningSet::new(), extsks, &[], OsRng),
+                builder.mock_build(
+                    &TransparentSigningSet::new(), 
+                    extsks, 
+                    &[],
+                     #[cfg(zcash_unstable = "nu7")]
+                    |_| false, //TODO: more details?
+                    OsRng
+                ),
                 Err(Error::InsufficientFunds(expected)) if expected == ZatBalance::const_from_i64(1)
             );
         }
@@ -1777,7 +1791,14 @@ mod tests {
                 )
                 .unwrap();
             let res = builder
-                .mock_build(&TransparentSigningSet::new(), extsks, &[], OsRng)
+                .mock_build(
+                    &TransparentSigningSet::new(),
+                    extsks,
+                    &[],
+                    #[cfg(zcash_unstable = "nu7")]
+                    |_| false, //TODO: more details?
+                    OsRng,
+                )
                 .unwrap();
             assert_eq!(
                 res.transaction()
