@@ -1905,22 +1905,22 @@ mod tests {
         // Create a asset creation function, to simulate the output from querying global state,
         // under the assumption that only asset_base_1 is already issued before,
         // and no other assets (including asset_base_2) are previously issued.
-        fn is_asset_newly_created(asset_base: AssetBase) -> bool {
+        fn is_asset_newly_created(asset_base: &AssetBase) -> bool {
             match asset_base {
-                AssetBase::native() => false, // ZEC is never newly created.
+                a if a == AssetBase::native() => false, // ZEC is never newly created.
                 asset_base_1 => false,
                 _ => true,
             }
         }
 
         // Generate recipient details
-        let sk = SpendingKey::from_zip32_seed(&[1u8; 32], 1, AccountId::ZERO);
+        let sk = SpendingKey::from_zip32_seed(&[1u8; 32], 1, AccountId::ZERO).unwrap();
         let fvk = FullViewingKey::from(&sk);
         let recipient = fvk.address_at(0u32, Scope::External);
 
         let issue_info = IssueInfo {
             recipient,
-            value: NoteValue(10),
+            value: NoteValue::from_raw(10),
         };
 
         builder
