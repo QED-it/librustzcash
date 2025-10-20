@@ -1864,4 +1864,85 @@ mod tests {
             );
         }
     }
+
+    #[cfg(zcash_unstable = "nu7")]
+    #[test]
+    fn confirm_accurate_zsa_issuance_fees() {
+        use nonempty::NonEmpty;
+        use orchard::{
+            issuance::{compute_asset_desc_hash, IssueInfo},
+            issuance_auth::{IssueAuthKey, IssueValidatingKey, ZSASchnorr},
+            keys::{FullViewingKey, SpendAuthorizingKey, SpendingKey},
+            note::AssetBase,
+            value::NoteValue,
+        };
+        use zip32::{AccountId, Scope};
+
+        let mut rng = OsRng;
+
+        let build_config = BuildConfig::TxV6 {
+            sapling_anchor: Some(sapling::Anchor::empty_tree()),
+            orchard_anchor: Some(orchard::Anchor::empty_tree()),
+        };
+
+        let tx_height = TEST_NETWORK.activation_height(NetworkUpgrade::Nu7).unwrap();
+
+        let mut builder = Builder::new(TEST_NETWORK, tx_height, build_config);
+
+        // Generate issuer key information
+        let isk = IssueAuthKey::<ZSASchnorr>::random(&mut rng);
+        let ik = IssueValidatingKey::from(&isk);
+
+        // Pick two different asset descriptions and derive their asset bases
+        let asset_desc_hash_1 =
+            compute_asset_desc_hash(&NonEmpty::from_slice(b"This is Asset 1").unwrap());
+        let asset_desc_hash_2 =
+            compute_asset_desc_hash(&NonEmpty::from_slice(b"This is Asset 2").unwrap());
+
+        let asset_base_1 = AssetBase::derive(&ik, &asset_desc_hash_1);
+        let asset_base_2 = AssetBase::derive(&ik, &asset_desc_hash_2);
+
+        // Create a asset creation function, to simulate the output from querying global state,
+        // under the assumption that only asset_base_1 is already issued before,
+        // and no other assets (including asset_base_2) are previously issued.
+        fn is_asset_newly_created(asset_base: AssetBase) -> bool {
+            match asset_base {
+                AssetBase::native() => false, // ZEC is never newly created.
+                asset_base_1 => false,
+                _ => true,
+            }
+        }
+
+        // Generate recipient details
+        let sk = SpendingKey::from_zip32_seed(&[1u8; 32], 1, AccountId::ZERO);
+        let fvk = FullViewingKey::from(&sk);
+        let recipient = fvk.address_at(0u32, Scope::External);
+
+        let issue_info = IssueInfo {
+            recipient,
+            value: NoteValue(10),
+        };
+
+        builder
+            .init_issuance_bundle(isk, asset_desc_hash_1, Some(issue_info), false)
+            .unwrap();
+
+        let res = builder
+            .mock_build(
+                &TransparentSigningSet::new(),
+                &[],
+                &[SpendAuthorizingKey::from(&sk)],
+                #[cfg(zcash_unstable = "nu7")]
+                is_asset_newly_created, //TODO: more details?
+                OsRng,
+            )
+            .unwrap();
+
+        assert_eq!(
+            res.transaction()
+                .fee_paid(|_| Err(BalanceError::Overflow))
+                .unwrap(),
+            Some(Zatoshis::const_from_u64(5_000))
+        )
+    }
 }
