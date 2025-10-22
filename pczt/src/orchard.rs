@@ -116,8 +116,8 @@ pub struct Spend {
     /// The spend authorization signature.
     ///
     /// This is set by the Signer.
-    #[serde_as(as = "Option<[_; 64]>")]
-    pub(crate) spend_auth_sig: Option<[u8; 64]>,
+    #[serde_as(as = "Option<(_, [_; 64])>")]
+    pub(crate) spend_auth_sig: Option<(u8, [u8; 64])>,
 
     /// The [raw encoding] of the Orchard payment address that received the note being spent.
     ///
@@ -526,7 +526,11 @@ impl Bundle {
                     spend: Spend {
                         nullifier: spend.nullifier().to_bytes(),
                         rk: spend.rk().into(),
-                        spend_auth_sig: spend.spend_auth_sig().as_ref().map(|s| s.into()),
+                        spend_auth_sig: spend.spend_auth_sig().as_ref().map(|s| {
+                            let version = s.version().clone() as u8;
+                            let sig = s.sig().into();
+                            (version, sig)
+                        }),
                         recipient: action
                             .spend()
                             .recipient()

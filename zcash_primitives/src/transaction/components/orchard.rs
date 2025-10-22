@@ -2,9 +2,12 @@
 use crate::encoding::ReadBytesExt;
 
 #[cfg(zcash_unstable = "nu7")]
-use crate::encoding::WriteBytesExt;
-#[cfg(zcash_unstable = "nu7")]
-use crate::transaction::components::issuance::read_asset;
+use {
+    crate::encoding::WriteBytesExt,
+    crate::sighash_versioning::{to_orchard_version, ORCHARD_SIGHASH_VERSION_TO_INFO_BYTES},
+    crate::transaction::components::issuance::read_asset,
+    orchard::{note::AssetBase, orchard_flavor::OrchardZSA, value::NoteValue},
+};
 
 use crate::transaction::{OrchardBundle, Transaction};
 use alloc::vec::Vec;
@@ -16,12 +19,11 @@ use orchard::{
     primitives::OrchardPrimitives,
     note::{ExtractedNoteCommitment, Nullifier, TransmittedNoteCiphertext},
     orchard_flavor::OrchardVanilla,
+    orchard_sighash_versioning::{OrchardSighashVersion, OrchardVersionedSig},
     primitives::redpallas::{self, SigType, Signature, SpendAuth, VerificationKey},
     value::ValueCommitment,
     Action, Anchor, Bundle, Proof,
 };
-#[cfg(zcash_unstable = "nu7")]
-use orchard::{note::AssetBase, orchard_flavor::OrchardZSA, value::NoteValue};
 use zcash_encoding::{Array, CompactSize, Vector};
 use zcash_note_encryption::note_bytes::NoteBytes;
 
@@ -63,7 +65,7 @@ impl MapAuth<Authorized, Authorized> for () {
 }
 
 /// Reads an [`orchard::Bundle`] from a v5 transaction format.
-pub fn read_orchard_bundle<R: Read>(
+pub fn read_v5_bundle<R: Read>(
     mut reader: R,
 ) -> io::Result<Option<Bundle<Authorized, ZatBalance, OrchardVanilla>>> {
     #[allow(clippy::redundant_closure)]
@@ -101,7 +103,7 @@ pub fn read_orchard_bundle<R: Read>(
 
 /// Reads an [`orchard::Bundle`] from a v6 transaction format.
 #[cfg(zcash_unstable = "nu7")]
-pub fn read_orchard_zsa_bundle<R: Read>(
+pub fn read_v6_bundle<R: Read>(
     mut reader: R,
 ) -> io::Result<Option<orchard::Bundle<Authorized, ZatBalance, OrchardZSA>>> {
     let num_action_groups: u32 = CompactSize::read_t::<_, u32>(&mut reader)?;
@@ -213,10 +215,15 @@ fn read_action_group_data<R: Read>(
     let actions = NonEmpty::from_vec(
         actions_without_auth
             .into_iter()
-            .map(|act| act.try_map(|_| read_signature::<_, redpallas::SpendAuth>(&mut reader)))
+            .map(|act| {
+                act.try_map(|_| read_versioned_signature::<_, redpallas::SpendAuth>(&mut reader))
+            })
             .collect::<Result<Vec<_>, _>>()?,
     )
-    .expect("The action group must contain at least one action.");
+    .ok_or(io::Error::new(
+        io::ErrorKind::InvalidInput,
+        "The action group must contain at least one action.",
+    ))?;
 
     Ok((actions, flags, anchor, proof, timelimit, burn))
 }
@@ -226,9 +233,8 @@ fn read_bundle_balance_metadata<R: Read>(
     mut reader: R,
 ) -> io::Result<(ZatBalance, Signature<Binding>)> {
     let value_balance = Transaction::read_amount(&mut reader)?;
-    let binding_signature = read_signature::<_, redpallas::Binding>(&mut reader)?;
-    Ok((value_balance, binding_signature))
-}
+
+    let binding_signature = read_versioned_signature::<_, redpallas::Binding>(&mut reader)?;
 
 #[cfg(zcash_unstable = "nu7")]
 fn read_burn_item<R: Read>(reader: &mut R) -> io::Result<(AssetBase, NoteValue)> {
@@ -340,10 +346,102 @@ pub fn read_anchor<R: Read>(mut reader: R) -> io::Result<Anchor> {
         .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "invalid Orchard anchor"))
 }
 
-pub fn read_signature<R: Read, T: SigType>(mut reader: R) -> io::Result<Signature<T>> {
+pub fn read_signature<R: Read, T: SigType>(mut reader: R) -> io::Result<OrchardVersionedSig<T>> {
     let mut bytes = [0u8; 64];
     reader.read_exact(&mut bytes)?;
-    Ok(Signature::from(bytes))
+    Ok(OrchardVersionedSig::new(
+        OrchardSighashVersion::NoVersion,
+        Signature::from(bytes),
+    ))
+}
+
+#[cfg(zcash_unstable = "nu7")]
+pub fn read_versioned_signature<R: Read, T: SigType>(
+    mut reader: R,
+) -> io::Result<OrchardVersionedSig<T>> {
+    let sighash_info_bytes = Vector::read(&mut reader, |r| r.read_u8())?;
+    let sighash_version = to_orchard_version(sighash_info_bytes).ok_or_else(|| {
+        io::Error::new(io::ErrorKind::InvalidInput, "Unknown Orchard sighash info")
+    })?;
+
+    let mut signature_bytes = [0u8; 64];
+    reader.read_exact(&mut signature_bytes)?;
+    Ok(OrchardVersionedSig::new(
+        sighash_version,
+        Signature::from(signature_bytes),
+    ))
+}
+
+#[cfg(zcash_unstable = "nu7")]
+pub fn write_versioned_signature<W: Write, T: SigType>(
+    mut writer: W,
+    versioned_sig: &OrchardVersionedSig<T>,
+) -> io::Result<()> {
+    let sighash_info_bytes = ORCHARD_SIGHASH_VERSION_TO_INFO_BYTES
+        .get(versioned_sig.version())
+        .ok_or_else(|| {
+            io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "Unknown Orchard sighash version",
+            )
+        })?;
+    Vector::write(&mut writer, sighash_info_bytes, |w, b| w.write_u8(*b))?;
+    writer.write_all(&<[u8; 64]>::from(versioned_sig.sig()))
+}
+
+    /// Writes an [`orchard::Bundle`] in the appropriate transaction format.
+    pub fn write_orchard_bundle<W: Write>(
+        mut writer: W,
+        bundle: Option<&OrchardBundle<Authorized>>,
+    ) -> io::Result<()> {
+        if let Some(bundle) = bundle {
+            match bundle {
+                OrchardBundle::OrchardVanilla(b) => write_v5_bundle(b, writer)?,
+                #[cfg(zcash_unstable = "nu7")]
+                OrchardBundle::OrchardZSA(b) => write_v6_bundle(writer, b)?,
+                #[cfg(zcash_unstable = "nu7")]
+                OrchardBundle::OrchardSwap(b) => write_orchard_swap_bundle(writer, b)?,
+            }
+        } else {
+            CompactSize::write(&mut writer, 0)?;
+        }
+
+        Ok(())
+    }
+
+
+    /// Writes an [`orchard::Bundle`] in the v5 transaction format.
+pub fn write_v5_bundle<W: Write>(
+    bundle: Option<&OrchardBundle<Authorized>>,
+    mut writer: W,
+) -> io::Result<()> {
+    if let Some(bundle) = bundle {
+        let bundle = bundle.as_vanilla_bundle();
+        Vector::write_nonempty(&mut writer, bundle.actions(), |w, a| {
+            write_action_without_auth(w, a)
+        })?;
+
+        writer.write_all(&[bundle.flags().to_byte()])?;
+        writer.write_all(&bundle.value_balance().to_i64_le_bytes())?;
+        writer.write_all(&bundle.anchor().to_bytes())?;
+        Vector::write(
+            &mut writer,
+            bundle.authorization().proof().as_ref(),
+            |w, b| w.write_all(&[*b]),
+        )?;
+        Array::write(
+            &mut writer,
+            bundle.actions().iter().map(|a| a.authorization().sig()),
+            |w, auth| w.write_all(&<[u8; 64]>::from(*auth)),
+        )?;
+        writer.write_all(&<[u8; 64]>::from(
+            bundle.authorization().binding_signature().sig(),
+        ))?;
+    } else {
+        CompactSize::write(&mut writer, 0)?;
+    }
+
+    Ok(())
 }
 
 #[cfg(zcash_unstable = "nu7")]
@@ -365,59 +463,10 @@ pub fn write_burn<W: Write>(writer: &mut W, burn: &[(AssetBase, NoteValue)]) -> 
 }
 
 /// Writes an [`orchard::Bundle`] in the appropriate transaction format.
-pub fn write_orchard_bundle<W: Write>(
-    mut writer: W,
-    bundle: Option<&OrchardBundle<Authorized>>,
-) -> io::Result<()> {
-    if let Some(bundle) = bundle {
-        match bundle {
-            OrchardBundle::OrchardVanilla(b) => write_orchard_vanilla_bundle(b, writer)?,
-            #[cfg(zcash_unstable = "nu7")]
-            OrchardBundle::OrchardZSA(b) => write_orchard_zsa_bundle(writer, b)?,
-            #[cfg(zcash_unstable = "nu7")]
-            OrchardBundle::OrchardSwap(b) => write_orchard_swap_bundle(writer, b)?,
-        }
-    } else {
-        CompactSize::write(&mut writer, 0)?;
-    }
-
-    Ok(())
-}
-
-/// Writes an [`orchard::Bundle`] in the v5 transaction format.
-pub fn write_orchard_vanilla_bundle<W: Write>(
-    bundle: &Bundle<Authorized, ZatBalance, OrchardVanilla>,
-    mut writer: W,
-) -> io::Result<()> {
-    Vector::write_nonempty(&mut writer, bundle.actions(), |w, a| {
-        write_action_without_auth(w, a)
-    })?;
-
-    writer.write_all(&[bundle.flags().to_byte()])?;
-    writer.write_all(&bundle.value_balance().to_i64_le_bytes())?;
-    writer.write_all(&bundle.anchor().to_bytes())?;
-    Vector::write(
-        &mut writer,
-        bundle.authorization().proof().unwrap().as_ref(),
-        |w, b| w.write_all(&[*b]),
-    )?;
-    Array::write(
-        &mut writer,
-        bundle.actions().iter().map(|a| a.authorization()),
-        |w, auth| w.write_all(&<[u8; 64]>::from(*auth)),
-    )?;
-    writer.write_all(&<[u8; 64]>::from(
-        bundle.authorization().binding_signature(),
-    ))?;
-
-    Ok(())
-}
-
-/// Writes an [`orchard::Bundle`] in the appropriate transaction format.
 #[cfg(zcash_unstable = "nu7")]
-pub fn write_orchard_zsa_bundle<W: Write>(
+pub fn write_v6_bundle<W: Write>(
     mut writer: W,
-    bundle: &orchard::Bundle<Authorized, ZatBalance, OrchardZSA>,
+    bundle: &OrchardBundle<Authorized>,
 ) -> io::Result<()> {
     // Exactly one action group for NU7
     CompactSize::write(&mut writer, 1)?;
@@ -431,55 +480,56 @@ pub fn write_orchard_zsa_bundle<W: Write>(
     Ok(())
 }
 
-/// Writes an [`orchard::Bundle`] in the appropriate transaction format.
-#[cfg(zcash_unstable = "nu7")]
-pub fn write_orchard_swap_bundle<W: Write>(
-    mut writer: W,
-    bundle: &SwapBundle<ZatBalance>,
-) -> io::Result<()> {
-    CompactSize::write(&mut writer, bundle.action_groups().len())?;
-    bundle
-        .action_groups()
-        .into_iter()
-        .for_each(|ag| write_action_group(&mut writer, ag).unwrap());
-    write_bundle_balance_metadata(
-        &mut writer,
-        bundle.value_balance(),
-        bundle.binding_signature(),
-    )?;
-    Ok(())
-}
 
-#[cfg(zcash_unstable = "nu7")]
-fn write_action_group<W: Write, A: Authorization<SpendAuth = Signature<SpendAuth>>>(
-    mut writer: W,
-    bundle: &orchard::Bundle<A, ZatBalance, OrchardZSA>,
-) -> io::Result<()> {
-    Vector::write_nonempty(&mut writer, bundle.actions(), |w, a| {
-        write_action_without_auth(w, a)
-    })?;
+    /// Writes an [`orchard::Bundle`] in the appropriate transaction format.
+    #[cfg(zcash_unstable = "nu7")]
+    pub fn write_orchard_swap_bundle<W: Write>(
+        mut writer: W,
+        bundle: &SwapBundle<ZatBalance>,
+    ) -> io::Result<()> {
+        CompactSize::write(&mut writer, bundle.action_groups().len())?;
+        bundle
+            .action_groups()
+            .into_iter()
+            .for_each(|ag| write_action_group(&mut writer, ag).unwrap());
+        write_bundle_balance_metadata(
+            &mut writer,
+            bundle.value_balance(),
+            bundle.binding_signature(),
+        )?;
+        Ok(())
+    }
 
-    writer.write_all(&[bundle.flags().to_byte()])?;
-    writer.write_all(&bundle.anchor().to_bytes())?;
+    #[cfg(zcash_unstable = "nu7")]
+    fn write_action_group<W: Write, A: Authorization<SpendAuth = Signature<SpendAuth>>>(
+        mut writer: W,
+        bundle: &orchard::Bundle<A, ZatBalance, OrchardZSA>,
+    ) -> io::Result<()> {
+        Vector::write_nonempty(&mut writer, bundle.actions(), |w, a| {
+            write_action_without_auth(w, a)
+        })?;
 
-    // Timelimit must be zero for NU7
-    writer.write_u32_le(bundle.expiry_height())?;
+        writer.write_all(&[bundle.flags().to_byte()])?;
+        writer.write_all(&bundle.anchor().to_bytes())?;
 
-    write_burn(&mut writer, bundle.burn())?;
+        // Timelimit must be zero for NU7
+        writer.write_u32_le(bundle.expiry_height())?;
 
-    Vector::write(
-        &mut writer,
-        bundle.authorization().proof().unwrap().as_ref(),
-        |w, b| w.write_u8(*b),
-    )?;
-    Array::write(
-        &mut writer,
-        bundle.actions().iter().map(|a| a.authorization()),
-        |w, auth| w.write_all(&<[u8; 64]>::from(*auth)),
-    )?;
+        write_burn(&mut writer, bundle.burn())?;
 
-    Ok(())
-}
+        Vector::write(
+            &mut writer,
+            bundle.authorization().proof().unwrap().as_ref(),
+            |w, b| w.write_u8(*b),
+        )?;
+        Array::write(
+            &mut writer,
+            bundle.actions().iter().map(|a| a.authorization()),
+            |w, auth| w.write_all(&<[u8; 64]>::from(*auth)),
+        )?;
+
+        Ok(())
+    }
 
 #[cfg(zcash_unstable = "nu7")]
 fn write_bundle_balance_metadata<W: Write>(
@@ -488,7 +538,7 @@ fn write_bundle_balance_metadata<W: Write>(
     binding_signature: &Signature<Binding>,
 ) -> io::Result<()> {
     writer.write_all(&value_balance.to_i64_le_bytes())?;
-    writer.write_all(&<[u8; 64]>::from(binding_signature))
+    write_versioned_signature(&mut writer, bundle.authorization().binding_signature())?;
 }
 
 pub fn write_value_commitment<W: Write>(mut writer: W, cv: &ValueCommitment) -> io::Result<()> {
@@ -529,6 +579,40 @@ pub fn write_action_without_auth<W: Write, P: OrchardPrimitives, A>(
     write_cmx(&mut writer, act.cmx())?;
     write_note_ciphertext(&mut writer, act.encrypted_note())?;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    #[cfg(zcash_unstable = "nu7")]
+    use {
+        super::{read_versioned_signature, write_versioned_signature},
+        alloc::vec::Vec,
+        orchard::orchard_sighash_versioning::{OrchardSighashVersion, OrchardVersionedSig},
+        orchard::primitives::redpallas,
+        rand::rngs::OsRng,
+        rand::RngCore,
+        std::io::Cursor,
+    };
+
+    #[cfg(zcash_unstable = "nu7")]
+    #[test]
+    fn write_read_versioned_signature_roundtrip() {
+        let mut sig_bytes = [0u8; 64];
+        OsRng.fill_bytes(&mut sig_bytes);
+        let sig = redpallas::Signature::<redpallas::SpendAuth>::from(sig_bytes);
+        let versioned_sig = OrchardVersionedSig::new(OrchardSighashVersion::V0, sig);
+
+        // Write the versioned signature to a buffer
+        let mut buf = Vec::new();
+        write_versioned_signature(&mut buf, &versioned_sig).unwrap();
+
+        // Read the versioned signature back from the buffer
+        let mut reader = Cursor::new(buf);
+        let read_versioned_sig =
+            read_versioned_signature::<_, redpallas::SpendAuth>(&mut reader).unwrap();
+
+        assert_eq!(versioned_sig, read_versioned_sig);
+    }
 }
 
 #[cfg(any(test, feature = "test-dependencies"))]
