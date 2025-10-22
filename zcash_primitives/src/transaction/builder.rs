@@ -1965,7 +1965,10 @@ mod tests {
         // Create an asset creation function, to simulate the output from querying global state,
         // under the assumption that only asset_base_prev_issued is already issued before,
         // and no other assets are previously issued.
-        fn is_asset_newly_created(asset_base: AssetBase, asset_base_prev_issued: AssetBase) -> bool {
+        fn is_asset_newly_created(
+            asset_base: AssetBase,
+            asset_base_prev_issued: AssetBase,
+        ) -> bool {
             match asset_base {
                 a if a == AssetBase::native() => false, // ZEC is never newly created.
                 a if a == asset_base_prev_issued => false,

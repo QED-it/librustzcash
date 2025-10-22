@@ -204,15 +204,23 @@ impl super::FeeRule for FeeRule {
 
         let ceildiv = |num: usize, den: usize| num.div_ceil(den);
 
+        #[cfg(not(zcash_unstable = "nu7"))]
+        let creation_cost: usize = 0;
+        #[cfg(not(zcash_unstable = "nu7"))]
+        let issue_note_count: usize = 0;
+        #[cfg(not(zcash_unstable = "nu7"))]
+        let asset_creation_count: usize = 0;
+
+        #[cfg(zcash_unstable = "nu7")]
+        let creation_cost: usize = self.creation_cost;
+
         let logical_actions = max(
             ceildiv(t_in_total_size, self.p2pkh_standard_input_size),
             ceildiv(t_out_total_size, self.p2pkh_standard_output_size),
         ) + max(sapling_input_count, sapling_output_count)
-            + orchard_action_count;
-
-        #[cfg(zcash_unstable = "nu7")]
-        let logical_actions =
-            logical_actions + issue_note_count + (self.creation_cost * asset_creation_count);
+            + orchard_action_count
+            + issue_note_count
+            + (creation_cost * asset_creation_count);
 
         (self.marginal_fee * max(self.grace_actions, logical_actions))
             .ok_or_else(|| BalanceError::Overflow.into())
