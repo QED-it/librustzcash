@@ -1868,30 +1868,92 @@ mod tests {
     #[cfg(zcash_unstable = "nu7")]
     #[test]
     fn confirm_accurate_zsa_issuance_fees() {
+        use crate::transaction::fees::zip317;
         use nonempty::NonEmpty;
         use orchard::{
             issuance::{compute_asset_desc_hash, IssueInfo},
-            issuance_auth::{IssueAuthKey, IssueValidatingKey, ZSASchnorr},
-            keys::{FullViewingKey, SpendAuthorizingKey, SpendingKey},
+            issuance_auth::{IssueAuthKey, IssueValidatingKey},
+            keys::{FullViewingKey, Scope, SpendAuthorizingKey, SpendingKey},
             note::AssetBase,
+            orchard_flavor::OrchardVanilla,
+            primitives::OrchardDomain,
+            tree::MerkleHashOrchard,
             value::NoteValue,
         };
-        use zip32::{AccountId, Scope};
+        use shardtree::{store::memory::MemoryShardStore, ShardTree};
+        use zcash_note_encryption::try_note_decryption;
+        use zcash_protocol::memo::Memo;
+        use zip32::AccountId;
 
         let mut rng = OsRng;
 
-        let build_config = BuildConfig::TxV6 {
-            sapling_anchor: Some(sapling::Anchor::empty_tree()),
-            orchard_anchor: Some(orchard::Anchor::empty_tree()),
+        let tx_height = TEST_NETWORK
+            .activation_height(NetworkUpgrade::Nu6_1)
+            .unwrap(); // TODO: update when NU7 activates.
+
+        // Generate key details.
+        let sk = SpendingKey::from_zip32_seed(&[1u8; 32], 1, AccountId::ZERO).unwrap();
+        let sak = SpendAuthorizingKey::from(&sk);
+        let fvk = FullViewingKey::from(&sk);
+        let ivk = fvk.to_ivk(Scope::External);
+        let ovk = fvk.to_ovk(Scope::External);
+        let recipient = fvk.address_at(0u32, Scope::External);
+
+        let isk = IssueAuthKey::from_zip32_seed(&[1u8; 32], 1, 0).unwrap();
+        let ik = IssueValidatingKey::from(&isk);
+
+        // Pretend we already received an Orchard note, and add it in the tree.
+        let value = NoteValue::from_raw(10_000_000);
+        let note = {
+            let mut orchard_builder = orchard::builder::Builder::new(
+                orchard::builder::BundleType::DEFAULT_VANILLA,
+                orchard::Anchor::empty_tree(),
+            );
+            orchard_builder
+                .add_output(
+                    None,
+                    recipient,
+                    value,
+                    AssetBase::native(),
+                    Memo::Empty.encode().into_bytes(),
+                )
+                .unwrap();
+            let (bundle, meta) = orchard_builder
+                .build::<i64, OrchardVanilla>(&mut rng)
+                .unwrap();
+            let action = bundle
+                .actions()
+                .get(meta.output_action_index(0).unwrap())
+                .unwrap();
+            let domain = OrchardDomain::for_action(action);
+            let (note, _, _) = try_note_decryption(&domain, &ivk.prepare(), action).unwrap();
+            note
+        };
+        let (anchor, merkle_path) = {
+            let cmx: orchard::note::ExtractedNoteCommitment = note.commitment().into();
+            let leaf = MerkleHashOrchard::from_cmx(&cmx);
+            let mut tree = ShardTree::<_, 32, 16>::new(
+                MemoryShardStore::<MerkleHashOrchard, u32>::empty(),
+                100,
+            );
+            tree.append(leaf, incrementalmerkletree::Retention::Marked)
+                .unwrap();
+            tree.checkpoint(9_999_999).unwrap();
+            let position = 0.into();
+            let merkle_path = tree
+                .witness_at_checkpoint_depth(position, 0)
+                .unwrap()
+                .unwrap();
+            let anchor = merkle_path.root(leaf);
+            (anchor.into(), merkle_path.into())
         };
 
-        let tx_height = TEST_NETWORK.activation_height(NetworkUpgrade::Nu7).unwrap();
+        let build_config = BuildConfig::TxV6 {
+            sapling_anchor: Some(sapling::Anchor::empty_tree()),
+            orchard_anchor: Some(anchor),
+        };
 
         let mut builder = Builder::new(TEST_NETWORK, tx_height, build_config);
-
-        // Generate issuer key information
-        let isk = IssueAuthKey::<ZSASchnorr>::random(&mut rng);
-        let ik = IssueValidatingKey::from(&isk);
 
         // Pick two different asset descriptions and derive their asset bases
         let asset_desc_hash_1 =
@@ -1900,23 +1962,18 @@ mod tests {
             compute_asset_desc_hash(&NonEmpty::from_slice(b"This is Asset 2").unwrap());
 
         let asset_base_1 = AssetBase::derive(&ik, &asset_desc_hash_1);
-        let asset_base_2 = AssetBase::derive(&ik, &asset_desc_hash_2);
+        let _asset_base_2 = AssetBase::derive(&ik, &asset_desc_hash_2);
 
-        // Create a asset creation function, to simulate the output from querying global state,
+        // Create an asset creation function, to simulate the output from querying global state,
         // under the assumption that only asset_base_1 is already issued before,
         // and no other assets (including asset_base_2) are previously issued.
-        fn is_asset_newly_created(asset_base: &AssetBase) -> bool {
+        fn is_asset_newly_created(asset_base: AssetBase, asset_base_1: AssetBase) -> bool {
             match asset_base {
                 a if a == AssetBase::native() => false, // ZEC is never newly created.
-                asset_base_1 => false,
+                a if a == asset_base_1 => false,
                 _ => true,
             }
         }
-
-        // Generate recipient details
-        let sk = SpendingKey::from_zip32_seed(&[1u8; 32], 1, AccountId::ZERO).unwrap();
-        let fvk = FullViewingKey::from(&sk);
-        let recipient = fvk.address_at(0u32, Scope::External);
 
         let issue_info = IssueInfo {
             recipient,
@@ -1924,25 +1981,72 @@ mod tests {
         };
 
         builder
-            .init_issuance_bundle(isk, asset_desc_hash_1, Some(issue_info), false)
+            .add_orchard_spend::<zip317::FeeRule>(fvk, note, merkle_path)
+            .unwrap();
+        builder
+            .add_orchard_output::<zip317::FeeRule>(
+                Some(ovk),
+                recipient,
+                9_475_000,
+                // 9_985_000,
+                AssetBase::native(),
+                MemoBytes::empty(),
+            )
+            .unwrap();
+
+        builder
+            .init_issuance_bundle::<zip317::FeeRule>(
+                isk,
+                asset_desc_hash_1,
+                Some(issue_info),
+                false,
+            )
+            .unwrap();
+
+        builder
+            .add_recipient::<zip317::FeeRule>(
+                asset_desc_hash_2,
+                recipient,
+                NoteValue::from_raw(100),
+                true,
+            )
             .unwrap();
 
         let res = builder
             .mock_build(
                 &TransparentSigningSet::new(),
                 &[],
-                &[SpendAuthorizingKey::from(&sk)],
+                &[sak],
                 #[cfg(zcash_unstable = "nu7")]
-                is_asset_newly_created, //TODO: more details?
+                |a| is_asset_newly_created(*a, asset_base_1),
                 OsRng,
             )
             .unwrap();
 
         assert_eq!(
             res.transaction()
+                .orchard_bundle()
+                .unwrap()
+                .as_zsa_bundle()
+                .actions()
+                .len(),
+            2
+        );
+
+        assert_eq!(
+            res.transaction()
+                .issue_bundle()
+                .unwrap()
+                .get_all_notes()
+                .len(),
+            3
+        );
+
+        assert_eq!(
+            res.transaction()
                 .fee_paid(|_| Err(BalanceError::Overflow))
                 .unwrap(),
-            Some(Zatoshis::const_from_u64(5_000))
+            Some(Zatoshis::const_from_u64(525_000))
         )
     }
 }
