@@ -1952,7 +1952,6 @@ mod tests {
             sapling_anchor: Some(sapling::Anchor::empty_tree()),
             orchard_anchor: Some(anchor),
         };
-
         let mut builder = Builder::new(TEST_NETWORK, tx_height, build_config);
 
         // Pick two different asset descriptions and derive their asset bases
@@ -1962,15 +1961,14 @@ mod tests {
             compute_asset_desc_hash(&NonEmpty::from_slice(b"This is Asset 2").unwrap());
 
         let asset_base_1 = AssetBase::derive(&ik, &asset_desc_hash_1);
-        let _asset_base_2 = AssetBase::derive(&ik, &asset_desc_hash_2);
 
         // Create an asset creation function, to simulate the output from querying global state,
-        // under the assumption that only asset_base_1 is already issued before,
-        // and no other assets (including asset_base_2) are previously issued.
-        fn is_asset_newly_created(asset_base: AssetBase, asset_base_1: AssetBase) -> bool {
+        // under the assumption that only asset_base_prev_issued is already issued before,
+        // and no other assets are previously issued.
+        fn is_asset_newly_created(asset_base: AssetBase, asset_base_prev_issued: AssetBase) -> bool {
             match asset_base {
                 a if a == AssetBase::native() => false, // ZEC is never newly created.
-                a if a == asset_base_1 => false,
+                a if a == asset_base_prev_issued => false,
                 _ => true,
             }
         }
@@ -1980,6 +1978,7 @@ mod tests {
             value: NoteValue::from_raw(10),
         };
 
+        // Add Orchard spend and output for the fees (spending existing Orchard note).
         builder
             .add_orchard_spend::<zip317::FeeRule>(fvk, note, merkle_path)
             .unwrap();
@@ -1988,12 +1987,12 @@ mod tests {
                 Some(ovk),
                 recipient,
                 9_475_000,
-                // 9_985_000,
                 AssetBase::native(),
                 MemoBytes::empty(),
             )
             .unwrap();
 
+        // Issuing previously issued asset, corresponding to asset_desc_hash_1.
         builder
             .init_issuance_bundle::<zip317::FeeRule>(
                 isk,
@@ -2003,6 +2002,7 @@ mod tests {
             )
             .unwrap();
 
+        // Issuing newly created asset, corresponding to asset_desc_hash_2.
         builder
             .add_recipient::<zip317::FeeRule>(
                 asset_desc_hash_2,
@@ -2018,11 +2018,12 @@ mod tests {
                 &[],
                 &[sak],
                 #[cfg(zcash_unstable = "nu7")]
-                |a| is_asset_newly_created(*a, asset_base_1),
+                |a| is_asset_newly_created(*a, AssetBase::derive(&ik, &asset_desc_hash_1)),
                 OsRng,
             )
             .unwrap();
 
+        // There should be 2 Orchard Actions (1 spend, 1 change output, and 1 fee output)
         assert_eq!(
             res.transaction()
                 .orchard_bundle()
@@ -2033,6 +2034,7 @@ mod tests {
             2
         );
 
+        // There should be 3 issued notes (1 for previously issued asset, 2 for newly created asset - the first note is the reference note).
         assert_eq!(
             res.transaction()
                 .issue_bundle()
@@ -2042,6 +2044,7 @@ mod tests {
             3
         );
 
+        // fee = 5000 * (2 (orchard actions) + 3 (issued notes) + 1 * 100 (newly created asset)) = 525_000
         assert_eq!(
             res.transaction()
                 .fee_paid(|_| Err(BalanceError::Overflow))
