@@ -1467,7 +1467,7 @@ mod tests {
                 &[],
                 &[],
                 #[cfg(zcash_unstable = "nu7")]
-                |_| false, //TODO: more details?
+                |_| false, //TODO: is_asset_newly_created function from global state. Needed for ZSA support.
                 OsRng,
             )
             .unwrap();
@@ -1521,7 +1521,7 @@ mod tests {
                 &[extsk],
                 &[],
                 #[cfg(zcash_unstable = "nu7")]
-                |_| false, //TODO: more details?
+                |_| false, //TODO: is_asset_newly_created function from global state. Needed for ZSA support.
                 OsRng,
             )
             .unwrap();
@@ -1554,7 +1554,7 @@ mod tests {
                     &[],
                     &[],
                     #[cfg(zcash_unstable = "nu7")]
-                    |_| false, //TODO: more details?
+                    |_| false, //TODO: is_asset_newly_created function from global state. Needed for ZSA support.
                     OsRng,
                 ),
                 Err(Error::InsufficientFunds(expected)) if expected == MINIMUM_FEE.into()
@@ -1589,7 +1589,7 @@ mod tests {
                     extsks,
                     &[],
                     #[cfg(zcash_unstable = "nu7")]
-                    |_| false, //TODO: more details?
+                    |_| false, //TODO: is_asset_newly_created function from global state. Needed for ZSA support.
                     OsRng
                 ),
                 Err(Error::InsufficientFunds(expected)) if
@@ -1617,7 +1617,7 @@ mod tests {
                     extsks,
                     &[],
                     #[cfg(zcash_unstable = "nu7")]
-                    |_| false, //TODO: more details?
+                    |_| false, //TODO: is_asset_newly_created function from global state. Needed for ZSA support.
                     OsRng
                 ),
                 Err(Error::InsufficientFunds(expected)) if expected ==
@@ -1642,7 +1642,7 @@ mod tests {
                     extsks,
                     &[],
                      #[cfg(zcash_unstable = "nu7")]
-                    |_| false, //TODO: more details?
+                    |_| false, //TODO: is_asset_newly_created function from global state. Needed for ZSA support.
                     OsRng
                 ),
                 Err(Error::InsufficientFunds(expected)) if expected ==
@@ -1694,7 +1694,7 @@ mod tests {
                     extsks,
                     &[],
                     #[cfg(zcash_unstable = "nu7")]
-                    |_| false, //TODO: more details?
+                    |_| false, //TODO: is_asset_newly_created function from global state. Needed for ZSA support.
                     OsRng
                 ),
                 Err(Error::InsufficientFunds(expected)) if expected == ZatBalance::const_from_i64(1)
@@ -1738,7 +1738,7 @@ mod tests {
                     extsks,
                     &[],
                      #[cfg(zcash_unstable = "nu7")]
-                    |_| false, //TODO: more details?
+                    |_| false, //TODO: is_asset_newly_created function from global state. Needed for ZSA support.
                     OsRng
                 ),
                 Err(Error::InsufficientFunds(expected)) if expected == ZatBalance::const_from_i64(1)
@@ -1796,7 +1796,7 @@ mod tests {
                     extsks,
                     &[],
                     #[cfg(zcash_unstable = "nu7")]
-                    |_| false, //TODO: more details?
+                    |_| false, //TODO: is_asset_newly_created function from global state. Needed for ZSA support.
                     OsRng,
                 )
                 .unwrap();
@@ -1852,7 +1852,7 @@ mod tests {
                     extsks,
                     &[],
                     #[cfg(zcash_unstable = "nu7")]
-                    |_| false, //TODO: more details?
+                    |_| false, //TODO: is_asset_newly_created function from global state. Needed for ZSA support.
                     OsRng,
                 )
                 .unwrap();

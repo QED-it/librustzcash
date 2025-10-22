@@ -129,7 +129,7 @@ fn transparent_to_orchard() {
             rng,
             &zip317::FeeRule::standard(),
             #[cfg(zcash_unstable = "nu7")]
-            |_| false, //TODO: more details?
+            |_| false, //TODO: is_asset_newly_created function from global state. Needed for ZSA support (not here?).
         )
         .unwrap();
 
@@ -267,7 +267,7 @@ fn sapling_to_orchard() {
             OsRng,
             &zip317::FeeRule::standard(),
             #[cfg(zcash_unstable = "nu7")]
-            |_| false, //TODO: more details?
+            |_| false, //TODO: is_asset_newly_created function from global state. Needed for ZSA support (not here?).
         )
         .unwrap();
 
@@ -441,7 +441,7 @@ fn orchard_to_orchard() {
             OsRng,
             &zip317::FeeRule::standard(),
             #[cfg(zcash_unstable = "nu7")]
-            |_| false, //TODO: more details?
+            |_| false, //TODO: is_asset_newly_created function from global state. Needed for ZSA support (not here?).
         )
         .unwrap();
 
@@ -601,7 +601,7 @@ fn zsa_to_zsa() {
             OsRng,
             &zip317::FeeRule::standard(),
             #[cfg(zcash_unstable = "nu7")]
-            |_| false, //TODO: more details?
+            |_| false, //TODO: is_asset_newly_created function from global state. Needed for ZSA support (not here?).
         )
         .unwrap();
 
