@@ -42,8 +42,6 @@ use {::sapling::builder as sapling_builder, orchard::builder::Unproven};
 
 use orchard::orchard_flavor::OrchardVanilla;
 use orchard::Bundle;
-#[cfg(zcash_unstable = "nu7")]
-use orchard::{issuance::IssueBundle, orchard_flavor::OrchardZSA};
 use orchard::note::Nullifier;
 use zcash_protocol::constants::{
     V3_TX_VERSION, V3_VERSION_GROUP_ID, V4_TX_VERSION, V4_VERSION_GROUP_ID, V5_TX_VERSION,
@@ -1086,11 +1084,11 @@ impl Transaction {
 
     #[cfg(zcash_unstable = "nu7" /* TODO swap */ )]
     fn read_swap<R: Read>(mut reader: R, version: TxVersion) -> io::Result<Self> {
-        let (consensus_branch_id, lock_time, expiry_height) = Self::read_v5_header_fragment(&mut reader)?;
+        let (consensus_branch_id, lock_time, expiry_height) = Self::read_header_fragment(&mut reader)?;
         let transparent_bundle = Self::read_transparent(&mut reader)?;
         let sapling_bundle = sapling_serialization::read_v5_bundle(&mut reader)?;
         let orchard_zsa_bundle = orchard_serialization::read_orchard_swap_bundle(&mut reader)?;
-        let issue_bundle = issuance::read_v6_bundle(&mut reader)?;
+        let issue_bundle = issuance::read_bundle(&mut reader)?;
 
         #[cfg(zcash_unstable = "zfuture")]
         let tze_bundle = if version.has_tze() {
@@ -1206,7 +1204,7 @@ impl Transaction {
         self.write_header(&mut writer)?;
         self.write_transparent(&mut writer)?;
         self.write_v5_sapling(&mut writer)?;
-        orchard_serialization::write_v5_bundle(self.orchard_bundle.as_ref(), &mut writer)?;
+        orchard_serialization::write_orchard_bundle(&mut writer, self.orchard_bundle.as_ref())?;
 
         Ok(())
     }
@@ -1223,7 +1221,7 @@ impl Transaction {
 
         self.write_transparent(&mut writer)?;
         self.write_v5_sapling(&mut writer)?;
-        orchard_serialization::write_v6_bundle(&mut writer, self.orchard_bundle.as_ref())?;
+        orchard_serialization::write_orchard_bundle(&mut writer, self.orchard_bundle.as_ref())?;
         issuance::write_bundle(self.issue_bundle.as_ref(), &mut writer)?;
 
         #[cfg(zcash_unstable = "zfuture")]

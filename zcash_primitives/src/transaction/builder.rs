@@ -81,9 +81,6 @@ use orchard::{
     swap_bundle::{ActionGroupAuthorized, SwapBundle},
 };
 
-#[cfg(zcash_unstable = "nu7")]
-use rand_core::OsRng;
-
 use super::components::sapling::zip212_enforcement;
 
 /// Since Blossom activation, the default transaction expiry delta should be 40 blocks.
@@ -134,10 +131,13 @@ pub enum Error<FE> {
     SaplingBuilderNotAvailable,
     /// The builder was constructed with a target height before NU5 activation, but an Orchard
     /// spend or output was added.
-    OrchardBundleNotAvailable,
+    OrchardBuilderNotAvailable,
     /// The issuance bundle not initialized.
     #[cfg(zcash_unstable = "nu7")]
     IssuanceBuilderNotAvailable,
+    /// The issuance key not initialized.
+    #[cfg(zcash_unstable = "nu7")]
+    IssuanceKeyNotAvailable,
     /// An error occurred in constructing the Issuance bundle.
     #[cfg(zcash_unstable = "nu7")]
     IssuanceBundle(issuance::Error),
@@ -171,7 +171,7 @@ impl<FE: fmt::Display> fmt::Display for Error<FE> {
                 f,
                 "Cannot create Sapling transactions without a Sapling anchor"
             ),
-            Error::OrchardBundleNotAvailable => write!(
+            Error::OrchardBuilderNotAvailable => write!(
                 f,
                 "Cannot create Orchard transactions without an Orchard anchor, or before NU5 activation"
             ),
@@ -324,7 +324,7 @@ impl BuildConfig {
     pub fn orchard_bundle_type<FE>(&self) -> Result<BundleType, Error<FE>> {
         let (bundle_type, _) = self
             .orchard_builder_config()
-            .ok_or(Error::OrchardBundleNotAvailable)?;
+            .ok_or(Error::OrchardBuilderNotAvailable)?;
         Ok(bundle_type)
     }
 }
@@ -562,6 +562,8 @@ impl<'a, P: consensus::Parameters> Builder<'a, P, ()> {
             first_issuance,
             OsRng,
         );
+
+        self.issuance_builder = Some(bundle);
         self.issuance_isk = Some(ik);
 
         Ok(())
@@ -611,7 +613,7 @@ impl<'a, P: consensus::Parameters> Builder<'a, P, ()> {
         }
         self.orchard_builder
             .as_mut()
-            .ok_or(Error::OrchardBundleNotAvailable)?
+            .ok_or(Error::OrchardBuilderNotAvailable)?
             .add_burn(asset, orchard::value::NoteValue::from_raw(value))
             .map_err(Error::OrchardBuild)?;
 
@@ -646,7 +648,7 @@ impl<P: consensus::Parameters, U: sapling::builder::ProverProgress> Builder<'_, 
             builder.add_spend(fvk, note, merkle_path)?;
             Ok(())
         } else {
-            Err(Error::OrchardBundleNotAvailable)
+            Err(Error::OrchardBuilderNotAvailable)
         }
     }
 
@@ -665,7 +667,7 @@ impl<P: consensus::Parameters, U: sapling::builder::ProverProgress> Builder<'_, 
         }
         self.orchard_builder
             .as_mut()
-            .ok_or(Error::OrchardBundleNotAvailable)?
+            .ok_or(Error::OrchardBuilderNotAvailable)?
             .add_output(
                 ovk,
                 recipient,
@@ -1488,8 +1490,9 @@ mod tests {
     use {
         crate::transaction::fees::zip317::FeeError,
         orchard::builder::BundleType,
+        orchard::issuance_auth::{IssueAuthKey, IssueValidatingKey},
         orchard::keys::{
-            FullViewingKey, IssuanceAuthorizingKey, IssuanceValidatingKey, SpendingKey,
+            FullViewingKey, SpendingKey,
         },
         orchard::note::AssetBase,
         orchard::orchard_flavor::OrchardZSA,
@@ -2057,16 +2060,16 @@ mod tests {
     fn swap_external_and_internal_action_groups() {
         let (mut builder, _, _) = prepare_swap_test();
 
-        let seed = "0123456789abcdef0123456789abcdef".as_bytes();
-        let iak = IssuanceAuthorizingKey::from_zip32_seed(seed, COIN_TYPE, 0).unwrap();
+        let seed = [1u8; 32];
+        let iak = IssueAuthKey::<orchard::issuance_auth::ZSASchnorr>::from_bytes(&seed).unwrap();
 
         let asset_desc_a: &[u8] = b"assetA";
         let asset_desc_a_hash = compute_asset_desc_hash(&NonEmpty::from_slice(asset_desc_a).unwrap());
-        let asset_base_a = AssetBase::derive(&IssuanceValidatingKey::from(&iak), &asset_desc_a_hash);
+        let asset_base_a = AssetBase::derive(&IssueValidatingKey::from(&iak), &asset_desc_a_hash);
 
         let asset_desc_b: &[u8] = b"assetB";
         let asset_desc_b_hash = compute_asset_desc_hash(&NonEmpty::from_slice(asset_desc_b).unwrap());
-        let asset_base_b = AssetBase::derive(&IssuanceValidatingKey::from(&iak), &asset_desc_b_hash);
+        let asset_base_b = AssetBase::derive(&IssueValidatingKey::from(&iak), &asset_desc_b_hash);
 
         let sak_ref = add_dummy_orchard_spend(&mut builder, asset_base_b); // reference note
         let sak_real = add_dummy_orchard_spend(&mut builder, asset_base_a);
@@ -2097,9 +2100,9 @@ mod tests {
         asset1: &[u8; 32],
         asset2: &[u8; 32],
     ) {
-        let ik = IssuanceValidatingKey::from(
-            &IssuanceAuthorizingKey::from_zip32_seed(&[0u8; 32], COIN_TYPE, 0).unwrap(),
-        );
+        let seed = [2u8; 32];
+        let iak = IssueAuthKey::<orchard::issuance_auth::ZSASchnorr>::from_bytes(&seed).unwrap();
+        let ik = IssueValidatingKey::from(&iak);
         let (rsk, rfvk, reference_note) = dummy_note(AssetBase::derive(&ik, asset2));
         let (sk, fvk, note_to_spend) = dummy_note(AssetBase::derive(&ik, asset1));
         let (_, _, note_to_receive) = dummy_note(AssetBase::derive(&ik, asset2));

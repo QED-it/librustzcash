@@ -23,6 +23,9 @@ use super::components::tze;
 #[cfg(all(test, zcash_unstable = "nu7"))]
 use crate::transaction::OrchardBundle::OrchardZSA;
 
+#[cfg(all(test, zcash_unstable = "nu7" /* TODO swap */ ))]
+use crate::transaction::OrchardBundle::OrchardSwap;
+
 #[cfg(all(test, zcash_unstable = "nu7", feature = "zip-233"))]
 use super::sighash_v6::v6_signature_hash;
 
