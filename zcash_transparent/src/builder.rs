@@ -522,7 +522,7 @@ impl Bundle<Unauthorized> {
 }
 
 #[cfg(feature = "transparent-inputs")]
-impl<'a> TransparentSignatureContext<'a, secp256k1::VerifyOnly> {
+impl TransparentSignatureContext<'_, secp256k1::VerifyOnly> {
     /// Appends a new batch of external signatures to the transparent inputs.
     ///
     /// This method iterates through the provided signatures, applying each one to the
