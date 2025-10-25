@@ -132,7 +132,7 @@ impl TestDb {
     #[allow(dead_code)]
     #[cfg(feature = "unstable")]
     pub(crate) unsafe fn run_sqlite3(&self, command: &str) {
-        run_sqlite3(self.data_file.path(), command)
+        unsafe { run_sqlite3(self.data_file.path(), command) }
     }
 }
 
