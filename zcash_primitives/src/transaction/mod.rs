@@ -1111,7 +1111,7 @@ impl Transaction {
         }
         self.write_header(&mut writer)?;
         self.write_transparent(&mut writer)?;
-        sapling_serialization::write_v5_bundle(&mut writer, self.sapling_bundle.as_ref())?;
+        self.write_v5_sapling(&mut writer)?;
         orchard_serialization::write_v5_bundle(self.orchard_bundle.as_ref(), &mut writer)?;
 
         Ok(())
