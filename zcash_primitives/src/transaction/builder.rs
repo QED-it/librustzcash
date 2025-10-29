@@ -1395,6 +1395,25 @@ mod tests {
         zip32::AccountId,
     };
 
+    #[cfg(zcash_unstable = "nu7")]
+    use {
+        crate::transaction::fees::zip317,
+        nonempty::NonEmpty,
+        orchard::{
+            issuance::{compute_asset_desc_hash, IssueInfo},
+            issuance_auth::{IssueAuthKey, IssueValidatingKey},
+            keys::{FullViewingKey, Scope, SpendAuthorizingKey, SpendingKey},
+            note::AssetBase,
+            orchard_flavor::OrchardVanilla,
+            primitives::OrchardDomain,
+            tree::MerkleHashOrchard,
+            value::NoteValue,
+        },
+        shardtree::{store::memory::MemoryShardStore, ShardTree},
+        zcash_note_encryption::try_note_decryption,
+        zcash_protocol::memo::Memo,
+    };
+
     // This test only works with the transparent_inputs feature because we have to
     // be able to create a tx with a valid balance, without using Sapling inputs.
     #[test]
@@ -1868,23 +1887,6 @@ mod tests {
     #[cfg(zcash_unstable = "nu7")]
     #[test]
     fn check_zsa_issuance_fees() {
-        use crate::transaction::fees::zip317;
-        use nonempty::NonEmpty;
-        use orchard::{
-            issuance::{compute_asset_desc_hash, IssueInfo},
-            issuance_auth::{IssueAuthKey, IssueValidatingKey},
-            keys::{FullViewingKey, Scope, SpendAuthorizingKey, SpendingKey},
-            note::AssetBase,
-            orchard_flavor::OrchardVanilla,
-            primitives::OrchardDomain,
-            tree::MerkleHashOrchard,
-            value::NoteValue,
-        };
-        use shardtree::{store::memory::MemoryShardStore, ShardTree};
-        use zcash_note_encryption::try_note_decryption;
-        use zcash_protocol::memo::Memo;
-        use zip32::AccountId;
-
         let mut rng = OsRng;
 
         let tx_height = TEST_NETWORK
@@ -1960,8 +1962,6 @@ mod tests {
         let asset_desc_hash_2 =
             compute_asset_desc_hash(&NonEmpty::from_slice(b"This is Asset 2").unwrap());
 
-       
-
         // Create an asset creation function, to simulate the output from querying global state,
         // under the assumption that only asset_base_prev_issued is already issued before,
         // and no other assets are previously issued.
@@ -1969,11 +1969,7 @@ mod tests {
             asset_base: AssetBase,
             asset_base_prev_issued: AssetBase,
         ) -> bool {
-            match asset_base {
-                a if a == AssetBase::native() => false, // ZEC is never newly created.
-                a if a == asset_base_prev_issued => false,
-                _ => true,
-            }
+            asset_base != asset_base_prev_issued && asset_base != AssetBase::native()
         }
 
         let issue_info = IssueInfo {
