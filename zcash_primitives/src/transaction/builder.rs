@@ -1867,7 +1867,7 @@ mod tests {
 
     #[cfg(zcash_unstable = "nu7")]
     #[test]
-    fn confirm_accurate_zsa_issuance_fees() {
+    fn check_zsa_issuance_fees() {
         use crate::transaction::fees::zip317;
         use nonempty::NonEmpty;
         use orchard::{
@@ -1960,7 +1960,7 @@ mod tests {
         let asset_desc_hash_2 =
             compute_asset_desc_hash(&NonEmpty::from_slice(b"This is Asset 2").unwrap());
 
-        let asset_base_1 = AssetBase::derive(&ik, &asset_desc_hash_1);
+       
 
         // Create an asset creation function, to simulate the output from querying global state,
         // under the assumption that only asset_base_prev_issued is already issued before,
