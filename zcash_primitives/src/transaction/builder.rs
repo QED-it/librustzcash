@@ -925,8 +925,11 @@ impl<P: consensus::Parameters, U: sapling::builder::ProverProgress> Builder<'_, 
         spend_prover: &SP,
         output_prover: &OP,
         fee_rule: &FR,
+        #[cfg(zcash_unstable = "nu7")] is_asset_newly_created: impl Fn(&AssetBase) -> bool,
     ) -> Result<BuildResult, Error<FR::Error>> {
-        let fee = self.get_fee_zfuture(fee_rule).map_err(Error::Fee)?;
+        let fee = self
+            .get_fee_zfuture(fee_rule, is_asset_newly_created)
+            .map_err(Error::Fee)?;
         self.build_internal(
             transparent_signing_set,
             sapling_extsks,
@@ -2040,7 +2043,8 @@ mod tests {
             )
             .unwrap();
 
-        // There should be 2 Orchard Actions (1 spend, 1 change output, and 1 fee output)
+        // There should be 2 Orchard Actions (1 action with the spend and change output,
+        // and 1 action with a dummy spend and dummy output to reach the minimum 2 Actions).
         assert_eq!(
             res.transaction()
                 .orchard_bundle()
