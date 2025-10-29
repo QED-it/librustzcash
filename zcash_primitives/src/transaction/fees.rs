@@ -58,6 +58,8 @@ pub trait FutureFeeRule: FeeRule {
         sapling_input_count: usize,
         sapling_output_count: usize,
         orchard_action_count: usize,
+        #[cfg(zcash_unstable = "nu7")] asset_creation_count: usize,
+        #[cfg(zcash_unstable = "nu7")] issue_note_count: usize,
         tze_inputs: &[impl tze::InputView],
         tze_outputs: &[impl tze::OutputView],
     ) -> Result<Zatoshis, Self::Error>;

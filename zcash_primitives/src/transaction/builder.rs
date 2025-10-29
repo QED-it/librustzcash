@@ -804,6 +804,7 @@ impl<P: consensus::Parameters, U: sapling::builder::ProverProgress> Builder<'_, 
     pub fn get_fee_zfuture<FR: FeeRule + FutureFeeRule>(
         &self,
         fee_rule: &FR,
+        #[cfg(zcash_unstable = "nu7")] is_asset_newly_created: impl Fn(&AssetBase) -> bool,
     ) -> Result<Zatoshis, FeeError<FR::Error>> {
         #[cfg(feature = "transparent-inputs")]
         let transparent_inputs = self.transparent_builder.inputs();
@@ -842,6 +843,23 @@ impl<P: consensus::Parameters, U: sapling::builder::ProverProgress> Builder<'_, 
                             .num_actions(builder.spends().len(), builder.outputs().len())
                             .map_err(FeeError::Bundle)
                     })?,
+                #[cfg(zcash_unstable = "nu7")]
+                self.issuance_builder.as_ref().map_or(0, |bundle| {
+                    bundle
+                        .actions()
+                        .iter()
+                        .filter(|&action| {
+                            is_asset_newly_created(&AssetBase::derive(
+                                bundle.ik(),
+                                action.asset_desc_hash(),
+                            ))
+                        })
+                        .count()
+                }),
+                #[cfg(zcash_unstable = "nu7")]
+                self.issuance_builder
+                    .as_ref()
+                    .map_or(0, |bundle| bundle.get_all_notes().len()),
                 self.tze_builder.inputs(),
                 self.tze_builder.outputs(),
             )
