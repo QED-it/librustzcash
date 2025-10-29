@@ -1986,15 +1986,11 @@ mod tests {
         // Create an asset creation function, to simulate the output from querying global state,
         // under the assumption that only asset_base_prev_issued is already issued before,
         // and no other assets are previously issued.
-        fn is_asset_newly_created(
-            asset_base: AssetBase,
-            asset_base_prev_issued: AssetBase,
-        ) -> bool {
-            match asset_base {
-                _ if asset_base == AssetBase::native() => false,
-                _ if asset_base == asset_base_prev_issued => false,
-                _ => true,
+        fn is_asset_newly_created(asset: AssetBase, prev_issued_assets: &[AssetBase]) -> bool {
+            if asset == AssetBase::native() {
+                return false;
             }
+            !prev_issued_assets.contains(&asset)
         }
 
         let issue_info = IssueInfo {
@@ -2042,7 +2038,7 @@ mod tests {
                 &[],
                 &[sak],
                 #[cfg(zcash_unstable = "nu7")]
-                |a| is_asset_newly_created(*a, AssetBase::derive(&ik, &asset_desc_hash_1)),
+                |a| is_asset_newly_created(*a, &[AssetBase::derive(&ik, &asset_desc_hash_1)]),
                 OsRng,
             )
             .unwrap();
