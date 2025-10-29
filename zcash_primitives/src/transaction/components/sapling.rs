@@ -424,7 +424,6 @@ pub(crate) fn write_v4_components<W: Write>(
 }
 
 /// Reads a [`Bundle`] from a v5 transaction format.
-#[allow(clippy::redundant_closure)]
 pub(crate) fn read_v5_bundle<R: Read>(
     mut reader: R,
 ) -> io::Result<Option<Bundle<Authorized, ZatBalance>>> {
@@ -483,7 +482,6 @@ pub(crate) fn read_v5_bundle<R: Read>(
 
 /// Reads a [`Bundle`] from a v6 transaction format.
 #[cfg(zcash_unstable = "nu7")]
-#[allow(clippy::redundant_closure)]
 pub(crate) fn read_v6_bundle<R: Read>(
     mut reader: R,
 ) -> io::Result<Option<Bundle<Authorized, ZatBalance>>> {
