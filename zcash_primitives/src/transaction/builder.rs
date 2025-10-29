@@ -1990,7 +1990,11 @@ mod tests {
             asset_base: AssetBase,
             asset_base_prev_issued: AssetBase,
         ) -> bool {
-            asset_base != asset_base_prev_issued && asset_base != AssetBase::native()
+            match asset_base {
+                _ if asset_base == AssetBase::native() => false,
+                _ if asset_base == asset_base_prev_issued => false,
+                _ => true,
+            }
         }
 
         let issue_info = IssueInfo {
