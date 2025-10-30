@@ -528,7 +528,7 @@ impl Bundle {
                     output: Output {
                         cmx: output.cmx().to_bytes(),
                         ephemeral_key: output.encrypted_note().epk_bytes,
-                        enc_ciphertext: output.encrypted_note().enc_ciphertext.to_vec(),
+                        enc_ciphertext: output.encrypted_note().enc_ciphertext.0.to_vec(),
                         out_ciphertext: output.encrypted_note().out_ciphertext.to_vec(),
                         recipient: action
                             .output()

@@ -8,7 +8,7 @@ use rand_core::OsRng;
 use zcash_primitives::transaction::{
     sighash::{signature_hash, SignableInput},
     txid::TxIdDigester,
-    Authorization, Transaction, TransactionData, TxVersion,
+    Authorization, OrchardBundle, Transaction, TransactionData, TxVersion,
 };
 #[cfg(all(
     any(zcash_unstable = "nu7", zcash_unstable = "zfuture"),
@@ -102,7 +102,9 @@ impl<'a> TransactionExtractor<'a> {
         let transparent_bundle =
             transparent::extract_bundle(pczt.transparent).map_err(Error::Transparent)?;
         let sapling_bundle = sapling::extract_bundle(pczt.sapling).map_err(Error::Sapling)?;
-        let orchard_bundle = orchard::extract_bundle(pczt.orchard).map_err(Error::Orchard)?;
+        let orchard_bundle = orchard::extract_bundle(pczt.orchard)
+            .map_err(Error::Orchard)?
+            .map(OrchardBundle::OrchardVanilla);
 
         let tx_data = TransactionData::<Unbound>::from_parts(
             version,
@@ -136,7 +138,10 @@ impl<'a> TransactionExtractor<'a> {
             },
             |o| {
                 o.map(|o| {
-                    o.apply_binding_signature(*shielded_sighash.as_ref(), OsRng)
+                    let OrchardBundle::OrchardVanilla(bundle) = o;
+                    bundle
+                        .apply_binding_signature(*shielded_sighash.as_ref(), OsRng)
+                        .map(OrchardBundle::OrchardVanilla)
                         .ok_or(Error::SighashMismatch)
                 })
                 .transpose()
@@ -155,8 +160,12 @@ impl<'a> TransactionExtractor<'a> {
                 .map_err(Error::Sapling)?;
         }
         if let Some(bundle) = tx.orchard_bundle() {
-            orchard::verify_bundle(bundle, orchard_vk, *shielded_sighash.as_ref())
-                .map_err(Error::Orchard)?;
+            orchard::verify_bundle(
+                bundle.as_vanilla_bundle(),
+                orchard_vk,
+                *shielded_sighash.as_ref(),
+            )
+            .map_err(Error::Orchard)?;
         }
 
         Ok(tx)

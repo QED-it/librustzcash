@@ -19,7 +19,7 @@ use rand_core::OsRng;
 use ::transparent::sighash::{SIGHASH_ANYONECANPAY, SIGHASH_NONE, SIGHASH_SINGLE};
 use zcash_primitives::transaction::{
     sighash::SignableInput, sighash_v5::v5_signature_hash, txid::TxIdDigester, Authorization,
-    TransactionData, TxDigests, TxVersion,
+    OrchardBundle, TransactionData, TxDigests, TxVersion,
 };
 use zcash_protocol::consensus::BranchId;
 #[cfg(all(
@@ -281,7 +281,10 @@ pub(crate) fn pczt_to_tx_data(
 
     let sapling_bundle = sapling.extract_effects().map_err(Error::SaplingExtract)?;
 
-    let orchard_bundle = orchard.extract_effects().map_err(Error::OrchardExtract)?;
+    let orchard_bundle = orchard
+        .extract_effects()
+        .map_err(Error::OrchardExtract)?
+        .map(OrchardBundle::OrchardVanilla);
 
     Ok(TransactionData::from_parts(
         version,
