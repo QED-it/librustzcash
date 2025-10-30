@@ -120,6 +120,8 @@ impl<'a> TransactionExtractor<'a> {
             None,
             sapling_bundle,
             orchard_bundle,
+            #[cfg(zcash_unstable = "nu7")]
+            None,
         );
 
         // The commitment being signed is shared across all shielded inputs.
@@ -137,15 +139,20 @@ impl<'a> TransactionExtractor<'a> {
                 .transpose()
             },
             |o| {
-                o.map(|o| {
-                    let OrchardBundle::OrchardVanilla(bundle) = o;
-                    bundle
+                o.map(|o| match o {
+                    OrchardBundle::OrchardVanilla(bundle) => bundle
                         .apply_binding_signature(*shielded_sighash.as_ref(), OsRng)
                         .map(OrchardBundle::OrchardVanilla)
-                        .ok_or(Error::SighashMismatch)
+                        .ok_or(Error::SighashMismatch),
+                    #[cfg(zcash_unstable = "nu7")]
+                    OrchardBundle::OrchardZSA(_) => {
+                        unimplemented!("PCZT support for ZSA is not implemented.")
+                    }
                 })
                 .transpose()
             },
+            #[cfg(zcash_unstable = "nu7")]
+            |i| i,
             #[cfg(zcash_unstable = "zfuture")]
             |_| unimplemented!("PCZT support for TZEs is not implemented."),
         )?;
@@ -178,6 +185,8 @@ impl Authorization for Unbound {
     type TransparentAuth = ::transparent::pczt::Unbound;
     type SaplingAuth = ::sapling::pczt::Unbound;
     type OrchardAuth = ::orchard::pczt::Unbound;
+    #[cfg(zcash_unstable = "nu7")]
+    type IssueAuth = ::orchard::issuance::Signed;
     #[cfg(zcash_unstable = "zfuture")]
     type TzeAuth = core::convert::Infallible;
 }
