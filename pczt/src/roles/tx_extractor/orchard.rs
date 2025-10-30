@@ -1,12 +1,10 @@
-use orchard::orchard_flavor::OrchardFlavor;
-use orchard::primitives::OrchardPrimitives;
 use orchard::{bundle::Authorized, circuit::VerifyingKey, pczt::Unbound, Bundle};
 use rand_core::OsRng;
 use zcash_protocol::value::ZatBalance;
 
-pub(super) fn extract_bundle<P: OrchardPrimitives>(
+pub(super) fn extract_bundle(
     bundle: crate::orchard::Bundle,
-) -> Result<Option<Bundle<Unbound, ZatBalance, P>>, OrchardError> {
+) -> Result<Option<Bundle<Unbound, ZatBalance>>, OrchardError> {
     bundle
         .into_parsed()
         .map_err(OrchardError::Parse)?
@@ -14,8 +12,8 @@ pub(super) fn extract_bundle<P: OrchardPrimitives>(
         .map_err(OrchardError::Extract)
 }
 
-pub(super) fn verify_bundle<FL: OrchardFlavor>(
-    bundle: &Bundle<Authorized, ZatBalance, FL>,
+pub(super) fn verify_bundle(
+    bundle: &Bundle<Authorized, ZatBalance>,
     orchard_vk: Option<&VerifyingKey>,
     sighash: [u8; 32],
 ) -> Result<(), OrchardError> {
@@ -31,7 +29,7 @@ pub(super) fn verify_bundle<FL: OrchardFlavor>(
             Err(OrchardError::InvalidProof)
         }
     } else {
-        let vk = VerifyingKey::build::<FL>();
+        let vk = VerifyingKey::build();
         if validator.validate(&vk, rng) {
             Ok(())
         } else {
