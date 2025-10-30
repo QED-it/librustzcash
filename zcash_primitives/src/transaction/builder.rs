@@ -1984,7 +1984,7 @@ mod tests {
             compute_asset_desc_hash(&NonEmpty::from_slice(b"This is Asset 2").unwrap());
 
         // Create an asset creation function, to simulate the output from querying global state,
-        // under the assumption that only asset_base_prev_issued is already issued before,
+        // under the assumption that only the assets in prev_issued_assets have been issued before,
         // and no other assets are previously issued.
         fn is_asset_newly_created(asset: AssetBase, prev_issued_assets: &[AssetBase]) -> bool {
             if asset == AssetBase::native() {
