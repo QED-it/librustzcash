@@ -5,10 +5,10 @@ use ::transparent::{
     bundle as transparent,
     keys::{AccountPrivKey, IncomingViewingKey},
 };
-use orchard::note::AssetBase;
-use orchard::orchard_flavor::OrchardVanilla;
-use orchard::primitives::OrchardDomain;
-use orchard::tree::MerkleHashOrchard;
+use orchard::{
+    note::AssetBase, orchard_flavor::OrchardVanilla, primitives::OrchardDomain,
+    tree::MerkleHashOrchard,
+};
 use pczt::{
     roles::{
         combiner::Combiner, creator::Creator, io_finalizer::IoFinalizer, prover::Prover,
@@ -30,31 +30,10 @@ use zcash_protocol::{
     value::Zatoshis,
 };
 
-#[cfg(zcash_unstable = "nu7")]
-use nonempty::NonEmpty;
-#[cfg(zcash_unstable = "nu7")]
-use orchard::{
-    issuance::compute_asset_desc_hash,
-    issuance_auth::{IssueAuthKey, IssueValidatingKey, ZSASchnorr},
-    note::{RandomSeed, Rho},
-    orchard_flavor::OrchardZSA,
-    value::NoteValue,
-    Note,
-};
-#[cfg(zcash_unstable = "nu7")]
-use zcash_protocol::consensus::Network::RegtestNetwork;
-
 static ORCHARD_PROVING_KEY: OnceLock<orchard::circuit::ProvingKey> = OnceLock::new();
-#[cfg(zcash_unstable = "nu7")]
-static ORCHARD_ZSA_PROVING_KEY: OnceLock<orchard::circuit::ProvingKey> = OnceLock::new();
 
 fn orchard_proving_key() -> &'static orchard::circuit::ProvingKey {
     ORCHARD_PROVING_KEY.get_or_init(orchard::circuit::ProvingKey::build::<OrchardVanilla>)
-}
-
-#[cfg(zcash_unstable = "nu7")]
-fn orchard_zsa_proving_key() -> &'static orchard::circuit::ProvingKey {
-    ORCHARD_ZSA_PROVING_KEY.get_or_init(orchard::circuit::ProvingKey::build::<OrchardZSA>)
 }
 
 fn check_round_trip(pczt: &Pczt) {
@@ -143,7 +122,7 @@ fn transparent_to_orchard() {
 
     // Create proofs.
     let pczt = Prover::new(pczt)
-        .create_orchard_proof::<OrchardVanilla>(orchard_proving_key())
+        .create_orchard_proof(orchard_proving_key())
         .unwrap()
         .finish();
     check_round_trip(&pczt);
@@ -303,7 +282,7 @@ fn sapling_to_orchard() {
 
     // Create Orchard proof.
     let pczt_with_orchard_proof = Prover::new(pczt.clone())
-        .create_orchard_proof::<OrchardVanilla>(orchard_proving_key())
+        .create_orchard_proof(orchard_proving_key())
         .unwrap()
         .finish();
     check_round_trip(&pczt_with_orchard_proof);
@@ -455,7 +434,7 @@ fn orchard_to_orchard() {
 
     // Create proofs.
     let pczt = Prover::new(pczt)
-        .create_orchard_proof::<OrchardVanilla>(orchard_proving_key())
+        .create_orchard_proof(orchard_proving_key())
         .unwrap()
         .finish();
     check_round_trip(&pczt);
