@@ -180,8 +180,6 @@ impl super::FeeRule for FeeRule {
         sapling_input_count: usize,
         sapling_output_count: usize,
         orchard_action_count: usize,
-        #[cfg(zcash_unstable = "nu7")] asset_creation_count: usize,
-        #[cfg(zcash_unstable = "nu7")] issue_note_count: usize,
     ) -> Result<Zatoshis, Self::Error> {
         let mut t_in_total_size: usize = 0;
         let mut non_p2pkh_outpoints = vec![];
@@ -204,19 +202,59 @@ impl super::FeeRule for FeeRule {
 
         let ceildiv = |num: usize, den: usize| num.div_ceil(den);
 
-        #[cfg(not(zcash_unstable = "nu7"))]
-        let issuance_logical_actions: usize = 0;
+        let logical_actions = max(
+            ceildiv(t_in_total_size, self.p2pkh_standard_input_size),
+            ceildiv(t_out_total_size, self.p2pkh_standard_output_size),
+        ) + max(sapling_input_count, sapling_output_count)
+            + orchard_action_count;
 
-        #[cfg(zcash_unstable = "nu7")]
-        let issuance_logical_actions: usize =
-            issue_note_count + (self.creation_cost * asset_creation_count);
+        (self.marginal_fee * max(self.grace_actions, logical_actions))
+            .ok_or_else(|| BalanceError::Overflow.into())
+    }
+}
+
+#[cfg(zcash_unstable = "nu7")]
+impl super::ZSAFeeRule for FeeRule {
+    fn fee_required_zsa<P: consensus::Parameters>(
+        &self,
+        _params: &P,
+        _target_height: BlockHeight,
+        transparent_input_sizes: impl IntoIterator<Item = transparent::InputSize>,
+        transparent_output_sizes: impl IntoIterator<Item = usize>,
+        sapling_input_count: usize,
+        sapling_output_count: usize,
+        orchard_action_count: usize,
+        asset_creation_count: usize,
+        issue_note_count: usize,
+    ) -> Result<Zatoshis, Self::Error> {
+        let mut t_in_total_size: usize = 0;
+        let mut non_p2pkh_outpoints = vec![];
+        for sz in transparent_input_sizes.into_iter() {
+            match sz {
+                transparent::InputSize::Known(s) => {
+                    t_in_total_size += s;
+                }
+                transparent::InputSize::Unknown(outpoint) => {
+                    non_p2pkh_outpoints.push(outpoint.clone());
+                }
+            }
+        }
+
+        if !non_p2pkh_outpoints.is_empty() {
+            return Err(FeeError::NonP2pkhInputs(non_p2pkh_outpoints));
+        }
+
+        let t_out_total_size = transparent_output_sizes.into_iter().sum();
+
+        let ceildiv = |num: usize, den: usize| num.div_ceil(den);
 
         let logical_actions = max(
             ceildiv(t_in_total_size, self.p2pkh_standard_input_size),
             ceildiv(t_out_total_size, self.p2pkh_standard_output_size),
         ) + max(sapling_input_count, sapling_output_count)
             + orchard_action_count
-            + issuance_logical_actions;
+            + issue_note_count
+            + (self.creation_cost * asset_creation_count);
 
         (self.marginal_fee * max(self.grace_actions, logical_actions))
             .ok_or_else(|| BalanceError::Overflow.into())

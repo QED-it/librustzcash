@@ -20,6 +20,9 @@ use crate::transaction::{
     Transaction, TxVersion,
 };
 
+#[cfg(zcash_unstable = "nu7")]
+use crate::transaction::fees::ZSAFeeRule;
+
 #[cfg(feature = "std")]
 use std::sync::mpsc::Sender;
 
@@ -737,11 +740,7 @@ impl<P: consensus::Parameters, U: sapling::builder::ProverProgress> Builder<'_, 
     ///
     /// This fee is a function of the spends and outputs that have been added to the builder,
     /// pursuant to the specified [`FeeRule`].
-    pub fn get_fee<FR: FeeRule>(
-        &self,
-        fee_rule: &FR,
-        #[cfg(zcash_unstable = "nu7")] is_asset_newly_created: impl Fn(&AssetBase) -> bool,
-    ) -> Result<Zatoshis, FeeError<FR::Error>> {
+    pub fn get_fee<FR: FeeRule>(&self, fee_rule: &FR) -> Result<Zatoshis, FeeError<FR::Error>> {
         #[cfg(feature = "transparent-inputs")]
         let transparent_inputs = self.transparent_builder.inputs();
 
@@ -779,7 +778,53 @@ impl<P: consensus::Parameters, U: sapling::builder::ProverProgress> Builder<'_, 
                             .num_actions(builder.spends().len(), builder.outputs().len())
                             .map_err(FeeError::Bundle)
                     })?,
-                #[cfg(zcash_unstable = "nu7")]
+            )
+            .map_err(FeeError::FeeRule)
+    }
+
+    #[cfg(zcash_unstable = "nu7")]
+    pub fn get_fee_zsa<FR: FeeRule + ZSAFeeRule>(
+        &self,
+        fee_rule: &FR,
+        is_asset_newly_created: impl Fn(&AssetBase) -> bool,
+    ) -> Result<Zatoshis, FeeError<FR::Error>> {
+        #[cfg(feature = "transparent-inputs")]
+        let transparent_inputs = self.transparent_builder.inputs();
+
+        #[cfg(not(feature = "transparent-inputs"))]
+        let transparent_inputs: &[Infallible] = &[];
+
+        let sapling_spends = self
+            .sapling_builder
+            .as_ref()
+            .map_or(0, |builder| builder.inputs().len());
+
+        fee_rule
+            .fee_required_zsa(
+                &self.params,
+                self.target_height,
+                transparent_inputs.iter().map(|i| i.serialized_size()),
+                self.transparent_builder
+                    .outputs()
+                    .iter()
+                    .map(|i| i.serialized_size()),
+                sapling_spends,
+                self.sapling_builder
+                    .as_ref()
+                    .zip(self.build_config.sapling_builder_config())
+                    .map_or(Ok(0), |(builder, (bundle_type, _))| {
+                        bundle_type
+                            .num_outputs(sapling_spends, builder.outputs().len())
+                            .map_err(FeeError::Bundle)
+                    })?,
+                self.orchard_builder
+                    .as_ref()
+                    .zip(self.build_config.orchard_builder_config())
+                    .map_or(Ok(0), |(builder, (bundle_type, _))| {
+                        bundle_type
+                            .num_actions(builder.spends().len(), builder.outputs().len())
+                            .map_err(FeeError::Bundle)
+                    })?,
                 self.issuance_builder.as_ref().map_or(0, |bundle| {
                     bundle
                         .actions()
@@ -792,7 +837,6 @@ impl<P: consensus::Parameters, U: sapling::builder::ProverProgress> Builder<'_, 
                         })
                         .count()
                 }),
-                #[cfg(zcash_unstable = "nu7")]
                 self.issuance_builder
                     .as_ref()
                     .map_or(0, |bundle| bundle.get_all_notes().len()),
@@ -804,7 +848,6 @@ impl<P: consensus::Parameters, U: sapling::builder::ProverProgress> Builder<'_, 
     pub fn get_fee_zfuture<FR: FeeRule + FutureFeeRule>(
         &self,
         fee_rule: &FR,
-        #[cfg(zcash_unstable = "nu7")] is_asset_newly_created: impl Fn(&AssetBase) -> bool,
     ) -> Result<Zatoshis, FeeError<FR::Error>> {
         #[cfg(feature = "transparent-inputs")]
         let transparent_inputs = self.transparent_builder.inputs();
@@ -843,23 +886,6 @@ impl<P: consensus::Parameters, U: sapling::builder::ProverProgress> Builder<'_, 
                             .num_actions(builder.spends().len(), builder.outputs().len())
                             .map_err(FeeError::Bundle)
                     })?,
-                #[cfg(zcash_unstable = "nu7")]
-                self.issuance_builder.as_ref().map_or(0, |bundle| {
-                    bundle
-                        .actions()
-                        .iter()
-                        .filter(|&action| {
-                            is_asset_newly_created(&AssetBase::derive(
-                                bundle.ik(),
-                                action.asset_desc_hash(),
-                            ))
-                        })
-                        .count()
-                }),
-                #[cfg(zcash_unstable = "nu7")]
-                self.issuance_builder
-                    .as_ref()
-                    .map_or(0, |bundle| bundle.get_all_notes().len()),
                 self.tze_builder.inputs(),
                 self.tze_builder.outputs(),
             )
@@ -886,14 +912,37 @@ impl<P: consensus::Parameters, U: sapling::builder::ProverProgress> Builder<'_, 
         spend_prover: &SP,
         output_prover: &OP,
         fee_rule: &FR,
-        #[cfg(zcash_unstable = "nu7")] is_asset_newly_created: impl Fn(&AssetBase) -> bool,
+    ) -> Result<BuildResult, Error<FR::Error>> {
+        let fee = self.get_fee(fee_rule).map_err(Error::Fee)?;
+        self.build_internal(
+            transparent_signing_set,
+            sapling_extsks,
+            orchard_saks,
+            rng,
+            spend_prover,
+            output_prover,
+            fee,
+        )
+    }
+
+    /// Builds a transaction from the configured spends and outputs.
+    ///
+    /// Upon success, returns a tuple containing the final transaction, and the
+    /// [`SaplingMetadata`] generated during the build process.
+    #[cfg(zcash_unstable = "nu7")]
+    pub fn build_zsa<R: RngCore + CryptoRng, SP: SpendProver, OP: OutputProver, FR: ZSAFeeRule>(
+        self,
+        transparent_signing_set: &TransparentSigningSet,
+        sapling_extsks: &[sapling::zip32::ExtendedSpendingKey],
+        orchard_saks: &[orchard::keys::SpendAuthorizingKey],
+        rng: R,
+        spend_prover: &SP,
+        output_prover: &OP,
+        fee_rule: &FR,
+        is_asset_newly_created: impl Fn(&AssetBase) -> bool,
     ) -> Result<BuildResult, Error<FR::Error>> {
         let fee = self
-            .get_fee(
-                fee_rule,
-                #[cfg(zcash_unstable = "nu7")]
-                is_asset_newly_created,
-            )
+            .get_fee_zsa(fee_rule, is_asset_newly_created)
             .map_err(Error::Fee)?;
         self.build_internal(
             transparent_signing_set,
@@ -925,11 +974,8 @@ impl<P: consensus::Parameters, U: sapling::builder::ProverProgress> Builder<'_, 
         spend_prover: &SP,
         output_prover: &OP,
         fee_rule: &FR,
-        #[cfg(zcash_unstable = "nu7")] is_asset_newly_created: impl Fn(&AssetBase) -> bool,
     ) -> Result<BuildResult, Error<FR::Error>> {
-        let fee = self
-            .get_fee_zfuture(fee_rule, is_asset_newly_created)
-            .map_err(Error::Fee)?;
+        let fee = self.get_fee_zfuture(fee_rule).map_err(Error::Fee)?;
         self.build_internal(
             transparent_signing_set,
             sapling_extsks,
@@ -1172,15 +1218,8 @@ impl<P: consensus::Parameters, U: sapling::builder::ProverProgress> Builder<'_, 
         self,
         mut rng: R,
         fee_rule: &FR,
-        #[cfg(zcash_unstable = "nu7")] is_asset_newly_created: impl Fn(&AssetBase) -> bool,
     ) -> Result<PcztResult<P>, Error<FR::Error>> {
-        let fee = self
-            .get_fee(
-                fee_rule,
-                #[cfg(zcash_unstable = "nu7")]
-                is_asset_newly_created,
-            )
-            .map_err(Error::Fee)?;
+        let fee = self.get_fee(fee_rule).map_err(Error::Fee)?;
         let consensus_branch_id = BranchId::for_height(&self.params, self.target_height);
 
         // determine transaction version
@@ -1356,7 +1395,8 @@ mod testing {
                 }
             }
 
-            self.build(
+            #[cfg(not(zcash_unstable = "nu7"))]
+            return self.build(
                 transparent_signing_set,
                 sapling_extsks,
                 orchard_saks,
@@ -1365,9 +1405,20 @@ mod testing {
                 &MockOutputProver,
                 #[allow(deprecated)]
                 &zip317::FeeRule::standard(),
-                #[cfg(zcash_unstable = "nu7")]
+            );
+
+            #[cfg(zcash_unstable = "nu7")]
+            return self.build_zsa(
+                transparent_signing_set,
+                sapling_extsks,
+                orchard_saks,
+                FakeCryptoRng(rng),
+                &MockSpendProver,
+                &MockOutputProver,
+                #[allow(deprecated)]
+                &zip317::FeeRule::standard(),
                 is_asset_newly_created,
-            )
+            );
         }
     }
 }
@@ -2028,7 +2079,6 @@ mod tests {
                 &TransparentSigningSet::new(),
                 &[],
                 &[sak],
-                #[cfg(zcash_unstable = "nu7")]
                 |a| is_asset_newly_created(*a, &[AssetBase::derive(&ik, &asset_desc_hash_1)]),
                 OsRng,
             )

@@ -844,8 +844,6 @@ mod tests {
                 &prover,
                 &prover,
                 &fee_rule,
-                #[cfg(zcash_unstable = "nu7")]
-                |_| false, //TODO: is_asset_newly_created function from global state. Needed for ZSA support.
             )
             .map_err(|e| format!("build failure: {:?}", e))
             .unwrap();
@@ -875,8 +873,6 @@ mod tests {
                 &prover,
                 &prover,
                 &fee_rule,
-                #[cfg(zcash_unstable = "nu7")]
-                |_| false, //TODO: is_asset_newly_created function from global state. Needed for ZSA support.
             )
             .map_err(|e| format!("build failure: {:?}", e))
             .unwrap();
@@ -913,8 +909,6 @@ mod tests {
                 &prover,
                 &prover,
                 &fee_rule,
-                #[cfg(zcash_unstable = "nu7")]
-                |_| false, //TODO: is_asset_newly_created function from global state. Needed for ZSA support.
             )
             .map_err(|e| format!("build failure: {:?}", e))
             .unwrap();

@@ -1631,8 +1631,6 @@ where
         spend_prover,
         output_prover,
         fee_rule,
-        #[cfg(zcash_unstable = "nu7")]
-        |_| false, //TODO: is_asset_newly_created function from global state. Needed for ZSA support.
     )?;
 
     #[cfg(feature = "orchard")]
@@ -1808,12 +1806,7 @@ where
     )?;
 
     // Build the transaction with the specified fee rule
-    let build_result = build_state.builder.build_for_pczt(
-        OsRng,
-        fee_rule,
-        #[cfg(zcash_unstable = "nu7")]
-        |_| false, //TODO: is_asset_newly_created function from global state. Needed for ZSA support.
-    )?;
+    let build_result = build_state.builder.build_for_pczt(OsRng, fee_rule)?;
 
     let created = Creator::build_from_parts(build_result.pczt_parts).ok_or(PcztError::Build)?;
 

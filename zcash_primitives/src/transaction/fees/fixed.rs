@@ -39,8 +39,24 @@ impl super::FeeRule for FeeRule {
         _sapling_input_count: usize,
         _sapling_output_count: usize,
         _orchard_action_count: usize,
-        #[cfg(zcash_unstable = "nu7")] _asset_creation_count: usize,
-        #[cfg(zcash_unstable = "nu7")] _issue_note_count: usize,
+    ) -> Result<Zatoshis, Self::Error> {
+        Ok(self.fixed_fee)
+    }
+}
+
+#[cfg(zcash_unstable = "nu7")]
+impl super::ZSAFeeRule for FeeRule {
+    fn fee_required_zsa<P: consensus::Parameters>(
+        &self,
+        _params: &P,
+        _target_height: BlockHeight,
+        _transparent_input_sizes: impl IntoIterator<Item = transparent::InputSize>,
+        _transparent_output_sizes: impl IntoIterator<Item = usize>,
+        _sapling_input_count: usize,
+        _sapling_output_count: usize,
+        _orchard_action_count: usize,
+        _asset_creation_count: usize,
+        _issue_note_count: usize,
     ) -> Result<Zatoshis, Self::Error> {
         Ok(self.fixed_fee)
     }
@@ -57,8 +73,6 @@ impl super::FutureFeeRule for FeeRule {
         _sapling_input_count: usize,
         _sapling_output_count: usize,
         _orchard_action_count: usize,
-        #[cfg(zcash_unstable = "nu7")] _asset_creation_count: usize,
-        #[cfg(zcash_unstable = "nu7")] _issue_note_count: usize,
         _tze_inputs: &[impl tze::InputView],
         _tze_outputs: &[impl tze::OutputView],
     ) -> Result<Zatoshis, Self::Error> {
