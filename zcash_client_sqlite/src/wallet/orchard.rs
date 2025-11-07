@@ -304,6 +304,7 @@ pub(crate) fn put_received_note<
             ],
         )?;
     }
+
     Ok(account_id)
 }
 
