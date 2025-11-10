@@ -214,8 +214,8 @@ impl super::FeeRule for FeeRule {
 }
 
 #[cfg(zcash_unstable = "nu7")]
-impl super::ZSAFeeRule for FeeRule {
-    fn fee_required_zsa<P: consensus::Parameters>(
+impl super::Nu7FeeRule for FeeRule {
+    fn fee_required_nu7<P: consensus::Parameters>(
         &self,
         _params: &P,
         _target_height: BlockHeight,
@@ -225,7 +225,7 @@ impl super::ZSAFeeRule for FeeRule {
         sapling_output_count: usize,
         orchard_action_count: usize,
         asset_creation_count: usize,
-        issue_note_count: usize,
+        total_issue_note_count: usize,
     ) -> Result<Zatoshis, Self::Error> {
         let mut t_in_total_size: usize = 0;
         let mut non_p2pkh_outpoints = vec![];
@@ -253,7 +253,7 @@ impl super::ZSAFeeRule for FeeRule {
             ceildiv(t_out_total_size, self.p2pkh_standard_output_size),
         ) + max(sapling_input_count, sapling_output_count)
             + orchard_action_count
-            + issue_note_count
+            + total_issue_note_count
             + (self.creation_cost * asset_creation_count);
 
         (self.marginal_fee * max(self.grace_actions, logical_actions))

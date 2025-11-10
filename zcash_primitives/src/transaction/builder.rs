@@ -21,7 +21,7 @@ use crate::transaction::{
 };
 
 #[cfg(zcash_unstable = "nu7")]
-use crate::transaction::fees::ZSAFeeRule;
+use crate::transaction::fees::Nu7FeeRule;
 
 #[cfg(feature = "std")]
 use std::sync::mpsc::Sender;
@@ -783,7 +783,18 @@ impl<P: consensus::Parameters, U: sapling::builder::ProverProgress> Builder<'_, 
     }
 
     #[cfg(zcash_unstable = "nu7")]
-    pub fn get_fee_zsa<FR: FeeRule + ZSAFeeRule>(
+    /// Returns the calculated fee for the specified Fee Rule for NU7 transactions.
+    ///
+    /// Most parts are the same as in `get_fee`, with additional parameters for NU7 issuance of
+    /// ZSAs.
+    /// After removal of the zcash_unstable = "nu7" flag, this function can replace `get_fee`.
+    ///
+    /// The `is_asset_newly_created` closure returns true if an asset is being issued for
+    /// the first time ever. This is needed for the NU7 fee calculation as per [ZIP 317], which
+    /// has an additional contribution to the fee for a newly created asset.
+    ///
+    /// [ZIP 317]: https://zips.z.cash/zip-0317
+    pub fn get_fee_nu7<FR: FeeRule + Nu7FeeRule>(
         &self,
         fee_rule: &FR,
         is_asset_newly_created: impl Fn(&AssetBase) -> bool,
@@ -800,7 +811,7 @@ impl<P: consensus::Parameters, U: sapling::builder::ProverProgress> Builder<'_, 
             .map_or(0, |builder| builder.inputs().len());
 
         fee_rule
-            .fee_required_zsa(
+            .fee_required_nu7(
                 &self.params,
                 self.target_height,
                 transparent_inputs.iter().map(|i| i.serialized_size()),
@@ -930,7 +941,7 @@ impl<P: consensus::Parameters, U: sapling::builder::ProverProgress> Builder<'_, 
     /// Upon success, returns a tuple containing the final transaction, and the
     /// [`SaplingMetadata`] generated during the build process.
     #[cfg(zcash_unstable = "nu7")]
-    pub fn build_zsa<R: RngCore + CryptoRng, SP: SpendProver, OP: OutputProver, FR: ZSAFeeRule>(
+    pub fn build_nu7<R: RngCore + CryptoRng, SP: SpendProver, OP: OutputProver, FR: Nu7FeeRule>(
         self,
         transparent_signing_set: &TransparentSigningSet,
         sapling_extsks: &[sapling::zip32::ExtendedSpendingKey],
@@ -942,7 +953,7 @@ impl<P: consensus::Parameters, U: sapling::builder::ProverProgress> Builder<'_, 
         is_asset_newly_created: impl Fn(&AssetBase) -> bool,
     ) -> Result<BuildResult, Error<FR::Error>> {
         let fee = self
-            .get_fee_zsa(fee_rule, is_asset_newly_created)
+            .get_fee_nu7(fee_rule, is_asset_newly_created)
             .map_err(Error::Fee)?;
         self.build_internal(
             transparent_signing_set,
@@ -1408,7 +1419,7 @@ mod testing {
             );
 
             #[cfg(zcash_unstable = "nu7")]
-            return self.build_zsa(
+            return self.build_nu7(
                 transparent_signing_set,
                 sapling_extsks,
                 orchard_saks,

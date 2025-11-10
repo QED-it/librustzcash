@@ -45,8 +45,8 @@ impl super::FeeRule for FeeRule {
 }
 
 #[cfg(zcash_unstable = "nu7")]
-impl super::ZSAFeeRule for FeeRule {
-    fn fee_required_zsa<P: consensus::Parameters>(
+impl super::Nu7FeeRule for FeeRule {
+    fn fee_required_nu7<P: consensus::Parameters>(
         &self,
         _params: &P,
         _target_height: BlockHeight,
