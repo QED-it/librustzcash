@@ -1432,6 +1432,12 @@ mod testing {
             );
         }
     }
+
+    /// This is a default implementation of `is_asset_newly_created` that always returns false.
+    #[cfg(zcash_unstable = "nu7")]
+    pub fn no_prev_issued_assets(_asset_base: &orchard::note::AssetBase) -> bool {
+        false
+    }
 }
 
 #[cfg(test)]
@@ -1471,7 +1477,7 @@ mod tests {
 
     #[cfg(zcash_unstable = "nu7")]
     use {
-        crate::transaction::fees::zip317,
+        crate::transaction::{builder::testing::no_prev_issued_assets, fees::zip317},
         nonempty::NonEmpty,
         orchard::{
             issuance::{compute_asset_desc_hash, IssueInfo},
@@ -1560,7 +1566,7 @@ mod tests {
                 &[],
                 &[],
                 #[cfg(zcash_unstable = "nu7")]
-                |_| false, //TODO: is_asset_newly_created function from global state. Needed for ZSA support.
+                no_prev_issued_assets,
                 OsRng,
             )
             .unwrap();
@@ -1614,7 +1620,7 @@ mod tests {
                 &[extsk],
                 &[],
                 #[cfg(zcash_unstable = "nu7")]
-                |_| false, //TODO: is_asset_newly_created function from global state. Needed for ZSA support.
+                no_prev_issued_assets,
                 OsRng,
             )
             .unwrap();
@@ -1647,7 +1653,7 @@ mod tests {
                     &[],
                     &[],
                     #[cfg(zcash_unstable = "nu7")]
-                    |_| false, //TODO: is_asset_newly_created function from global state. Needed for ZSA support.
+                    no_prev_issued_assets,
                     OsRng,
                 ),
                 Err(Error::InsufficientFunds(expected)) if expected == MINIMUM_FEE.into()
@@ -1682,7 +1688,7 @@ mod tests {
                     extsks,
                     &[],
                     #[cfg(zcash_unstable = "nu7")]
-                    |_| false, //TODO: is_asset_newly_created function from global state. Needed for ZSA support.
+                    no_prev_issued_assets,
                     OsRng
                 ),
                 Err(Error::InsufficientFunds(expected)) if
@@ -1710,7 +1716,7 @@ mod tests {
                     extsks,
                     &[],
                     #[cfg(zcash_unstable = "nu7")]
-                    |_| false, //TODO: is_asset_newly_created function from global state. Needed for ZSA support.
+                    no_prev_issued_assets,
                     OsRng
                 ),
                 Err(Error::InsufficientFunds(expected)) if expected ==
@@ -1734,8 +1740,8 @@ mod tests {
                     &TransparentSigningSet::new(),
                     extsks,
                     &[],
-                     #[cfg(zcash_unstable = "nu7")]
-                    |_| false, //TODO: is_asset_newly_created function from global state. Needed for ZSA support.
+                    #[cfg(zcash_unstable = "nu7")]
+                    no_prev_issued_assets,
                     OsRng
                 ),
                 Err(Error::InsufficientFunds(expected)) if expected ==
@@ -1787,7 +1793,7 @@ mod tests {
                     extsks,
                     &[],
                     #[cfg(zcash_unstable = "nu7")]
-                    |_| false, //TODO: is_asset_newly_created function from global state. Needed for ZSA support.
+                    no_prev_issued_assets,
                     OsRng
                 ),
                 Err(Error::InsufficientFunds(expected)) if expected == ZatBalance::const_from_i64(1)
@@ -1830,8 +1836,8 @@ mod tests {
                     &TransparentSigningSet::new(),
                     extsks,
                     &[],
-                     #[cfg(zcash_unstable = "nu7")]
-                    |_| false, //TODO: is_asset_newly_created function from global state. Needed for ZSA support.
+                    #[cfg(zcash_unstable = "nu7")]
+                    no_prev_issued_assets,
                     OsRng
                 ),
                 Err(Error::InsufficientFunds(expected)) if expected == ZatBalance::const_from_i64(1)
@@ -1889,7 +1895,7 @@ mod tests {
                     extsks,
                     &[],
                     #[cfg(zcash_unstable = "nu7")]
-                    |_| false, //TODO: is_asset_newly_created function from global state. Needed for ZSA support.
+                    no_prev_issued_assets,
                     OsRng,
                 )
                 .unwrap();
@@ -1945,7 +1951,7 @@ mod tests {
                     extsks,
                     &[],
                     #[cfg(zcash_unstable = "nu7")]
-                    |_| false, //TODO: is_asset_newly_created function from global state. Needed for ZSA support.
+                    no_prev_issued_assets,
                     OsRng,
                 )
                 .unwrap();
@@ -2036,15 +2042,20 @@ mod tests {
         let asset_desc_hash_2 =
             compute_asset_desc_hash(&NonEmpty::from_slice(b"This is Asset 2").unwrap());
 
-        // Create an asset creation function, to simulate the output from querying global state,
-        // under the assumption that only the assets in prev_issued_assets have been issued before,
+        // Setup to simulate the output from querying global state, under the assumption that
+        // only the assets in prev_issued_assets have been issued before,
         // and no other assets are previously issued.
-        fn is_asset_newly_created(asset: AssetBase, prev_issued_assets: &[AssetBase]) -> bool {
-            if asset == AssetBase::native() {
+        fn setup_asset_created_state(asset: &AssetBase, prev_issued_assets: &[AssetBase]) -> bool {
+            if asset == &AssetBase::native() {
                 return false;
             }
-            !prev_issued_assets.contains(&asset)
+            !prev_issued_assets.contains(asset)
         }
+
+        // Defining the `is_asset_newly_created` closure for the specific case we want to consider.
+        let is_asset_newly_created = |asset: &AssetBase| {
+            setup_asset_created_state(asset, &[AssetBase::derive(&ik, &asset_desc_hash_1)])
+        };
 
         let issue_info = IssueInfo {
             recipient,
@@ -2090,7 +2101,7 @@ mod tests {
                 &TransparentSigningSet::new(),
                 &[],
                 &[sak],
-                |a| is_asset_newly_created(*a, &[AssetBase::derive(&ik, &asset_desc_hash_1)]),
+                is_asset_newly_created,
                 OsRng,
             )
             .unwrap();
