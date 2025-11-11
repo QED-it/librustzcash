@@ -1968,10 +1968,10 @@ mod tests {
     #[test]
     fn check_zsa_issuance_fees() {
         const OLD_NOTE_VALUE: u64 = 10_000_000;
-       
+
         // The scenario in the test issues:
-        // - one note of a previously issued asset (asset_desc_hash_1), and 
-        // - two notes of a newly created asset (asset_desc_hash_2): the first note is the 
+        // - one note of a previously issued asset (asset_desc_hash_1), and
+        // - two notes of a newly created asset (asset_desc_hash_2): the first note is the
         //   reference note and the second note is another note of the same newly created asset.
         // The expected number of logical actions is:
         // - 2 for 2 Orchard Actions (the minimum required for an Orchard bundle),
@@ -1979,7 +1979,7 @@ mod tests {
         // - 1 * 100 for the contribution of the newly created asset.
         // The logical_actions is therefore 105, leading to a fee of 105 * 5_000 = 525_000 zatoshis.
         const EXPECTED_FEE: u64 = 525_000;
-        
+
         let mut rng = OsRng;
 
         let tx_height = TEST_NETWORK
@@ -2069,7 +2069,7 @@ mod tests {
         let is_asset_newly_created = |asset: &AssetBase| {
             setup_asset_created_state(asset, &[AssetBase::derive(&ik, &asset_desc_hash_1)])
         };
-        
+
         // Add Orchard spend and output for the fees (spending existing Orchard note).
         builder
             .add_orchard_spend::<zip317::FeeRule>(fvk, note, merkle_path)
@@ -2088,7 +2088,7 @@ mod tests {
             recipient,
             value: NoteValue::from_raw(1),
         };
-        
+
         // Issuing previously issued asset, corresponding to asset_desc_hash_1.
         builder
             .init_issuance_bundle::<zip317::FeeRule>(
@@ -2131,7 +2131,7 @@ mod tests {
             2
         );
 
-        // There should be 3 issued notes (1 for previously issued asset, 2 for newly created 
+        // There should be 3 issued notes (1 for previously issued asset, 2 for newly created
         // asset - the first note of which is the reference note).
         assert_eq!(
             res.transaction()
