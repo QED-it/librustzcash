@@ -1967,6 +1967,19 @@ mod tests {
     #[cfg(zcash_unstable = "nu7")]
     #[test]
     fn check_zsa_issuance_fees() {
+        const OLD_NOTE_VALUE: u64 = 10_000_000;
+       
+        // The scenario in the test issues:
+        // - one note of a previously issued asset (asset_desc_hash_1), and 
+        // - two notes of a newly created asset (asset_desc_hash_2): the first note is the 
+        //   reference note and the second note is another note of the same newly created asset.
+        // The expected number of logical actions is:
+        // - 2 for 2 Orchard Actions (the minimum required for an Orchard bundle),
+        // - 3 for 3 issued notes in total,
+        // - 1 * 100 for the contribution of the newly created asset.
+        // The logical_actions is therefore 105, leading to a fee of 105 * 5_000 = 525_000 zatoshis.
+        const EXPECTED_FEE: u64 = 525_000;
+        
         let mut rng = OsRng;
 
         let tx_height = TEST_NETWORK
@@ -1985,7 +1998,7 @@ mod tests {
         let ik = IssueValidatingKey::from(&isk);
 
         // Pretend we already received an Orchard note, and add it in the tree.
-        let value = NoteValue::from_raw(10_000_000);
+        let value = NoteValue::from_raw(OLD_NOTE_VALUE);
         let note = {
             let mut orchard_builder = orchard::builder::Builder::new(
                 orchard::builder::BundleType::DEFAULT_VANILLA,
@@ -2056,12 +2069,7 @@ mod tests {
         let is_asset_newly_created = |asset: &AssetBase| {
             setup_asset_created_state(asset, &[AssetBase::derive(&ik, &asset_desc_hash_1)])
         };
-
-        let issue_info = IssueInfo {
-            recipient,
-            value: NoteValue::from_raw(10),
-        };
-
+        
         // Add Orchard spend and output for the fees (spending existing Orchard note).
         builder
             .add_orchard_spend::<zip317::FeeRule>(fvk, note, merkle_path)
@@ -2070,12 +2078,17 @@ mod tests {
             .add_orchard_output::<zip317::FeeRule>(
                 Some(ovk),
                 recipient,
-                9_475_000,
+                (OLD_NOTE_VALUE - EXPECTED_FEE).into(),
                 AssetBase::native(),
                 MemoBytes::empty(),
             )
             .unwrap();
 
+        let issue_info = IssueInfo {
+            recipient,
+            value: NoteValue::from_raw(1),
+        };
+        
         // Issuing previously issued asset, corresponding to asset_desc_hash_1.
         builder
             .init_issuance_bundle::<zip317::FeeRule>(
@@ -2091,7 +2104,7 @@ mod tests {
             .add_recipient::<zip317::FeeRule>(
                 asset_desc_hash_2,
                 recipient,
-                NoteValue::from_raw(100),
+                NoteValue::from_raw(1),
                 true,
             )
             .unwrap();
@@ -2118,7 +2131,8 @@ mod tests {
             2
         );
 
-        // There should be 3 issued notes (1 for previously issued asset, 2 for newly created asset - the first note is the reference note).
+        // There should be 3 issued notes (1 for previously issued asset, 2 for newly created 
+        // asset - the first note of which is the reference note).
         assert_eq!(
             res.transaction()
                 .issue_bundle()
@@ -2128,12 +2142,12 @@ mod tests {
             3
         );
 
-        // fee = 5000 * (2 (orchard actions) + 3 (issued notes) + 1 * 100 (newly created asset)) = 525_000
+        // Check that the fee paid is as expected (See EXPECTED_FEE calculation at the start of the test).
         assert_eq!(
             res.transaction()
                 .fee_paid(|_| Err(BalanceError::Overflow))
                 .unwrap(),
-            Some(Zatoshis::const_from_u64(525_000))
+            Some(Zatoshis::const_from_u64(EXPECTED_FEE))
         )
     }
 }
