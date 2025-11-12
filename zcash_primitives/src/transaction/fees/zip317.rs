@@ -181,7 +181,7 @@ impl super::FeeRule for FeeRule {
         sapling_output_count: usize,
         orchard_action_count: usize,
         #[cfg(zcash_unstable = "nu7")] asset_creation_count: usize,
-        #[cfg(zcash_unstable = "nu7")] issue_note_count: usize,
+        #[cfg(zcash_unstable = "nu7")] total_issue_note_count: usize,
     ) -> Result<Zatoshis, Self::Error> {
         let mut t_in_total_size: usize = 0;
         let mut non_p2pkh_outpoints = vec![];
@@ -209,7 +209,7 @@ impl super::FeeRule for FeeRule {
 
         #[cfg(zcash_unstable = "nu7")]
         let issuance_logical_actions: usize =
-            issue_note_count + (self.creation_cost * asset_creation_count);
+            total_issue_note_count + (self.creation_cost * asset_creation_count);
 
         let logical_actions = max(
             ceildiv(t_in_total_size, self.p2pkh_standard_input_size),
