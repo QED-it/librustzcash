@@ -1313,15 +1313,24 @@ impl<'a, P: consensus::Parameters, U: sapling::builder::ProverProgress> Extensio
 }
 
 #[cfg(any(test, feature = "test-dependencies"))]
-mod testing {
+pub mod testing {
     use super::{BuildResult, Builder, Error};
 
     use crate::transaction::fees::zip317;
     use ::sapling::prover::mock::{MockOutputProver, MockSpendProver};
+    use orchard::note::AssetBase;
     use rand::RngCore;
     use rand_core::CryptoRng;
     use transparent::builder::TransparentSigningSet;
     use zcash_protocol::consensus;
+
+    /// This is a helper function for testing that indicates no assets are newly created.
+    /// It can be used to set `is_asset_newly_created` and revert to not having a fee
+    /// for newly created assets.
+    #[cfg(zcash_unstable = "nu7")]
+    pub fn no_new_assets(_: AssetBase) -> bool {
+        false
+    }
 
     impl<'a, P: consensus::Parameters, U: sapling::builder::ProverProgress> Builder<'a, P, U> {
         /// Build the transaction using mocked randomness and proving capabilities.
@@ -1381,7 +1390,7 @@ mod tests {
     use incrementalmerkletree::{frontier::CommitmentTree, witness::IncrementalWitness};
     use rand_core::OsRng;
 
-    use crate::transaction::builder::BuildConfig;
+    use crate::transaction::builder::{testing::no_new_assets, BuildConfig};
     use ::sapling::{zip32::ExtendedSpendingKey, Node, Rseed};
     use ::transparent::{address::TransparentAddress, builder::TransparentSigningSet};
     use zcash_protocol::{
@@ -1407,6 +1416,7 @@ mod tests {
         zip32::AccountId,
     };
 
+    use crate::transaction::builder::testing::no_new_assets;
     #[cfg(zcash_unstable = "nu7")]
     use {
         crate::transaction::fees::zip317,
@@ -1498,7 +1508,7 @@ mod tests {
                 &[],
                 &[],
                 #[cfg(zcash_unstable = "nu7")]
-                |_| false, //TODO: is_asset_newly_created function from global state. Needed for ZSA support.
+                no_new_assets,
                 OsRng,
             )
             .unwrap();
@@ -1552,7 +1562,7 @@ mod tests {
                 &[extsk],
                 &[],
                 #[cfg(zcash_unstable = "nu7")]
-                |_| false, //TODO: is_asset_newly_created function from global state. Needed for ZSA support.
+                no_new_assets,
                 OsRng,
             )
             .unwrap();
@@ -1585,7 +1595,7 @@ mod tests {
                     &[],
                     &[],
                     #[cfg(zcash_unstable = "nu7")]
-                    |_| false, //TODO: is_asset_newly_created function from global state. Needed for ZSA support.
+                    no_new_assets,
                     OsRng,
                 ),
                 Err(Error::InsufficientFunds(expected)) if expected == MINIMUM_FEE.into()
@@ -1620,7 +1630,7 @@ mod tests {
                     extsks,
                     &[],
                     #[cfg(zcash_unstable = "nu7")]
-                    |_| false, //TODO: is_asset_newly_created function from global state. Needed for ZSA support.
+                    no_new_assets,
                     OsRng
                 ),
                 Err(Error::InsufficientFunds(expected)) if
@@ -1648,7 +1658,7 @@ mod tests {
                     extsks,
                     &[],
                     #[cfg(zcash_unstable = "nu7")]
-                    |_| false, //TODO: is_asset_newly_created function from global state. Needed for ZSA support.
+                    no_new_assets,
                     OsRng
                 ),
                 Err(Error::InsufficientFunds(expected)) if expected ==
@@ -1672,8 +1682,8 @@ mod tests {
                     &TransparentSigningSet::new(),
                     extsks,
                     &[],
-                     #[cfg(zcash_unstable = "nu7")]
-                    |_| false, //TODO: is_asset_newly_created function from global state. Needed for ZSA support.
+                    #[cfg(zcash_unstable = "nu7")]
+                    no_new_assets,
                     OsRng
                 ),
                 Err(Error::InsufficientFunds(expected)) if expected ==
@@ -1725,7 +1735,7 @@ mod tests {
                     extsks,
                     &[],
                     #[cfg(zcash_unstable = "nu7")]
-                    |_| false, //TODO: is_asset_newly_created function from global state. Needed for ZSA support.
+                    no_new_assets,
                     OsRng
                 ),
                 Err(Error::InsufficientFunds(expected)) if expected == ZatBalance::const_from_i64(1)
@@ -1768,8 +1778,8 @@ mod tests {
                     &TransparentSigningSet::new(),
                     extsks,
                     &[],
-                     #[cfg(zcash_unstable = "nu7")]
-                    |_| false, //TODO: is_asset_newly_created function from global state. Needed for ZSA support.
+                    #[cfg(zcash_unstable = "nu7")]
+                    no_new_assets,
                     OsRng
                 ),
                 Err(Error::InsufficientFunds(expected)) if expected == ZatBalance::const_from_i64(1)
@@ -1827,7 +1837,7 @@ mod tests {
                     extsks,
                     &[],
                     #[cfg(zcash_unstable = "nu7")]
-                    |_| false, //TODO: is_asset_newly_created function from global state. Needed for ZSA support.
+                    no_new_assets,
                     OsRng,
                 )
                 .unwrap();
@@ -1883,7 +1893,7 @@ mod tests {
                     extsks,
                     &[],
                     #[cfg(zcash_unstable = "nu7")]
-                    |_| false, //TODO: is_asset_newly_created function from global state. Needed for ZSA support.
+                    no_new_assets,
                     OsRng,
                 )
                 .unwrap();

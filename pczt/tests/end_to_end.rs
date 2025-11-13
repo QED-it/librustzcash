@@ -43,6 +43,9 @@ fn check_round_trip(pczt: &Pczt) {
 
 #[test]
 fn transparent_to_orchard() {
+    #[cfg(zcash_unstable = "nu7")]
+    use zcash_primitives::transaction::builder::testing::no_new_assets;
+
     let params = MainNetwork;
     let rng = OsRng;
 
@@ -108,7 +111,7 @@ fn transparent_to_orchard() {
             rng,
             &zip317::FeeRule::standard(),
             #[cfg(zcash_unstable = "nu7")]
-            |_| false, //TODO: is_asset_newly_created function from global state. Needed for ZSA support (not here?).
+            no_new_assets,
         )
         .unwrap();
 
@@ -147,6 +150,9 @@ fn transparent_to_orchard() {
 
 #[test]
 fn sapling_to_orchard() {
+    #[cfg(zcash_unstable = "nu7")]
+    use zcash_primitives::transaction::builder::testing::no_new_assets;
+
     let mut rng = OsRng;
 
     // Create a Sapling account to send funds from.
@@ -246,7 +252,7 @@ fn sapling_to_orchard() {
             OsRng,
             &zip317::FeeRule::standard(),
             #[cfg(zcash_unstable = "nu7")]
-            |_| false, //TODO: is_asset_newly_created function from global state. Needed for ZSA support (not here?).
+            no_new_assets,
         )
         .unwrap();
 
@@ -325,6 +331,9 @@ fn sapling_to_orchard() {
 
 #[test]
 fn orchard_to_orchard() {
+    #[cfg(zcash_unstable = "nu7")]
+    use zcash_primitives::transaction::builder::testing::no_new_assets;
+
     let mut rng = OsRng;
 
     // Create an Orchard account to receive funds.
@@ -420,7 +429,7 @@ fn orchard_to_orchard() {
             OsRng,
             &zip317::FeeRule::standard(),
             #[cfg(zcash_unstable = "nu7")]
-            |_| false, //TODO: is_asset_newly_created function from global state. Needed for ZSA support (not here?).
+            no_new_assets,
         )
         .unwrap();
 
@@ -455,6 +464,8 @@ fn orchard_to_orchard() {
 #[cfg(zcash_unstable = "nu7")]
 #[test]
 fn zsa_to_zsa() {
+    use zcash_primitives::transaction::builder::testing::no_new_assets;
+
     let mut rng = OsRng;
 
     // Create an Orchard account to receive funds.
@@ -580,7 +591,7 @@ fn zsa_to_zsa() {
             OsRng,
             &zip317::FeeRule::standard(),
             #[cfg(zcash_unstable = "nu7")]
-            |_| false, //TODO: is_asset_newly_created function from global state. Needed for ZSA support (not here?).
+            no_new_assets,
         )
         .unwrap();
 

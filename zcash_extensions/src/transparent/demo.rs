@@ -485,7 +485,7 @@ mod tests {
     use zcash_primitives::{
         extensions::transparent::{self as tze, Extension, FromPayload, ToPayload},
         transaction::{
-            builder::{BuildConfig, Builder},
+            builder::{testing::no_new_assets, BuildConfig, Builder},
             components::tze::{Authorized, Bundle, OutPoint, TzeIn, TzeOut},
             fees::{fixed, zip317::MINIMUM_FEE},
             Transaction, TransactionData, TxVersion,
@@ -845,7 +845,7 @@ mod tests {
                 &prover,
                 &fee_rule,
                 #[cfg(zcash_unstable = "nu7")]
-                |_| false, //TODO: is_asset_newly_created function from global state. Needed for ZSA support.
+                no_new_assets,
             )
             .map_err(|e| format!("build failure: {:?}", e))
             .unwrap();
@@ -876,7 +876,7 @@ mod tests {
                 &prover,
                 &fee_rule,
                 #[cfg(zcash_unstable = "nu7")]
-                |_| false, //TODO: is_asset_newly_created function from global state. Needed for ZSA support.
+                no_new_assets,
             )
             .map_err(|e| format!("build failure: {:?}", e))
             .unwrap();
@@ -914,7 +914,7 @@ mod tests {
                 &prover,
                 &fee_rule,
                 #[cfg(zcash_unstable = "nu7")]
-                |_| false, //TODO: is_asset_newly_created function from global state. Needed for ZSA support.
+                no_new_assets,
             )
             .map_err(|e| format!("build failure: {:?}", e))
             .unwrap();
