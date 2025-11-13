@@ -1318,17 +1318,19 @@ pub mod testing {
 
     use crate::transaction::fees::zip317;
     use ::sapling::prover::mock::{MockOutputProver, MockSpendProver};
-    use orchard::note::AssetBase;
     use rand::RngCore;
     use rand_core::CryptoRng;
     use transparent::builder::TransparentSigningSet;
     use zcash_protocol::consensus;
 
+    #[cfg(zcash_unstable = "nu7")]
+    use orchard::note::AssetBase;
+
     /// This is a helper function for testing that indicates no assets are newly created.
     /// It can be used to set `is_asset_newly_created` and revert to not having a fee
     /// for newly created assets.
     #[cfg(zcash_unstable = "nu7")]
-    pub fn no_new_assets(_: AssetBase) -> bool {
+    pub fn no_new_assets(_: &AssetBase) -> bool {
         false
     }
 
@@ -1390,7 +1392,7 @@ mod tests {
     use incrementalmerkletree::{frontier::CommitmentTree, witness::IncrementalWitness};
     use rand_core::OsRng;
 
-    use crate::transaction::builder::{testing::no_new_assets, BuildConfig};
+    use crate::transaction::builder::BuildConfig;
     use ::sapling::{zip32::ExtendedSpendingKey, Node, Rseed};
     use ::transparent::{address::TransparentAddress, builder::TransparentSigningSet};
     use zcash_protocol::{
@@ -1416,10 +1418,9 @@ mod tests {
         zip32::AccountId,
     };
 
-    use crate::transaction::builder::testing::no_new_assets;
     #[cfg(zcash_unstable = "nu7")]
     use {
-        crate::transaction::fees::zip317,
+        crate::transaction::{builder::testing::no_new_assets, fees::zip317},
         nonempty::NonEmpty,
         orchard::{
             issuance::{compute_asset_desc_hash, IssueInfo},
