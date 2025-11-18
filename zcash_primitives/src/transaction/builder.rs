@@ -40,12 +40,7 @@ use {
     },
 };
 
-use orchard::{
-    builder::BundleType,
-    note::AssetBase,
-    orchard_flavor::OrchardVanilla,
-    Address,
-};
+use orchard::{builder::BundleType, note::AssetBase, orchard_flavor::OrchardVanilla, Address};
 
 #[cfg(feature = "transparent-inputs")]
 use ::transparent::builder::TransparentInputInfo;
