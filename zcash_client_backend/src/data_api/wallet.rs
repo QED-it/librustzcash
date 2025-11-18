@@ -1632,7 +1632,7 @@ where
         output_prover,
         fee_rule,
         #[cfg(zcash_unstable = "nu7")]
-        |_| false, //TODO: is_asset_newly_created function from global state. Needed for ZSA support.
+        |_| false, //TODO: is_new_asset function from global state. Needed for ZSA support.
     )?;
 
     #[cfg(feature = "orchard")]
@@ -1812,7 +1812,7 @@ where
         OsRng,
         fee_rule,
         #[cfg(zcash_unstable = "nu7")]
-        |_| false, //TODO: is_asset_newly_created function from global state. Needed for ZSA support.
+        |_| false, //TODO: is_new_asset function from global state. Needed for ZSA support.
     )?;
 
     let created = Creator::build_from_parts(build_result.pczt_parts).ok_or(PcztError::Build)?;

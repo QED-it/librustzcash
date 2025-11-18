@@ -2124,7 +2124,7 @@ pub fn send_multi_step_proposed_transfer<T: ShieldedPoolTester, DSF>(
             &test_prover,
             &zip317::FeeRule::standard(),
             #[cfg(zcash_unstable = "nu7")]
-            |_| false, //TODO: is_asset_newly_created function from global state. Needed for ZSA support.
+            |_| false, //TODO: is_new_asset function from global state. Needed for ZSA support.
         )
         .unwrap();
     let txid = build_result.transaction().txid();

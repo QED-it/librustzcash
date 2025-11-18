@@ -740,7 +740,7 @@ impl<P: consensus::Parameters, U: sapling::builder::ProverProgress> Builder<'_, 
     pub fn get_fee<FR: FeeRule>(
         &self,
         fee_rule: &FR,
-        #[cfg(zcash_unstable = "nu7")] is_asset_newly_created: impl Fn(&AssetBase) -> bool,
+        #[cfg(zcash_unstable = "nu7")] is_new_asset: impl Fn(&AssetBase) -> bool,
     ) -> Result<Zatoshis, FeeError<FR::Error>> {
         #[cfg(feature = "transparent-inputs")]
         let transparent_inputs = self.transparent_builder.inputs();
@@ -785,10 +785,7 @@ impl<P: consensus::Parameters, U: sapling::builder::ProverProgress> Builder<'_, 
                         .actions()
                         .iter()
                         .filter(|&action| {
-                            is_asset_newly_created(&AssetBase::derive(
-                                bundle.ik(),
-                                action.asset_desc_hash(),
-                            ))
+                            is_new_asset(&AssetBase::derive(bundle.ik(), action.asset_desc_hash()))
                         })
                         .count()
                 }),
@@ -804,7 +801,7 @@ impl<P: consensus::Parameters, U: sapling::builder::ProverProgress> Builder<'_, 
     pub fn get_fee_zfuture<FR: FeeRule + FutureFeeRule>(
         &self,
         fee_rule: &FR,
-        #[cfg(zcash_unstable = "nu7")] is_asset_newly_created: impl Fn(&AssetBase) -> bool,
+        #[cfg(zcash_unstable = "nu7")] is_new_asset: impl Fn(&AssetBase) -> bool,
     ) -> Result<Zatoshis, FeeError<FR::Error>> {
         #[cfg(feature = "transparent-inputs")]
         let transparent_inputs = self.transparent_builder.inputs();
@@ -849,10 +846,7 @@ impl<P: consensus::Parameters, U: sapling::builder::ProverProgress> Builder<'_, 
                         .actions()
                         .iter()
                         .filter(|&action| {
-                            is_asset_newly_created(&AssetBase::derive(
-                                bundle.ik(),
-                                action.asset_desc_hash(),
-                            ))
+                            is_new_asset(&AssetBase::derive(bundle.ik(), action.asset_desc_hash()))
                         })
                         .count()
                 }),
@@ -886,13 +880,13 @@ impl<P: consensus::Parameters, U: sapling::builder::ProverProgress> Builder<'_, 
         spend_prover: &SP,
         output_prover: &OP,
         fee_rule: &FR,
-        #[cfg(zcash_unstable = "nu7")] is_asset_newly_created: impl Fn(&AssetBase) -> bool,
+        #[cfg(zcash_unstable = "nu7")] is_new_asset: impl Fn(&AssetBase) -> bool,
     ) -> Result<BuildResult, Error<FR::Error>> {
         let fee = self
             .get_fee(
                 fee_rule,
                 #[cfg(zcash_unstable = "nu7")]
-                is_asset_newly_created,
+                is_new_asset,
             )
             .map_err(Error::Fee)?;
         self.build_internal(
@@ -925,10 +919,10 @@ impl<P: consensus::Parameters, U: sapling::builder::ProverProgress> Builder<'_, 
         spend_prover: &SP,
         output_prover: &OP,
         fee_rule: &FR,
-        #[cfg(zcash_unstable = "nu7")] is_asset_newly_created: impl Fn(&AssetBase) -> bool,
+        #[cfg(zcash_unstable = "nu7")] is_new_asset: impl Fn(&AssetBase) -> bool,
     ) -> Result<BuildResult, Error<FR::Error>> {
         let fee = self
-            .get_fee_zfuture(fee_rule, is_asset_newly_created)
+            .get_fee_zfuture(fee_rule, is_new_asset)
             .map_err(Error::Fee)?;
         self.build_internal(
             transparent_signing_set,
@@ -1172,13 +1166,13 @@ impl<P: consensus::Parameters, U: sapling::builder::ProverProgress> Builder<'_, 
         self,
         mut rng: R,
         fee_rule: &FR,
-        #[cfg(zcash_unstable = "nu7")] is_asset_newly_created: impl Fn(&AssetBase) -> bool,
+        #[cfg(zcash_unstable = "nu7")] is_new_asset: impl Fn(&AssetBase) -> bool,
     ) -> Result<PcztResult<P>, Error<FR::Error>> {
         let fee = self
             .get_fee(
                 fee_rule,
                 #[cfg(zcash_unstable = "nu7")]
-                is_asset_newly_created,
+                is_new_asset,
             )
             .map_err(Error::Fee)?;
         let consensus_branch_id = BranchId::for_height(&self.params, self.target_height);
@@ -1327,7 +1321,7 @@ pub mod testing {
     use orchard::note::AssetBase;
 
     /// This is a helper function for testing that indicates no assets are newly created.
-    /// It can be used to set `is_asset_newly_created` and revert to not having a fee
+    /// It can be used to set `is_new_asset` and revert to not having a fee
     /// for newly created assets.
     #[cfg(zcash_unstable = "nu7")]
     pub fn no_new_assets(_: &AssetBase) -> bool {
@@ -1342,9 +1336,7 @@ pub mod testing {
             transparent_signing_set: &TransparentSigningSet,
             sapling_extsks: &[sapling::zip32::ExtendedSpendingKey],
             orchard_saks: &[orchard::keys::SpendAuthorizingKey],
-            #[cfg(zcash_unstable = "nu7")] is_asset_newly_created: impl Fn(
-                &orchard::note::AssetBase,
-            ) -> bool,
+            #[cfg(zcash_unstable = "nu7")] is_new_asset: impl Fn(&orchard::note::AssetBase) -> bool,
             rng: R,
         ) -> Result<BuildResult, Error<zip317::FeeError>> {
             struct FakeCryptoRng<R: RngCore>(R);
@@ -1377,7 +1369,7 @@ pub mod testing {
                 #[allow(deprecated)]
                 &zip317::FeeRule::standard(),
                 #[cfg(zcash_unstable = "nu7")]
-                is_asset_newly_created,
+                is_new_asset,
             )
         }
     }
@@ -2008,8 +2000,8 @@ mod tests {
             !prev_issued_assets.contains(asset)
         }
 
-        // Defining the `is_asset_newly_created` closure for the specific case we want to consider.
-        let is_asset_newly_created = |asset: &AssetBase| {
+        // Defining the `is_new_asset` closure for the specific case we want to consider.
+        let is_new_asset = |asset: &AssetBase| {
             setup_asset_created_state(asset, &[AssetBase::derive(&ik, &asset_desc_hash_1)])
         };
 
@@ -2058,7 +2050,7 @@ mod tests {
                 &[],
                 &[sak],
                 #[cfg(zcash_unstable = "nu7")]
-                is_asset_newly_created,
+                is_new_asset,
                 OsRng,
             )
             .unwrap();
