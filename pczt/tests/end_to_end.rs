@@ -44,7 +44,7 @@ fn check_round_trip(pczt: &Pczt) {
 #[test]
 fn transparent_to_orchard() {
     #[cfg(zcash_unstable = "nu7")]
-    use zcash_primitives::transaction::builder::testing::no_new_assets;
+    use zcash_primitives::transaction::builder::no_new_assets;
 
     let params = MainNetwork;
     let rng = OsRng;
@@ -151,7 +151,7 @@ fn transparent_to_orchard() {
 #[test]
 fn sapling_to_orchard() {
     #[cfg(zcash_unstable = "nu7")]
-    use zcash_primitives::transaction::builder::testing::no_new_assets;
+    use zcash_primitives::transaction::builder::no_new_assets;
 
     let mut rng = OsRng;
 
@@ -332,7 +332,7 @@ fn sapling_to_orchard() {
 #[test]
 fn orchard_to_orchard() {
     #[cfg(zcash_unstable = "nu7")]
-    use zcash_primitives::transaction::builder::testing::no_new_assets;
+    use zcash_primitives::transaction::builder::no_new_assets;
 
     let mut rng = OsRng;
 

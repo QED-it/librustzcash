@@ -34,16 +34,13 @@ use {
     ::transparent::builder::TransparentSigningSet,
     alloc::vec::Vec,
     orchard::{
-        builder::{InProgress, Unproven},
+        builder::{BundleType, InProgress, Unproven},
         bundle::Authorized,
-        orchard_flavor::OrchardFlavor,
+        note::AssetBase,
+        orchard_flavor::{OrchardFlavor, OrchardVanilla},
+        Address,
     },
 };
-
-use orchard::builder::BundleType;
-use orchard::note::AssetBase;
-use orchard::orchard_flavor::OrchardVanilla;
-use orchard::Address;
 
 #[cfg(feature = "transparent-inputs")]
 use ::transparent::builder::TransparentInputInfo;
@@ -81,6 +78,14 @@ use super::components::sapling::zip212_enforcement;
 /// Since Blossom activation, the default transaction expiry delta should be 40 blocks.
 /// <https://zips.z.cash/zip-0203#changes-for-blossom>
 pub const DEFAULT_TX_EXPIRY_DELTA: u32 = 40;
+
+/// This is a helper function for testing that indicates no assets are newly created.
+/// It can be used to set `is_new_asset` and revert to not having a fee
+/// for newly created assets.
+#[cfg(zcash_unstable = "nu7")]
+pub fn no_new_assets(_: &AssetBase) -> bool {
+    false
+}
 
 /// Errors that can occur during fee calculation.
 #[derive(Debug)]
@@ -1307,7 +1312,7 @@ impl<'a, P: consensus::Parameters, U: sapling::builder::ProverProgress> Extensio
 }
 
 #[cfg(any(test, feature = "test-dependencies"))]
-pub mod testing {
+mod testing {
     use super::{BuildResult, Builder, Error};
 
     use crate::transaction::fees::zip317;
@@ -1316,17 +1321,6 @@ pub mod testing {
     use rand_core::CryptoRng;
     use transparent::builder::TransparentSigningSet;
     use zcash_protocol::consensus;
-
-    #[cfg(zcash_unstable = "nu7")]
-    use orchard::note::AssetBase;
-
-    /// This is a helper function for testing that indicates no assets are newly created.
-    /// It can be used to set `is_new_asset` and revert to not having a fee
-    /// for newly created assets.
-    #[cfg(zcash_unstable = "nu7")]
-    pub fn no_new_assets(_: &AssetBase) -> bool {
-        false
-    }
 
     impl<'a, P: consensus::Parameters, U: sapling::builder::ProverProgress> Builder<'a, P, U> {
         /// Build the transaction using mocked randomness and proving capabilities.
@@ -1412,7 +1406,7 @@ mod tests {
 
     #[cfg(zcash_unstable = "nu7")]
     use {
-        crate::transaction::{builder::testing::no_new_assets, fees::zip317},
+        crate::transaction::{builder::no_new_assets, fees::zip317},
         nonempty::NonEmpty,
         orchard::{
             issuance::{compute_asset_desc_hash, IssueInfo},
@@ -1909,8 +1903,8 @@ mod tests {
         // - two notes of a newly created asset (asset_desc_hash_2): the first note is the
         //   reference note and the second note is another note of the same newly created asset.
         // The expected number of logical actions is:
-        // - 2 for 2 Orchard Actions (the minimum required for an Orchard bundle),
-        // - 3 for 3 issued notes in total,
+        // - 2 Orchard Actions (the minimum required for an Orchard bundle),
+        // - 3 issued notes in total,
         // - 1 * 100 for the contribution of the newly created asset.
         // The logical_actions is therefore 105, leading to a fee of 105 * 5_000 = 525_000 zatoshis.
         const EXPECTED_FEE: u64 = 525_000;

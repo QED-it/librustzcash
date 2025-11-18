@@ -485,7 +485,7 @@ mod tests {
     use zcash_primitives::{
         extensions::transparent::{self as tze, Extension, FromPayload, ToPayload},
         transaction::{
-            builder::{testing::no_new_assets, BuildConfig, Builder},
+            builder::{no_new_assets, BuildConfig, Builder},
             components::tze::{Authorized, Bundle, OutPoint, TzeIn, TzeOut},
             fees::{fixed, zip317::MINIMUM_FEE},
             Transaction, TransactionData, TxVersion,
