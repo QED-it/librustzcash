@@ -115,6 +115,9 @@ use zcash_primitives::transaction::OrchardBundle;
 pub mod input_selection;
 use input_selection::{GreedyInputSelector, InputSelector, InputSelectorError};
 
+#[cfg(zcash_unstable = "nu7")]
+use zcash_primitives::transaction::builder::no_new_assets;
+
 #[cfg(feature = "pczt")]
 const PROPRIETARY_PROPOSAL_INFO: &str = "zcash_client_backend:proposal_info";
 #[cfg(feature = "pczt")]
@@ -1632,7 +1635,7 @@ where
         output_prover,
         fee_rule,
         #[cfg(zcash_unstable = "nu7")]
-        |_| false, //TODO: is_new_asset function from global state. Needed for ZSA support.
+        no_new_assets,
     )?;
 
     #[cfg(feature = "orchard")]
@@ -1812,7 +1815,7 @@ where
         OsRng,
         fee_rule,
         #[cfg(zcash_unstable = "nu7")]
-        |_| false, //TODO: is_new_asset function from global state. Needed for ZSA support.
+        no_new_assets,
     )?;
 
     let created = Creator::build_from_parts(build_result.pczt_parts).ok_or(PcztError::Build)?;

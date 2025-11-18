@@ -90,6 +90,9 @@ use orchard::orchard_flavor::OrchardVanilla;
 #[cfg(feature = "pczt")]
 use pczt::roles::{prover::Prover, signer::Signer};
 
+#[cfg(zcash_unstable = "nu7")]
+use zcash_primitives::transaction::builder::no_new_assets;
+
 /// Trait that exposes the pool-specific types and operations necessary to run the
 /// single-shielded-pool tests on a given pool.
 ///
@@ -2124,7 +2127,7 @@ pub fn send_multi_step_proposed_transfer<T: ShieldedPoolTester, DSF>(
             &test_prover,
             &zip317::FeeRule::standard(),
             #[cfg(zcash_unstable = "nu7")]
-            |_| false, //TODO: is_new_asset function from global state. Needed for ZSA support.
+            no_new_assets,
         )
         .unwrap();
     let txid = build_result.transaction().txid();
