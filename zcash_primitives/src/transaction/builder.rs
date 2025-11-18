@@ -1909,175 +1909,94 @@ mod tests {
     #[test]
     fn check_zsa_issuance_fees() {
         let mut rng = OsRng;
-
         let tx_height = TEST_NETWORK
             .activation_height(NetworkUpgrade::Nu6_1)
-            .unwrap(); // TODO: update when NU7 activates.
+            .unwrap();
 
-        // Generate key details.
+        // Generate keys
         let sk = SpendingKey::from_zip32_seed(&[1u8; 32], 1, AccountId::ZERO).unwrap();
-        let sak = SpendAuthorizingKey::from(&sk);
         let fvk = FullViewingKey::from(&sk);
-        let ivk = fvk.to_ivk(Scope::External);
-        let ovk = fvk.to_ovk(Scope::External);
         let recipient = fvk.address_at(0u32, Scope::External);
-
         let isk = IssueAuthKey::from_zip32_seed(&[1u8; 32], 1, 0).unwrap();
         let ik = IssueValidatingKey::from(&isk);
 
-        // Pretend we already received an Orchard note, and add it in the tree.
-        let value = NoteValue::from_raw(10_000_000);
+        // Create a test note in the Orchard tree
         let note = {
-            let mut orchard_builder = orchard::builder::Builder::new(
+            let mut builder = orchard::builder::Builder::new(
                 orchard::builder::BundleType::DEFAULT_VANILLA,
                 orchard::Anchor::empty_tree(),
             );
-            orchard_builder
-                .add_output(
-                    None,
-                    recipient,
-                    value,
-                    AssetBase::native(),
-                    Memo::Empty.encode().into_bytes(),
-                )
-                .unwrap();
-            let (bundle, meta) = orchard_builder
-                .build::<i64, OrchardVanilla>(&mut rng)
-                .unwrap();
-            let action = bundle
-                .actions()
-                .get(meta.output_action_index(0).unwrap())
-                .unwrap();
-            let domain = OrchardDomain::for_action(action);
-            let (note, _, _) = try_note_decryption(&domain, &ivk.prepare(), action).unwrap();
+            builder.add_output(None, recipient, NoteValue::from_raw(10_000_000),
+                             AssetBase::native(), Memo::Empty.encode().into_bytes()).unwrap();
+            let (bundle, meta) = builder.build::<i64, OrchardVanilla>(&mut rng).unwrap();
+            let action = bundle.actions().get(meta.output_action_index(0).unwrap()).unwrap();
+            let (note, _, _) = try_note_decryption(
+                &OrchardDomain::for_action(action),
+                &fvk.to_ivk(Scope::External).prepare(),
+                action
+            ).unwrap();
             note
         };
+
         let (anchor, merkle_path) = {
-            let cmx: orchard::note::ExtractedNoteCommitment = note.commitment().into();
-            let leaf = MerkleHashOrchard::from_cmx(&cmx);
+            let leaf = MerkleHashOrchard::from_cmx(&note.commitment().into());
             let mut tree = ShardTree::<_, 32, 16>::new(
-                MemoryShardStore::<MerkleHashOrchard, u32>::empty(),
-                100,
-            );
-            tree.append(leaf, incrementalmerkletree::Retention::Marked)
-                .unwrap();
+                MemoryShardStore::<MerkleHashOrchard, u32>::empty(), 100);
+            tree.append(leaf, incrementalmerkletree::Retention::Marked).unwrap();
             tree.checkpoint(9_999_999).unwrap();
-            let position = 0.into();
-            let merkle_path = tree
-                .witness_at_checkpoint_depth(position, 0)
-                .unwrap()
-                .unwrap();
-            let anchor = merkle_path.root(leaf);
-            (anchor.into(), merkle_path.into())
+            let path = tree.witness_at_checkpoint_depth(0.into(), 0).unwrap().unwrap();
+            (path.root(leaf).into(), path.into())
         };
 
-        let build_config = BuildConfig::TxV6 {
-            sapling_anchor: Some(sapling::Anchor::empty_tree()),
-            orchard_anchor: Some(anchor),
-        };
-        let mut builder = Builder::new(TEST_NETWORK, tx_height, build_config);
+        let mut builder = Builder::new(
+            TEST_NETWORK,
+            tx_height,
+            BuildConfig::TxV6 {
+                sapling_anchor: Some(sapling::Anchor::empty_tree()),
+                orchard_anchor: Some(anchor),
+            }
+        );
 
-        // Pick two different asset descriptions and derive their asset bases
-        let asset_desc_hash_1 =
-            compute_asset_desc_hash(&NonEmpty::from_slice(b"This is Asset 1").unwrap());
-        let asset_desc_hash_2 =
-            compute_asset_desc_hash(&NonEmpty::from_slice(b"This is Asset 2").unwrap());
+        // Define two assets: one previously issued, one newly created
+        let asset_1 = compute_asset_desc_hash(&NonEmpty::from_slice(b"This is Asset 1").unwrap());
+        let asset_2 = compute_asset_desc_hash(&NonEmpty::from_slice(b"This is Asset 2").unwrap());
 
-        /// Returns a predicate closure that determines if the given asset is newly created (not in the previously issued list).
-        fn new_asset_predicate(previously_issued_assets: &[AssetBase])
-                               -> impl Fn(&AssetBase) -> bool + '_ {
-            return move |asset: &AssetBase| {
+        fn new_asset_predicate(previously_issued: &[AssetBase]) -> impl Fn(&AssetBase) -> bool + '_ {
+            move |asset: &AssetBase| {
                 if *asset == AssetBase::native() {
                     return false;
                 }
-                !previously_issued_assets.contains(asset)
+                !previously_issued.contains(asset)
             }
         }
 
-        let previously_issued_assets = [
-            AssetBase::derive(&ik, &asset_desc_hash_1),
-        ];
+        let prev_issued = [AssetBase::derive(&ik, &asset_1)];
+        let is_new_asset = new_asset_predicate(&prev_issued);
 
-        let is_new_asset = new_asset_predicate(&previously_issued_assets);
+        // Add spend and output for fees
+        builder.add_orchard_spend::<zip317::FeeRule>(fvk.clone(), note, merkle_path).unwrap();
+        builder.add_orchard_output::<zip317::FeeRule>(
+            Some(fvk.to_ovk(Scope::External)), recipient, 9_475_000,
+            AssetBase::native(), MemoBytes::empty()
+        ).unwrap();
 
-        let issue_info = IssueInfo {
-            recipient,
-            value: NoteValue::from_raw(10),
-        };
+        // Issue previously issued asset and newly created asset
+        builder.init_issuance_bundle::<zip317::FeeRule>(
+            isk, asset_1, Some(IssueInfo { recipient, value: NoteValue::from_raw(10) }), false
+        ).unwrap();
+        builder.add_recipient::<zip317::FeeRule>(
+            asset_2, recipient, NoteValue::from_raw(100), true
+        ).unwrap();
 
-        // Add Orchard spend and output for the fees (spending existing Orchard note).
-        builder
-            .add_orchard_spend::<zip317::FeeRule>(fvk, note, merkle_path)
-            .unwrap();
-        builder
-            .add_orchard_output::<zip317::FeeRule>(
-                Some(ovk),
-                recipient,
-                9_475_000,
-                AssetBase::native(),
-                MemoBytes::empty(),
-            )
-            .unwrap();
+        let tx = builder.mock_build(
+            &TransparentSigningSet::new(), &[], &[SpendAuthorizingKey::from(&sk)],
+            #[cfg(zcash_unstable = "nu7")] is_new_asset, OsRng
+        ).unwrap().into_transaction();
 
-        // Issuing previously issued asset, corresponding to asset_desc_hash_1.
-        builder
-            .init_issuance_bundle::<zip317::FeeRule>(
-                isk,
-                asset_desc_hash_1,
-                Some(issue_info),
-                false,
-            )
-            .unwrap();
-
-        // Issuing newly created asset, corresponding to asset_desc_hash_2.
-        builder
-            .add_recipient::<zip317::FeeRule>(
-                asset_desc_hash_2,
-                recipient,
-                NoteValue::from_raw(100),
-                true,
-            )
-            .unwrap();
-
-        let res = builder
-            .mock_build(
-                &TransparentSigningSet::new(),
-                &[],
-                &[sak],
-                #[cfg(zcash_unstable = "nu7")]
-                is_new_asset,
-                OsRng,
-            )
-            .unwrap();
-
-        // There should be 2 Orchard Actions (1 action with the spend and change output,
-        // and 1 action with a dummy spend and dummy output to reach the minimum 2 Actions).
-        assert_eq!(
-            res.transaction()
-                .orchard_bundle()
-                .unwrap()
-                .as_zsa_bundle()
-                .actions()
-                .len(),
-            2
-        );
-
-        // There should be 3 issued notes (1 for previously issued asset, 2 for newly created asset - the first note is the reference note).
-        assert_eq!(
-            res.transaction()
-                .issue_bundle()
-                .unwrap()
-                .get_all_notes()
-                .len(),
-            3
-        );
-
-        // fee = 5000 * (2 (orchard actions) + 3 (issued notes) + 1 * 100 (newly created asset)) = 525_000
-        assert_eq!(
-            res.transaction()
-                .fee_paid(|_| Err(BalanceError::Overflow))
-                .unwrap(),
-            Some(Zatoshis::const_from_u64(525_000))
-        )
+        // Verify: 2 Orchard actions, 3 issued notes, fee = 5000 * (2 + 3 + 100) = 525_000
+        assert_eq!(tx.orchard_bundle().unwrap().as_zsa_bundle().actions().len(), 2);
+        assert_eq!(tx.issue_bundle().unwrap().get_all_notes().len(), 3);
+        assert_eq!(tx.fee_paid(|_| Err(BalanceError::Overflow)).unwrap(),
+                   Some(Zatoshis::const_from_u64(525_000)));
     }
 }
