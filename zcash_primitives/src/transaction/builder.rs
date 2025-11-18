@@ -34,12 +34,17 @@ use {
     ::transparent::builder::TransparentSigningSet,
     alloc::vec::Vec,
     orchard::{
-        builder::{BundleType, InProgress, Unproven},
+        builder::{InProgress, Unproven},
         bundle::Authorized,
-        note::AssetBase,
-        orchard_flavor::{OrchardFlavor, OrchardVanilla},
-        Address,
+        orchard_flavor::OrchardFlavor,
     },
+};
+
+use orchard::{
+    builder::BundleType,
+    note::AssetBase,
+    orchard_flavor::OrchardVanilla,
+    Address,
 };
 
 #[cfg(feature = "transparent-inputs")]
