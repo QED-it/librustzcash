@@ -1983,15 +1983,22 @@ mod tests {
         let asset_desc_hash_2 =
             compute_asset_desc_hash(&NonEmpty::from_slice(b"This is Asset 2").unwrap());
 
-        // Create an asset creation function, to simulate the output from querying global state,
-        // under the assumption that only the assets in prev_issued_assets have been issued before,
-        // and no other assets are previously issued.
-        fn is_asset_newly_created(asset: AssetBase, prev_issued_assets: &[AssetBase]) -> bool {
-            if asset == AssetBase::native() {
-                return false;
+        /// Returns a predicate closure that determines if the given asset is newly created (not in the previously issued list).
+        fn new_asset_predicate(previously_issued_assets: &[AssetBase])
+                               -> impl Fn(&AssetBase) -> bool + '_ {
+            return move |asset: &AssetBase| {
+                if *asset == AssetBase::native() {
+                    return false;
+                }
+                !previously_issued_assets.contains(asset)
             }
-            !prev_issued_assets.contains(&asset)
         }
+
+        let previously_issued_assets = [
+            AssetBase::derive(&ik, &asset_desc_hash_1),
+        ];
+
+        let is_new_asset = new_asset_predicate(&previously_issued_assets);
 
         let issue_info = IssueInfo {
             recipient,
@@ -2038,7 +2045,7 @@ mod tests {
                 &[],
                 &[sak],
                 #[cfg(zcash_unstable = "nu7")]
-                |a| is_asset_newly_created(*a, &[AssetBase::derive(&ik, &asset_desc_hash_1)]),
+                is_new_asset,
                 OsRng,
             )
             .unwrap();
