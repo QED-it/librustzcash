@@ -109,14 +109,12 @@ use {
 
 #[cfg(feature = "orchard")]
 use orchard::note::AssetBase;
+
 #[cfg(all(feature = "orchard", feature = "pczt"))]
 use zcash_primitives::transaction::OrchardBundle;
 
 pub mod input_selection;
 use input_selection::{GreedyInputSelector, InputSelector, InputSelectorError};
-
-#[cfg(zcash_unstable = "nu7")]
-use zcash_primitives::transaction::builder::no_new_assets;
 
 #[cfg(feature = "pczt")]
 const PROPRIETARY_PROPOSAL_INFO: &str = "zcash_client_backend:proposal_info";
@@ -1635,7 +1633,7 @@ where
         output_prover,
         fee_rule,
         #[cfg(zcash_unstable = "nu7")]
-        no_new_assets,
+        |_| false,
     )?;
 
     #[cfg(feature = "orchard")]
@@ -1815,7 +1813,7 @@ where
         OsRng,
         fee_rule,
         #[cfg(zcash_unstable = "nu7")]
-        no_new_assets,
+        |_| false,
     )?;
 
     let created = Creator::build_from_parts(build_result.pczt_parts).ok_or(PcztError::Build)?;

@@ -79,12 +79,6 @@ use super::components::sapling::zip212_enforcement;
 /// <https://zips.z.cash/zip-0203#changes-for-blossom>
 pub const DEFAULT_TX_EXPIRY_DELTA: u32 = 40;
 
-/// This is a helper function for testing that indicates no assets are newly created.
-#[cfg(zcash_unstable = "nu7")]
-pub fn no_new_assets(_: &AssetBase) -> bool {
-    false
-}
-
 /// Errors that can occur during fee calculation.
 #[derive(Debug)]
 pub enum FeeError<FE> {
@@ -1404,7 +1398,7 @@ mod tests {
 
     #[cfg(zcash_unstable = "nu7")]
     use {
-        crate::transaction::{builder::no_new_assets, fees::zip317},
+        crate::transaction::fees::zip317,
         nonempty::NonEmpty,
         orchard::{
             issuance::{compute_asset_desc_hash, IssueInfo},
@@ -1420,6 +1414,12 @@ mod tests {
         zcash_note_encryption::try_note_decryption,
         zcash_protocol::memo::Memo,
     };
+
+    /// This is a helper function for testing that indicates no assets are newly created.
+    #[cfg(zcash_unstable = "nu7")]
+    fn no_new_assets(_: &AssetBase) -> bool {
+        false
+    }
 
     // This test only works with the transparent_inputs feature because we have to
     // be able to create a tx with a valid balance, without using Sapling inputs.

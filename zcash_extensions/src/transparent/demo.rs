@@ -478,6 +478,7 @@ mod tests {
 
     use blake2b_simd::Params;
     use ff::Field;
+    use orchard::note::AssetBase;
     use rand_core::OsRng;
 
     use sapling::{zip32::ExtendedSpendingKey, Node, Rseed};
@@ -485,7 +486,7 @@ mod tests {
     use zcash_primitives::{
         extensions::transparent::{self as tze, Extension, FromPayload, ToPayload},
         transaction::{
-            builder::{no_new_assets, BuildConfig, Builder},
+            builder::{BuildConfig, Builder},
             components::tze::{Authorized, Bundle, OutPoint, TzeIn, TzeOut},
             fees::{fixed, zip317::MINIMUM_FEE},
             Transaction, TransactionData, TxVersion,
@@ -539,6 +540,12 @@ mod tests {
         };
 
         (hash_1(preimage_1, &hash_2), hash_2)
+    }
+
+    /// This is a helper function for testing that indicates no assets are newly created.
+    #[cfg(zcash_unstable = "nu7")]
+    fn no_new_assets(_: &AssetBase) -> bool {
+        false
     }
 
     #[test]

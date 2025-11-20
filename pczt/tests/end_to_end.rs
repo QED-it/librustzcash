@@ -30,10 +30,13 @@ use zcash_protocol::{
     value::Zatoshis,
 };
 
-#[cfg(zcash_unstable = "nu7")]
-use zcash_primitives::transaction::builder::no_new_assets;
-
 static ORCHARD_PROVING_KEY: OnceLock<orchard::circuit::ProvingKey> = OnceLock::new();
+
+/// This is a helper function for testing that indicates no assets are newly created.
+#[cfg(zcash_unstable = "nu7")]
+fn no_new_assets(_: &AssetBase) -> bool {
+    false
+}
 
 fn orchard_proving_key() -> &'static orchard::circuit::ProvingKey {
     ORCHARD_PROVING_KEY.get_or_init(orchard::circuit::ProvingKey::build::<OrchardVanilla>)
