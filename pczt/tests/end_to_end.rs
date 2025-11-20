@@ -30,6 +30,9 @@ use zcash_protocol::{
     value::Zatoshis,
 };
 
+#[cfg(zcash_unstable = "nu7")]
+use zcash_primitives::transaction::builder::no_new_assets;
+
 static ORCHARD_PROVING_KEY: OnceLock<orchard::circuit::ProvingKey> = OnceLock::new();
 
 fn orchard_proving_key() -> &'static orchard::circuit::ProvingKey {
@@ -43,9 +46,6 @@ fn check_round_trip(pczt: &Pczt) {
 
 #[test]
 fn transparent_to_orchard() {
-    #[cfg(zcash_unstable = "nu7")]
-    use zcash_primitives::transaction::builder::no_new_assets;
-
     let params = MainNetwork;
     let rng = OsRng;
 
@@ -150,9 +150,6 @@ fn transparent_to_orchard() {
 
 #[test]
 fn sapling_to_orchard() {
-    #[cfg(zcash_unstable = "nu7")]
-    use zcash_primitives::transaction::builder::no_new_assets;
-
     let mut rng = OsRng;
 
     // Create a Sapling account to send funds from.
@@ -331,9 +328,6 @@ fn sapling_to_orchard() {
 
 #[test]
 fn orchard_to_orchard() {
-    #[cfg(zcash_unstable = "nu7")]
-    use zcash_primitives::transaction::builder::no_new_assets;
-
     let mut rng = OsRng;
 
     // Create an Orchard account to receive funds.

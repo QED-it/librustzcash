@@ -80,8 +80,6 @@ use super::components::sapling::zip212_enforcement;
 pub const DEFAULT_TX_EXPIRY_DELTA: u32 = 40;
 
 /// This is a helper function for testing that indicates no assets are newly created.
-/// It can be used to set `is_new_asset` and revert to not having a fee
-/// for newly created assets.
 #[cfg(zcash_unstable = "nu7")]
 pub fn no_new_assets(_: &AssetBase) -> bool {
     false
