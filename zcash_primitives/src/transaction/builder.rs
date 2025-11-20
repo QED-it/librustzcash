@@ -1984,20 +1984,21 @@ mod tests {
         let asset_desc_hash_2 =
             compute_asset_desc_hash(&NonEmpty::from_slice(b"This is Asset 2").unwrap());
 
-        // Setup to simulate the output from querying global state, under the assumption that
-        // only the assets in prev_issued_assets have been issued before,
-        // and no other assets are previously issued.
-        fn setup_asset_created_state(asset: &AssetBase, prev_issued_assets: &[AssetBase]) -> bool {
-            if asset == &AssetBase::native() {
-                return false;
-            }
-            !prev_issued_assets.contains(asset)
+        /// Returns a predicate closure that determines if the given asset is newly created (not in the previously issued list).
+        fn new_asset_predicate(
+            previously_issued_assets: &[AssetBase],
+        ) -> impl Fn(&AssetBase) -> bool + '_ {
+            return move |asset: &AssetBase| {
+                if *asset == AssetBase::native() {
+                    return false;
+                }
+                !previously_issued_assets.contains(asset)
+            };
         }
 
-        // Defining the `is_new_asset` closure for the specific case we want to consider.
-        let is_new_asset = |asset: &AssetBase| {
-            setup_asset_created_state(asset, &[AssetBase::derive(&ik, &asset_desc_hash_1)])
-        };
+        let previously_issued_assets = [AssetBase::derive(&ik, &asset_desc_hash_1)];
+
+        let is_new_asset = new_asset_predicate(&previously_issued_assets);
 
         // Add Orchard spend and output for the fees (spending existing Orchard note).
         builder
