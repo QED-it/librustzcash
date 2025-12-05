@@ -25,10 +25,10 @@ workspace.
 
 ### Changed
 - Migrated to `orchard 0.12`, `sapling-crypto 0.6`.
+- `zcash_client_sqlite::error::SqliteClientError` has added variant `GapAddresses`.
 
 ### Removed
-- `zcash_client_sqlite::GapLimits` use
-  `zcash_client_backend::wallet::transparent::GapLimits` instead.
+- `zcash_client_sqlite::GapLimits` use `zcash_keys::keys::transparent::GapLimits` instead.
 - `zcash_client_sqlite::UtxoId` contents are now private.
 
 ## [0.18.11, 0.19.2] - 2026-01-30

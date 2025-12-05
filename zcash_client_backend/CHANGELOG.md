@@ -73,7 +73,7 @@ workspace.
 
 ### Removed
 - `zcash_client_backend::data_api::testing::transparent::GapLimits` use
-  `zcash_client_backend::wallet::transparent::GapLimits` instead.
+  `zcash_keys::keys::transparent::GapLimits` instead.
 
 ## [0.21.0] - 2025-11-05
 
