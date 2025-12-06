@@ -54,7 +54,7 @@ use {
 };
 
 #[cfg(zcash_unstable = "nu7")]
-use zcash_protocol::constants::{V6_TX_VERSION, V6_VERSION_GROUP_ID, VSWAP_TX_VERSION, VSWAP_VERSION_GROUP_ID};
+use zcash_protocol::constants::{V6_TX_VERSION, V6_VERSION_GROUP_ID};
 
 #[cfg(zcash_unstable = "nu7" /* TODO swap */ )]
 use orchard::swap_bundle::SwapBundle;
@@ -95,8 +95,6 @@ pub enum TxVersion {
     /// Transaction version 6, specified in [ZIP 230](https://zips.z.cash/zip-0230).
     #[cfg(zcash_unstable = "nu7")]
     V6,
-    #[cfg(zcash_unstable = "nu7" /* TODO swap */)]
-    VSWAP,
     /// This version is used exclusively for in-development transaction
     /// serialization, and will never be active under the consensus rules.
     /// When new consensus transaction versions are added, all call sites
@@ -119,8 +117,6 @@ impl TxVersion {
                 (V5_TX_VERSION, V5_VERSION_GROUP_ID) => Ok(TxVersion::V5),
                 #[cfg(zcash_unstable = "nu7")]
                 (V6_TX_VERSION, V6_VERSION_GROUP_ID) => Ok(TxVersion::V6),
-                #[cfg(zcash_unstable = "nu7" /* TODO swap */ )]
-                (VSWAP_TX_VERSION, VSWAP_VERSION_GROUP_ID) => Ok(TxVersion::VSWAP),
                 #[cfg(zcash_unstable = "zfuture")]
                 (ZFUTURE_TX_VERSION, ZFUTURE_VERSION_GROUP_ID) => Ok(TxVersion::ZFuture),
                 _ => Err(io::Error::new(
@@ -153,8 +149,6 @@ impl TxVersion {
                 TxVersion::V5 => V5_TX_VERSION,
                 #[cfg(zcash_unstable = "nu7")]
                 TxVersion::V6 => V6_TX_VERSION,
-                #[cfg(zcash_unstable = "nu7" /* TODO swap */ )]
-                TxVersion::VSWAP => VSWAP_TX_VERSION,
                 #[cfg(zcash_unstable = "zfuture")]
                 TxVersion::ZFuture => ZFUTURE_TX_VERSION,
             }
@@ -168,8 +162,6 @@ impl TxVersion {
             TxVersion::V5 => V5_VERSION_GROUP_ID,
             #[cfg(zcash_unstable = "nu7")]
             TxVersion::V6 => V6_VERSION_GROUP_ID,
-            #[cfg(zcash_unstable = "nu7" /* TODO swap */ )]
-            TxVersion::VSWAP => VSWAP_VERSION_GROUP_ID,
             #[cfg(zcash_unstable = "zfuture")]
             TxVersion::ZFuture => ZFUTURE_VERSION_GROUP_ID,
         }
@@ -191,8 +183,6 @@ impl TxVersion {
             TxVersion::V5 => false,
             #[cfg(zcash_unstable = "nu7")]
             TxVersion::V6 => false,
-            #[cfg(zcash_unstable = "nu7" /* TODO swap */ )]
-            TxVersion::VSWAP => false,
             #[cfg(zcash_unstable = "zfuture")]
             TxVersion::ZFuture => false,
         }
@@ -210,8 +200,6 @@ impl TxVersion {
             TxVersion::V5 => true,
             #[cfg(zcash_unstable = "nu7")]
             TxVersion::V6 => true,
-            #[cfg(zcash_unstable = "nu7" /* TODO swap */ )]
-            TxVersion::VSWAP => true,
             #[cfg(zcash_unstable = "zfuture")]
             TxVersion::ZFuture => true,
         }
@@ -224,8 +212,6 @@ impl TxVersion {
             TxVersion::V5 => true,
             #[cfg(zcash_unstable = "nu7")]
             TxVersion::V6 => false,
-            #[cfg(zcash_unstable = "nu7" /* TODO swap */ )]
-            TxVersion::VSWAP => false,
             #[cfg(zcash_unstable = "zfuture")]
             TxVersion::ZFuture => false,
         }
@@ -234,7 +220,7 @@ impl TxVersion {
     pub fn has_orchard_zsa(&self) -> bool {
         match self {
             #[cfg(zcash_unstable = "nu7")]
-            TxVersion::V6 | TxVersion::VSWAP => true,
+            TxVersion::V6 => true,
             #[cfg(zcash_unstable = "zfuture")]
             TxVersion::ZFuture => true,
             _ => false,
@@ -271,7 +257,7 @@ impl TxVersion {
             #[cfg(zcash_unstable = "nu7")]
             BranchId::Nu7 => TxVersion::V6,
             #[cfg(zcash_unstable = "nu7" /* TODO swap */ )]
-            BranchId::Swap => TxVersion::VSWAP,
+            BranchId::Swap => TxVersion::V6,
             #[cfg(zcash_unstable = "zfuture")]
             BranchId::ZFuture => TxVersion::ZFuture,
         }
@@ -803,7 +789,7 @@ impl Transaction {
             TxVersion::Sprout(_) | TxVersion::V3 | TxVersion::V4 => Self::from_data_v4(data),
             TxVersion::V5 => Ok(Self::from_data_v5(data)),
             #[cfg(zcash_unstable = "nu7")]
-            TxVersion::V6 | TxVersion::VSWAP  => Ok(Self::from_data_v6(data)),
+            TxVersion::V6  => Ok(Self::from_data_v6(data)),
             #[cfg(all(zcash_unstable = "nu7", zcash_unstable = "zfuture"))]
             TxVersion::ZFuture => Ok(Self::from_data_v6(data)),
         }
@@ -859,9 +845,12 @@ impl Transaction {
             }
             TxVersion::V5 => Self::read_v5(reader.into_base_reader(), version),
             #[cfg(zcash_unstable = "nu7")]
-            TxVersion::V6 => Self::read_v6(reader.into_base_reader(), version),
-            #[cfg(zcash_unstable = "nu7" /* TODO swap */ )]
-            TxVersion::VSWAP => Self::read_swap(reader.into_base_reader(), version),
+            TxVersion::V6 => if consensus_branch_id == BranchId::Nu7 {
+                Self::read_v6(reader.into_base_reader(), version)
+            } else {
+                // Add if(swap) if there are more V6 branches
+                Self::read_swap(reader.into_base_reader(), version)
+            },
             #[cfg(all(zcash_unstable = "nu7", zcash_unstable = "zfuture"))]
             TxVersion::ZFuture => Self::read_v6(reader.into_base_reader(), version),
         }
@@ -1135,7 +1124,7 @@ impl Transaction {
             TxVersion::Sprout(_) | TxVersion::V3 | TxVersion::V4 => self.write_v4(writer),
             TxVersion::V5 => self.write_v5(writer),
             #[cfg(zcash_unstable = "nu7")]
-            TxVersion::V6 | TxVersion::VSWAP => self.write_v6(writer),
+            TxVersion::V6 => self.write_v6(writer),
             #[cfg(all(zcash_unstable = "nu7", zcash_unstable = "zfuture"))]
             TxVersion::ZFuture => self.write_v6(writer),
         }
