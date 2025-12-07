@@ -2,6 +2,9 @@
 //! received by the wallet.
 use transparent::keys::TransparentKeyScope;
 
+#[cfg(feature = "transparent-inputs")]
+pub mod wallet;
+
 /// Configuration for gap limits used in transparent address management.
 ///
 /// A "gap limit" is the number of consecutive unused addresses that the wallet will generate
