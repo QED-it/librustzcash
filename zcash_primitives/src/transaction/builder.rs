@@ -1499,6 +1499,7 @@ mod testing {
                 &MockOutputProver,
                 #[allow(deprecated)]
                 &fee_rule,
+                #[cfg(zcash_unstable = "nu7")] |_| true,
             )
         }
     }
@@ -1531,7 +1532,6 @@ mod tests {
     use {
         crate::transaction::fees::zip317::FeeError,
         orchard::builder::BundleType,
-        orchard::issuance_auth::{IssueAuthKey, IssueValidatingKey},
         orchard::keys::{
             FullViewingKey, SpendingKey,
         },
@@ -1550,7 +1550,6 @@ mod tests {
         ff::PrimeField,
         group::{Curve, Group},
         nonempty::NonEmpty,
-        orchard::issuance::compute_asset_desc_hash,
         orchard::note::{Nullifier, RandomSeed, Rho},
         orchard::tree::MerkleHashOrchard,
         orchard::NOTE_COMMITMENT_TREE_DEPTH,
@@ -1574,16 +1573,12 @@ mod tests {
     #[cfg(zcash_unstable = "nu7")]
     use {
         crate::transaction::fees::zip317,
-        nonempty::NonEmpty,
         orchard::{
             issuance::{compute_asset_desc_hash, IssueInfo},
             issuance_auth::{IssueAuthKey, IssueValidatingKey},
-            keys::{FullViewingKey, Scope, SpendAuthorizingKey, SpendingKey},
-            note::AssetBase,
+            keys::{SpendAuthorizingKey},
             orchard_flavor::OrchardVanilla,
             primitives::OrchardDomain,
-            tree::MerkleHashOrchard,
-            value::NoteValue,
         },
         shardtree::{store::memory::MemoryShardStore, ShardTree},
         zcash_note_encryption::try_note_decryption,

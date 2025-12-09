@@ -2872,7 +2872,7 @@ checksum = "04744f49eae99ab78e0d5c0b603ab218f515ea8cfe5a456d7629ad883a3b6e7d"
 [[package]]
 name = "orchard"
 version = "0.11.0"
-source = "git+https://github.com/QED-it/orchard?rev=cca959a15765390ebeb849a385c2422eed96aea9#cca959a15765390ebeb849a385c2422eed96aea9"
+source = "git+https://github.com/QED-it/orchard?rev=874f255d5c7d80e994e37c71f68d5ce9d38bcf39#874f255d5c7d80e994e37c71f68d5ce9d38bcf39"
 dependencies = [
  "aes",
  "bitvec",
@@ -6688,6 +6688,7 @@ dependencies = [
  "sapling-crypto",
  "secp256k1",
  "sha2 0.10.8",
+ "shardtree",
  "subtle",
  "tracing",
  "zcash_address",

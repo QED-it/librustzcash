@@ -33,7 +33,6 @@ use crate::transaction::{
 use {
     crate::sighash_versioning::ISSUE_SIGHASH_VERSION_TO_INFO_BYTES,
     crate::transaction::components::sapling::SAPLING_SIGHASH_INFO_V0,
-    crate::transaction::OrchardBundle::OrchardZSA,
     crate::transaction::TRANSPARENT_SIGHASH_INFO_V0,
     crate::transaction::OrchardBundle::{OrchardSwap, OrchardZSA},
     orchard::issuance::{IssueBundle, Signed},

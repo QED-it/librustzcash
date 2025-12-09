@@ -1099,9 +1099,9 @@ impl Transaction {
 
     #[cfg(zcash_unstable = "nu7" /* TODO swap */ )]
     fn read_swap<R: Read>(mut reader: R, version: TxVersion) -> io::Result<Self> {
-        let (consensus_branch_id, lock_time, expiry_height) = Self::read_header_fragment(&mut reader)?;
-        let transparent_bundle = Self::read_transparent(&mut reader)?;
-        let sapling_bundle = sapling_serialization::read_v5_bundle(&mut reader)?;
+        let header_fragment = Self::read_v6_header_fragment(&mut reader)?;
+        let transparent_bundle = Self::read_transparent_v6(&mut reader)?;
+        let sapling_bundle = sapling_serialization::read_v6_bundle(&mut reader)?;
         let orchard_zsa_bundle = orchard_serialization::read_orchard_swap_bundle(&mut reader)?;
         let issue_bundle = issuance::read_bundle(&mut reader)?;
 
@@ -1114,9 +1114,9 @@ impl Transaction {
 
         let data = TransactionData {
             version,
-            consensus_branch_id,
-            lock_time,
-            expiry_height,
+            consensus_branch_id: header_fragment.consensus_branch_id,
+            lock_time: header_fragment.lock_time,
+            expiry_height: header_fragment.expiry_height,
             transparent_bundle,
             sprout_bundle: None,
             sapling_bundle,
