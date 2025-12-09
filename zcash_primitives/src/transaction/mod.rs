@@ -67,6 +67,11 @@ use {
 
 pub use zcash_protocol::TxId;
 
+/// Transparent `SighashInfo` for V0:
+/// sighashInfo = (\[sighashVersion\] || associatedData) = (\[0\] || [])
+#[cfg(zcash_unstable = "nu7")]
+pub(crate) const TRANSPARENT_SIGHASH_INFO_V0: [u8; 1] = [0];
+
 /// The set of defined transaction format versions.
 ///
 /// This is serialized in the first four or eight bytes of the transaction format, and
@@ -609,8 +614,8 @@ impl<A: Authorization> TransactionData<A> {
                 #[cfg(all(zcash_unstable = "nu7", feature = "zip-233"))]
                 &self.zip233_amount,
             ),
-            digester.digest_transparent(self.transparent_bundle.as_ref()),
-            digester.digest_sapling(self.sapling_bundle.as_ref()),
+            digester.digest_transparent(self.version, self.transparent_bundle.as_ref()),
+            digester.digest_sapling(self.version, self.sapling_bundle.as_ref()),
             self.digest_orchard(&digester),
             #[cfg(zcash_unstable = "nu7")]
             digester.digest_issue(self.issue_bundle.as_ref()),
@@ -953,6 +958,27 @@ impl Transaction {
         })
     }
 
+    #[cfg(zcash_unstable = "nu7")]
+    fn read_transparent_v6<R: Read>(
+        mut reader: R,
+    ) -> io::Result<Option<transparent::Bundle<transparent::Authorized>>> {
+        let vin = Vector::read(&mut reader, TxIn::read)?;
+        let vout = Vector::read(&mut reader, TxOut::read)?;
+        for _ in 0..vin.len() {
+            let sighash_info = Vector::read(&mut reader, |r| r.read_u8())?;
+            assert!(sighash_info == TRANSPARENT_SIGHASH_INFO_V0.to_vec());
+        }
+        Ok(if vin.is_empty() && vout.is_empty() {
+            None
+        } else {
+            Some(transparent::Bundle {
+                vin,
+                vout,
+                authorization: transparent::Authorized,
+            })
+        })
+    }
+
     fn read_amount<R: Read>(mut reader: R) -> io::Result<ZatBalance> {
         let mut tmp = [0; 8];
         reader.read_exact(&mut tmp)?;
@@ -992,8 +1018,8 @@ impl Transaction {
     fn read_v6<R: Read>(mut reader: R, version: TxVersion) -> io::Result<Self> {
         let header_fragment = Self::read_v6_header_fragment(&mut reader)?;
 
-        let transparent_bundle = Self::read_transparent(&mut reader)?;
-        let sapling_bundle = sapling_serialization::read_v5_bundle(&mut reader)?;
+        let transparent_bundle = Self::read_transparent_v6(&mut reader)?;
+        let sapling_bundle = sapling_serialization::read_v6_bundle(&mut reader)?;
         let orchard_bundle = orchard_serialization::read_v6_bundle(&mut reader)?;
         let issue_bundle = issuance::read_bundle(&mut reader)?;
 
@@ -1183,6 +1209,24 @@ impl Transaction {
         Ok(())
     }
 
+    #[cfg(zcash_unstable = "nu7")]
+    pub fn write_transparent_v6<W: Write>(&self, mut writer: W) -> io::Result<()> {
+        if let Some(bundle) = &self.transparent_bundle {
+            Vector::write(&mut writer, &bundle.vin, |w, e| e.write(w))?;
+            Vector::write(&mut writer, &bundle.vout, |w, e| e.write(w))?;
+            for _ in 0..bundle.vin.len() {
+                Vector::write(&mut writer, &TRANSPARENT_SIGHASH_INFO_V0, |w, b| {
+                    w.write_u8(*b)
+                })?;
+            }
+        } else {
+            CompactSize::write(&mut writer, 0)?;
+            CompactSize::write(&mut writer, 0)?;
+        }
+
+        Ok(())
+    }
+
     pub fn write_v5<W: Write>(&self, mut writer: W) -> io::Result<()> {
         if self.sprout_bundle.is_some() {
             return Err(io::Error::new(
@@ -1208,8 +1252,8 @@ impl Transaction {
         }
         self.write_v6_header(&mut writer)?;
 
-        self.write_transparent(&mut writer)?;
-        self.write_v5_sapling(&mut writer)?;
+        self.write_transparent_v6(&mut writer)?;
+        sapling_serialization::write_v6_bundle(&mut writer, self.sapling_bundle.as_ref())?;
         orchard_serialization::write_orchard_bundle(&mut writer, self.orchard_bundle.as_ref())?;
         issuance::write_bundle(self.issue_bundle.as_ref(), &mut writer)?;
 
@@ -1320,11 +1364,13 @@ pub trait TransactionDigest<A: Authorization> {
 
     fn digest_transparent(
         &self,
+        version: TxVersion,
         transparent_bundle: Option<&transparent::Bundle<A::TransparentAuth>>,
     ) -> Self::TransparentDigest;
 
     fn digest_sapling(
         &self,
+        version: TxVersion,
         sapling_bundle: Option<&sapling::Bundle<A::SaplingAuth, ZatBalance>>,
     ) -> Self::SaplingDigest;
 
@@ -1484,7 +1530,7 @@ pub mod testing {
                 sprout_bundle: None,
                 sapling_bundle,
                 orchard_bundle,
-                issue_bundle: issue_bundle,
+                issue_bundle,
             }
         }
     }
