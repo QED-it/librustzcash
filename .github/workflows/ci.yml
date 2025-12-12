@@ -58,7 +58,7 @@ jobs:
           all-pools: false
           all-features: ${{ matrix.all-features }}
           extra-features: ${{ matrix.extra_flags || '' }}
-      - uses: actions/cache@v4
+      - uses: actions/cache@v5
         with:
           path: |
             ~/.cargo/bin/
@@ -131,7 +131,7 @@ jobs:
           all-pools: false
           all-features: ${{ matrix.all-features }}
           extra-features: ${{ matrix.extra_flags || '' }}
-      - uses: actions/cache@v4
+      - uses: actions/cache@v5
         with:
           path: |
             ~/.cargo/bin/
@@ -198,7 +198,7 @@ jobs:
           all-pools: false
           all-features: ${{ matrix.all-features }}
           extra-features: ${{ matrix.extra_flags || '' }}
-      - uses: actions/cache@v4
+      - uses: actions/cache@v5
         with:
           path: |
             ~/.cargo/bin/
@@ -257,7 +257,7 @@ jobs:
         with:
           all-features: ${{ matrix.all-features }}
           extra-features: ${{ matrix.extra_flags || '' }}
-      - uses: actions/cache@v4
+      - uses: actions/cache@v5
         with:
           path: |
             ~/.cargo/bin/
@@ -288,7 +288,7 @@ jobs:
           persist-credentials: false
       - id: prepare
         uses: ./.github/actions/prepare
-      - uses: actions/cache@v4
+      - uses: actions/cache@v5
         with:
           path: |
             ~/.cargo/bin/
@@ -473,7 +473,7 @@ jobs:
           persist-credentials: false
       - id: prepare
         uses: ./.github/actions/prepare
-      - uses: actions/cache@v4
+      - uses: actions/cache@v5
         with:
           path: |
             ~/.cargo/bin/
