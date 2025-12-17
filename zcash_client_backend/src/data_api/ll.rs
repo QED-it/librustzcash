@@ -37,7 +37,7 @@ use crate::{
 use {
     super::WalletUtxo,
     transparent::{address::TransparentAddress, keys::TransparentKeyScope},
-    zcash_keys::keys::UnifiedAddressRequest,
+    zcash_keys::keys::{UnifiedAddressRequest, transparent::gap_limits::GapLimits},
 };
 
 #[cfg(feature = "orchard")]
@@ -573,6 +573,14 @@ pub trait LowLevelWalletWrite: LowLevelWalletRead {
         &mut self,
         range: Range<BlockHeight>,
         wallet_note_positions: &[(ShieldedProtocol, Position)],
+    ) -> Result<(), Self::Error>;
+
+    #[cfg(feature = "transparent-inputs")]
+    fn update_gap_limits(
+        &mut self,
+        gap_limits: &GapLimits,
+        txid: TxId,
+        observation_height: BlockHeight,
     ) -> Result<(), Self::Error>;
 }
 
