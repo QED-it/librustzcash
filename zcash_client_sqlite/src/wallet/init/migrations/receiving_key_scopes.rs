@@ -417,6 +417,7 @@ mod tests {
                 &prover,
                 #[allow(deprecated)]
                 &fixed::FeeRule::non_standard(Zatoshis::ZERO),
+                |_| false,
             )
             .unwrap();
 
