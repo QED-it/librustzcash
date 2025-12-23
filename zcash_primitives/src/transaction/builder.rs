@@ -1006,17 +1006,22 @@ impl<P: consensus::Parameters, U: sapling::builder::ProverProgress> Builder<'_, 
             if bundle_type == BundleType::DEFAULT_ZSA {
                 #[cfg(zcash_unstable = "nu7")]
                 {
-                    let (bundle, meta) = builder.build(&mut rng).map_err(Error::OrchardBuild)?;
-
-                    unproven_orchard_bundle = Some(OrchardBundle::OrchardZSA(bundle));
-                    orchard_meta = meta;
+                    if let Some((bundle, meta)) =
+                        builder.build(&mut rng).map_err(Error::OrchardBuild)?
+                    {
+                        unproven_orchard_bundle = Some(OrchardBundle::OrchardZSA(bundle));
+                        orchard_meta = meta;
+                    }
                 }
                 #[cfg(not(zcash_unstable = "nu7"))]
                 return Err(Error::OrchardBuild(BundleTypeNotSatisfiable));
             } else {
-                let (bundle, meta) = builder.build(&mut rng).map_err(Error::OrchardBuild)?;
-                unproven_orchard_bundle = Some(OrchardBundle::OrchardVanilla(bundle));
-                orchard_meta = meta;
+                if let Some((bundle, meta)) =
+                    builder.build(&mut rng).map_err(Error::OrchardBuild)?
+                {
+                    unproven_orchard_bundle = Some(OrchardBundle::OrchardVanilla(bundle));
+                    orchard_meta = meta;
+                }
             }
         };
 
@@ -1934,7 +1939,10 @@ mod tests {
                     Memo::Empty.encode().into_bytes(),
                 )
                 .unwrap();
-            let (bundle, meta) = builder.build::<i64, OrchardVanilla>(&mut rng).unwrap();
+            let (bundle, meta) = builder
+                .build::<i64, OrchardVanilla>(&mut rng)
+                .unwrap()
+                .unwrap();
             let action = bundle
                 .actions()
                 .get(meta.output_action_index(0).unwrap())
