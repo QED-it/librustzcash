@@ -1655,7 +1655,7 @@ mod tests {
         // 0.0005 burned, 0.0001 t-ZEC fee
         #[cfg(all(zcash_unstable = "nu7", feature = "zip-233"))]
         {
-            let build_config = BuildConfig::Standard {
+            let build_config = BuildConfig::TxV6 {
                 sapling_anchor: Some(sapling::Anchor::empty_tree()),
                 orchard_anchor: Some(orchard::Anchor::empty_tree()),
             };
@@ -1731,7 +1731,7 @@ mod tests {
         // 0.0003 z-ZEC out, 0.00005 t-ZEC out, 0.0001 burned, 0.00015 t-ZEC fee, 0.00059999 z-ZEC in
         #[cfg(all(zcash_unstable = "nu7", feature = "zip-233"))]
         {
-            let build_config = BuildConfig::Standard {
+            let build_config = BuildConfig::TxV6 {
                 sapling_anchor: Some(witness1.root().into()),
                 orchard_anchor: Some(orchard::Anchor::empty_tree()),
             };
@@ -1838,7 +1838,7 @@ mod tests {
         // 0.0003 z-ZEC out, 0.00005 t-ZEC out, 0.0001 burned, 0.00015 t-ZEC fee, 0.0006 z-ZEC in
         #[cfg(all(zcash_unstable = "nu7", feature = "zip-233"))]
         {
-            let build_config = BuildConfig::Standard {
+            let build_config = BuildConfig::TxV6 {
                 sapling_anchor: Some(witness1.root().into()),
                 orchard_anchor: Some(orchard::Anchor::empty_tree()),
             };
