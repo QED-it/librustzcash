@@ -46,7 +46,8 @@ jobs:
             rustflags: '--cfg zcash_unstable="nu7"'
           - state: NU7-with-ZIP233
             all-features: true
-            rustflags: '--cfg zcash_unstable="nu7" --feature zip-233'
+            extra_flags: zip-233
+            rustflags: '--cfg zcash_unstable="nu7"'
 
     env:
       RUSTFLAGS: ${{ matrix.rustflags }}
@@ -117,7 +118,8 @@ jobs:
             rustflags: '--cfg zcash_unstable="nu7"'
           - state: NU7-with-ZIP233
             all-features: true
-            rustflags: '--cfg zcash_unstable="nu7" --feature zip-233'
+            extra_flags: zip-233
+            rustflags: '--cfg zcash_unstable="nu7"'
 
         exclude:
           - target: macOS
@@ -194,7 +196,8 @@ jobs:
             rustflags: '--cfg zcash_unstable="nu7"'
           - state: NU7-with-ZIP233
             all-features: true
-            rustflags: '--cfg zcash_unstable="nu7" --feature zip-233'
+            extra_flags: zip-233
+            rustflags: '--cfg zcash_unstable="nu7"'
 
     env:
       RUSTFLAGS: ${{ matrix.rustflags }}
