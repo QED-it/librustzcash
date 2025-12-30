@@ -5,6 +5,7 @@ use {crate::transaction::tests::data::zip_0244::TestVector, std::prelude::v1::Ve
 
 // From https://github.com/zcash-hackworks/zcash-test-vectors/blob/master/orchard_zsa_digests.py
 
+#[allow(dead_code)]
 #[cfg(all(test, zcash_unstable = "nu7"))]
 pub fn make_test_vectors() -> Vec<TestVector> {
     vec![
