@@ -245,7 +245,7 @@ impl Authorization for TestUnauthorized {
 }
 
 mod orchard_zsa_digests;
-mod orchard_zsa_digests_with_zip233;
+mod orchard_zsa_digests;
 #[test]
 fn zip_0244() {
     fn to_test_txdata(
@@ -338,13 +338,10 @@ fn zip_0244() {
 
     #[allow(unused_mut)] // mutability required for the V6 case which is flagged off by default
     let mut test_vectors = self::data::zip_0244::make_test_vectors();
-    // Note: orchard_zsa_digests test vectors don't include zip233_amount, so skip when zip-233 is enabled
-    #[cfg(all(zcash_unstable = "nu7", not(feature = "zip-233")))]
-    test_vectors.extend(orchard_zsa_digests::make_test_vectors());
 
-    // The orchard_zsa_digests_with_zip233 test vectors include zip233_amount
+    // The orchard_zsa_digests test vectors include zip233_amount
     #[cfg(all(zcash_unstable = "nu7", feature = "zip-233"))]
-    test_vectors.extend(orchard_zsa_digests_with_zip233::make_test_vectors());
+    test_vectors.extend(orchard_zsa_digests::make_test_vectors());
 
     for tv in test_vectors {
         let (txdata, txid_parts) = to_test_txdata(&tv);

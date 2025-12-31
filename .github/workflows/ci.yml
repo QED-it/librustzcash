@@ -26,7 +26,6 @@ jobs:
           - all-pools
           - all-features
           - NU7
-          - NU7-with-ZIP233
 
         include:
           - target: Linux
@@ -42,9 +41,6 @@ jobs:
           - state: all-features
             all-features: true
           - state: NU7
-            all-features: true
-            rustflags: '--cfg zcash_unstable="nu7"'
-          - state: NU7-with-ZIP233
             all-features: true
             extra_flags: zip-233
             rustflags: '--cfg zcash_unstable="nu7"'
@@ -96,7 +92,6 @@ jobs:
           - all-pools
           - all-features
           - NU7
-          - NU7-with-ZIP233
 
         include:
           - target: macOS
@@ -114,9 +109,6 @@ jobs:
           - state: all-features
             all-features: true
           - state: NU7
-            all-features: true
-            rustflags: '--cfg zcash_unstable="nu7"'
-          - state: NU7-with-ZIP233
             all-features: true
             extra_flags: zip-233
             rustflags: '--cfg zcash_unstable="nu7"'
@@ -178,7 +170,6 @@ jobs:
           - Orchard
           - all-features
           - NU7
-          - NU7-with-ZIP233
 
         include:
           - target: Linux
@@ -192,9 +183,6 @@ jobs:
           - state: all-features
             all-features: true
           - state: NU7
-            all-features: true
-            rustflags: '--cfg zcash_unstable="nu7"'
-          - state: NU7-with-ZIP233
             all-features: true
             extra_flags: zip-233
             rustflags: '--cfg zcash_unstable="nu7"'
