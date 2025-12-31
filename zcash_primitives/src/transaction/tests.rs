@@ -245,7 +245,6 @@ impl Authorization for TestUnauthorized {
 }
 
 mod orchard_zsa_digests;
-mod orchard_zsa_digests;
 #[test]
 fn zip_0244() {
     fn to_test_txdata(
