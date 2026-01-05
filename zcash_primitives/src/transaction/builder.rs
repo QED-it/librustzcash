@@ -4,8 +4,8 @@ use core::cmp::Ordering;
 use core::fmt;
 use rand::{CryptoRng, RngCore};
 
-use ::sapling::{builder::SaplingMetadata, Note, PaymentAddress};
-use ::transparent::{address::TransparentAddress, builder::TransparentBuilder, bundle::TxOut};
+use sapling::{builder::SaplingMetadata, Note, PaymentAddress};
+use transparent::{address::TransparentAddress, builder::TransparentBuilder, bundle::TxOut};
 use zcash_protocol::{
     consensus::{self, BlockHeight, BranchId, NetworkUpgrade, Parameters},
     memo::MemoBytes,
@@ -30,20 +30,20 @@ use {
         txid::TxIdDigester,
         OrchardBundle, TransactionData, Unauthorized,
     },
-    ::sapling::prover::{OutputProver, SpendProver},
-    ::transparent::builder::TransparentSigningSet,
     alloc::vec::Vec,
     orchard::{
         builder::{InProgress, Unproven},
         bundle::Authorized,
         orchard_flavor::OrchardFlavor,
     },
+    sapling::prover::{OutputProver, SpendProver},
+    transparent::builder::TransparentSigningSet,
 };
 
 use orchard::{builder::BundleType, note::AssetBase, orchard_flavor::OrchardVanilla, Address};
 
 #[cfg(feature = "transparent-inputs")]
-use ::transparent::builder::TransparentInputInfo;
+use transparent::builder::TransparentInputInfo;
 
 #[cfg(not(feature = "transparent-inputs"))]
 use core::convert::Infallible;
@@ -289,9 +289,9 @@ impl BuildConfig {
     /// Returns the Orchard bundle type and anchor for this configuration.
     pub fn orchard_builder_config(&self) -> Option<(BundleType, orchard::Anchor)> {
         match self {
-            BuildConfig::TxV5 { orchard_anchor, .. } => orchard_anchor
-                .as_ref()
-                .map(|a| (BundleType::DEFAULT_VANILLA, *a)),
+            BuildConfig::TxV5 { orchard_anchor, .. } => {
+                orchard_anchor.as_ref().map(|a| (BundleType::DEFAULT, *a))
+            }
             #[cfg(zcash_unstable = "nu7")]
             BuildConfig::TxV6 { orchard_anchor, .. } => orchard_anchor
                 .as_ref()
@@ -620,7 +620,7 @@ impl<P: consensus::Parameters, U: sapling::builder::ProverProgress> Builder<'_, 
         memo: MemoBytes,
     ) -> Result<(), Error<FE>> {
         let bundle_type = self.build_config.orchard_bundle_type()?;
-        if bundle_type == BundleType::DEFAULT_VANILLA && !bool::from(asset.is_native()) {
+        if bundle_type == BundleType::DEFAULT && !bool::from(asset.is_native()) {
             return Err(Error::OrchardBuild(BundleTypeNotSatisfiable));
         }
         self.orchard_builder
@@ -1308,9 +1308,9 @@ mod testing {
     use super::{BuildResult, Builder, Error};
 
     use crate::transaction::fees::zip317;
-    use ::sapling::prover::mock::{MockOutputProver, MockSpendProver};
     use rand::RngCore;
     use rand_core::CryptoRng;
+    use sapling::prover::mock::{MockOutputProver, MockSpendProver};
     use transparent::builder::TransparentSigningSet;
     use zcash_protocol::consensus;
 
@@ -1371,8 +1371,8 @@ mod tests {
     use rand_core::OsRng;
 
     use crate::transaction::builder::BuildConfig;
-    use ::sapling::{zip32::ExtendedSpendingKey, Node, Rseed};
-    use ::transparent::{address::TransparentAddress, builder::TransparentSigningSet};
+    use sapling::{zip32::ExtendedSpendingKey, Node, Rseed};
+    use transparent::{address::TransparentAddress, builder::TransparentSigningSet};
     use zcash_protocol::{
         consensus::{NetworkUpgrade, Parameters, TEST_NETWORK},
         memo::MemoBytes,
@@ -1392,7 +1392,7 @@ mod tests {
     #[cfg(feature = "transparent-inputs")]
     use {
         crate::transaction::{builder::DEFAULT_TX_EXPIRY_DELTA, OutPoint, TxOut},
-        ::transparent::keys::{AccountPrivKey, IncomingViewingKey},
+        transparent::keys::{AccountPrivKey, IncomingViewingKey},
         zip32::AccountId,
     };
 
@@ -1427,7 +1427,7 @@ mod tests {
     #[cfg(feature = "transparent-inputs")]
     fn binding_sig_absent_if_no_shielded_spend_or_output() {
         use crate::transaction::builder::{self, TransparentBuilder};
-        use ::transparent::{builder::TransparentSigningSet, keys::NonHardenedChildIndex};
+        use transparent::{builder::TransparentSigningSet, keys::NonHardenedChildIndex};
         use zcash_protocol::consensus::NetworkUpgrade;
 
         let sapling_activation_height = TEST_NETWORK
@@ -1922,7 +1922,7 @@ mod tests {
         // Create a test note in the Orchard tree
         let note = {
             let mut builder = orchard::builder::Builder::new(
-                orchard::builder::BundleType::DEFAULT_VANILLA,
+                orchard::builder::BundleType::DEFAULT,
                 orchard::Anchor::empty_tree(),
             );
             builder
