@@ -6,8 +6,7 @@ use ::transparent::{
     keys::{AccountPrivKey, IncomingViewingKey},
 };
 use orchard::{
-    note::AssetBase, orchard_flavor::OrchardVanilla, primitives::OrchardDomain,
-    tree::MerkleHashOrchard,
+    flavor::OrchardVanilla, note::AssetBase, primitives::OrchardDomain, tree::MerkleHashOrchard,
 };
 use pczt::{
     roles::{
@@ -345,7 +344,7 @@ fn orchard_to_orchard() {
     let value = orchard::value::NoteValue::from_raw(1_000_000);
     let note = {
         let mut orchard_builder = orchard::builder::Builder::new(
-            orchard::builder::BundleType::DEFAULT_VANILLA,
+            orchard::builder::BundleType::DEFAULT,
             orchard::Anchor::empty_tree(),
         );
         orchard_builder

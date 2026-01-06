@@ -40,7 +40,7 @@ use self::{
 #[cfg(feature = "circuits")]
 use {::sapling::builder as sapling_builder, orchard::builder::Unproven};
 
-use orchard::orchard_flavor::OrchardVanilla;
+use orchard::flavor::OrchardVanilla;
 use orchard::Bundle;
 use zcash_protocol::constants::{
     V3_TX_VERSION, V3_VERSION_GROUP_ID, V4_TX_VERSION, V4_VERSION_GROUP_ID, V5_TX_VERSION,
@@ -49,7 +49,7 @@ use zcash_protocol::constants::{
 #[cfg(zcash_unstable = "nu7")]
 use {
     crate::transaction::components::issuance,
-    orchard::{issuance::IssueBundle, orchard_flavor::OrchardZSA},
+    orchard::{flavor::OrchardZSA, issuance::IssueBundle},
 };
 
 #[cfg(zcash_unstable = "nu7")]
