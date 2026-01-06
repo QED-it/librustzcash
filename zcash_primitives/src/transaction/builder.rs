@@ -1015,13 +1015,11 @@ impl<P: consensus::Parameters, U: sapling::builder::ProverProgress> Builder<'_, 
                 }
                 #[cfg(not(zcash_unstable = "nu7"))]
                 return Err(Error::OrchardBuild(BundleTypeNotSatisfiable));
-            } else {
-                if let Some((bundle, meta)) =
-                    builder.build(&mut rng).map_err(Error::OrchardBuild)?
-                {
-                    unproven_orchard_bundle = Some(OrchardBundle::OrchardVanilla(bundle));
-                    orchard_meta = meta;
-                }
+            } else if let Some((bundle, meta)) =
+                builder.build(&mut rng).map_err(Error::OrchardBuild)?
+            {
+                unproven_orchard_bundle = Some(OrchardBundle::OrchardVanilla(bundle));
+                orchard_meta = meta;
             }
         };
 
