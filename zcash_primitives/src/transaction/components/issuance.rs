@@ -7,9 +7,9 @@ use {
     core2::io::{self, Error, ErrorKind, Read, Write},
     nonempty::NonEmpty,
     orchard::{
+        issuance::auth::{IssueAuthSig, IssueValidatingKey, ZSASchnorr},
+        issuance::sighash_versioning::VerBIP340IssueAuthSig,
         issuance::{IssueAction, IssueAuth, IssueBundle, Signed},
-        issuance_auth::{IssueAuthSig, IssueValidatingKey, ZSASchnorr},
-        issuance_sighash_versioning::VerBIP340IssueAuthSig,
         note::{AssetBase, RandomSeed, Rho},
         value::NoteValue,
         {Address, Note},

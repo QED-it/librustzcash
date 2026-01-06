@@ -5,10 +5,10 @@
 use alloc::{collections::BTreeMap, vec::Vec};
 use lazy_static::lazy_static;
 
-use orchard::orchard_sighash_versioning::OrchardSighashVersion;
+use orchard::sighash_versioning::OrchardSighashVersion;
 
 #[cfg(zcash_unstable = "nu7")]
-use orchard::issuance_sighash_versioning::IssueSighashVersion;
+use orchard::issuance::sighash_versioning::IssueSighashVersion;
 
 /// Orchard `SighashInfo` for V0:
 /// sighashInfo = (\[sighashVersion\] || associatedData) = (\[0\] || [])

@@ -34,7 +34,7 @@ use crate::{
 use transparent::bundle::OutPoint;
 
 #[cfg(feature = "orchard")]
-use orchard::orchard_flavor::OrchardVanilla;
+use orchard::flavor::OrchardVanilla;
 #[cfg(feature = "orchard")]
 use orchard::primitives::OrchardPrimitives;
 #[cfg(feature = "orchard")]

@@ -87,8 +87,8 @@ use {
 #[cfg(feature = "orchard")]
 use {
     super::ORCHARD_SHARD_HEIGHT, crate::proto::compact_formats::CompactOrchardAction,
-    ::orchard::orchard_flavor::OrchardVanilla, ::orchard::tree::MerkleHashOrchard,
-    group::ff::PrimeField, pasta_curves::pallas,
+    ::orchard::flavor::OrchardVanilla, ::orchard::tree::MerkleHashOrchard, group::ff::PrimeField,
+    pasta_curves::pallas,
 };
 
 pub mod pool;

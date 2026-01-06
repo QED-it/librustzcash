@@ -36,11 +36,11 @@ use {
     orchard::{
         builder::{InProgress, Unproven},
         bundle::Authorized,
-        orchard_flavor::OrchardFlavor,
+        flavor::OrchardFlavor,
     },
 };
 
-use orchard::{builder::BundleType, note::AssetBase, orchard_flavor::OrchardVanilla, Address};
+use orchard::{builder::BundleType, flavor::OrchardVanilla, note::AssetBase, Address};
 
 #[cfg(feature = "transparent-inputs")]
 use ::transparent::builder::TransparentInputInfo;
@@ -64,11 +64,11 @@ use orchard::builder::BuildError::BundleTypeNotSatisfiable;
 use {
     orchard::{
         bundle::Authorization,
+        flavor::OrchardZSA,
         issuance,
+        issuance::auth::{IssueAuthKey, IssueValidatingKey, ZSASchnorr},
         issuance::{IssueBundle, IssueInfo},
-        issuance_auth::{IssueAuthKey, IssueValidatingKey, ZSASchnorr},
         note::Nullifier,
-        orchard_flavor::OrchardZSA,
     },
     rand_core::OsRng,
 };
@@ -289,9 +289,9 @@ impl BuildConfig {
     /// Returns the Orchard bundle type and anchor for this configuration.
     pub fn orchard_builder_config(&self) -> Option<(BundleType, orchard::Anchor)> {
         match self {
-            BuildConfig::TxV5 { orchard_anchor, .. } => orchard_anchor
-                .as_ref()
-                .map(|a| (BundleType::DEFAULT_VANILLA, *a)),
+            BuildConfig::TxV5 { orchard_anchor, .. } => {
+                orchard_anchor.as_ref().map(|a| (BundleType::DEFAULT, *a))
+            }
             #[cfg(zcash_unstable = "nu7")]
             BuildConfig::TxV6 { orchard_anchor, .. } => orchard_anchor
                 .as_ref()
@@ -380,7 +380,7 @@ pub struct Builder<'a, P, U: sapling::builder::ProverProgress> {
     #[cfg(zcash_unstable = "nu7")]
     issuance_builder: Option<IssueBundle<issuance::AwaitingNullifier>>,
     #[cfg(zcash_unstable = "nu7")]
-    issuance_isk: Option<orchard::issuance_auth::IssueAuthKey<ZSASchnorr>>,
+    issuance_isk: Option<orchard::issuance::auth::IssueAuthKey<ZSASchnorr>>,
     #[cfg(zcash_unstable = "zfuture")]
     tze_builder: TzeBuilder<'a, TransactionData<Unauthorized>>,
     #[cfg(not(zcash_unstable = "zfuture"))]
@@ -620,7 +620,7 @@ impl<P: consensus::Parameters, U: sapling::builder::ProverProgress> Builder<'_, 
         memo: MemoBytes,
     ) -> Result<(), Error<FE>> {
         let bundle_type = self.build_config.orchard_bundle_type()?;
-        if bundle_type == BundleType::DEFAULT_VANILLA && !bool::from(asset.is_native()) {
+        if bundle_type == BundleType::DEFAULT && !bool::from(asset.is_native()) {
             return Err(Error::OrchardBuild(BundleTypeNotSatisfiable));
         }
         self.orchard_builder
@@ -1404,11 +1404,11 @@ mod tests {
         crate::transaction::fees::zip317,
         nonempty::NonEmpty,
         orchard::{
+            flavor::OrchardVanilla,
+            issuance::auth::{IssueAuthKey, IssueValidatingKey},
             issuance::{compute_asset_desc_hash, IssueInfo},
-            issuance_auth::{IssueAuthKey, IssueValidatingKey},
             keys::{FullViewingKey, Scope, SpendAuthorizingKey, SpendingKey},
             note::AssetBase,
-            orchard_flavor::OrchardVanilla,
             primitives::OrchardDomain,
             tree::MerkleHashOrchard,
             value::NoteValue,
@@ -1925,7 +1925,7 @@ mod tests {
         // Create a test note in the Orchard tree
         let note = {
             let mut builder = orchard::builder::Builder::new(
-                orchard::builder::BundleType::DEFAULT_VANILLA,
+                orchard::builder::BundleType::DEFAULT,
                 orchard::Anchor::empty_tree(),
             );
             builder
