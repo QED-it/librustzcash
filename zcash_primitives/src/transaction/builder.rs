@@ -289,9 +289,9 @@ impl BuildConfig {
     /// Returns the Orchard bundle type and anchor for this configuration.
     pub fn orchard_builder_config(&self) -> Option<(BundleType, orchard::Anchor)> {
         match self {
-            BuildConfig::TxV5 { orchard_anchor, .. } => orchard_anchor
-                .as_ref()
-                .map(|a| (BundleType::DEFAULT_VANILLA, *a)),
+            BuildConfig::TxV5 { orchard_anchor, .. } => {
+                orchard_anchor.as_ref().map(|a| (BundleType::DEFAULT, *a))
+            }
             #[cfg(zcash_unstable = "nu7")]
             BuildConfig::TxV6 { orchard_anchor, .. } => orchard_anchor
                 .as_ref()
@@ -620,7 +620,7 @@ impl<P: consensus::Parameters, U: sapling::builder::ProverProgress> Builder<'_, 
         memo: MemoBytes,
     ) -> Result<(), Error<FE>> {
         let bundle_type = self.build_config.orchard_bundle_type()?;
-        if bundle_type == BundleType::DEFAULT_VANILLA && !bool::from(asset.is_native()) {
+        if bundle_type == BundleType::DEFAULT && !bool::from(asset.is_native()) {
             return Err(Error::OrchardBuild(BundleTypeNotSatisfiable));
         }
         self.orchard_builder
@@ -1922,7 +1922,7 @@ mod tests {
         // Create a test note in the Orchard tree
         let note = {
             let mut builder = orchard::builder::Builder::new(
-                orchard::builder::BundleType::DEFAULT_VANILLA,
+                orchard::builder::BundleType::DEFAULT,
                 orchard::Anchor::empty_tree(),
             );
             builder
