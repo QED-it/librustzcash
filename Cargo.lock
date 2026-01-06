@@ -2862,7 +2862,7 @@ checksum = "04744f49eae99ab78e0d5c0b603ab218f515ea8cfe5a456d7629ad883a3b6e7d"
 [[package]]
 name = "orchard"
 version = "0.11.0"
-source = "git+https://github.com/QED-it/orchard?branch=pr471_circuit#6c9e3ec79c53e64fb07f76ff1b4bd863a2372b4e"
+source = "git+https://github.com/QED-it/orchard?branch=zcash_pr471_review#4f0357336d94b670259a71d4034f9fbb002dac1e"
 dependencies = [
  "aes",
  "bitvec",
