@@ -6,8 +6,7 @@ use ::transparent::{
     keys::{AccountPrivKey, IncomingViewingKey},
 };
 use orchard::{
-    note::AssetBase, orchard_flavor::OrchardVanilla, primitives::OrchardDomain,
-    tree::MerkleHashOrchard,
+    flavor::OrchardVanilla, note::AssetBase, primitives::OrchardDomain, tree::MerkleHashOrchard,
 };
 use pczt::{
     roles::{

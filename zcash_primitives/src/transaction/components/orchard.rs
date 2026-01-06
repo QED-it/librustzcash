@@ -6,7 +6,7 @@ use {
     crate::encoding::WriteBytesExt,
     crate::sighash_versioning::{to_orchard_version, ORCHARD_SIGHASH_VERSION_TO_INFO_BYTES},
     crate::transaction::components::issuance::read_asset,
-    orchard::{note::AssetBase, orchard_flavor::OrchardZSA, value::NoteValue},
+    orchard::{flavor::OrchardZSA, note::AssetBase, value::NoteValue},
 };
 
 use crate::transaction::{OrchardBundle, Transaction};
@@ -16,8 +16,8 @@ use core2::io::{self, Read, Write};
 use nonempty::NonEmpty;
 use orchard::{
     bundle::{Authorization, Authorized, Flags},
+    flavor::OrchardVanilla,
     note::{ExtractedNoteCommitment, Nullifier, TransmittedNoteCiphertext},
-    orchard_flavor::OrchardVanilla,
     orchard_sighash_versioning::{OrchardSighashVersion, OrchardVersionedSig},
     primitives::redpallas::{self, SigType, Signature, SpendAuth, VerificationKey},
     primitives::OrchardPrimitives,
@@ -489,7 +489,7 @@ pub mod testing {
     use zcash_protocol::value::testing::arb_zat_balance;
 
     #[cfg(zcash_unstable = "nu7")]
-    use orchard::orchard_flavor::OrchardZSA;
+    use orchard::flavor::OrchardZSA;
 
     prop_compose! {
         pub fn arb_bundle(n_actions: usize)(

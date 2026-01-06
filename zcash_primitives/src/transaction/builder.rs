@@ -36,11 +36,11 @@ use {
     orchard::{
         builder::{InProgress, Unproven},
         bundle::Authorized,
-        orchard_flavor::OrchardFlavor,
+        flavor::OrchardFlavor,
     },
 };
 
-use orchard::{builder::BundleType, note::AssetBase, orchard_flavor::OrchardVanilla, Address};
+use orchard::{builder::BundleType, flavor::OrchardVanilla, note::AssetBase, Address};
 
 #[cfg(feature = "transparent-inputs")]
 use ::transparent::builder::TransparentInputInfo;
@@ -64,11 +64,11 @@ use orchard::builder::BuildError::BundleTypeNotSatisfiable;
 use {
     orchard::{
         bundle::Authorization,
+        flavor::OrchardZSA,
         issuance,
         issuance::{IssueBundle, IssueInfo},
         issuance_auth::{IssueAuthKey, IssueValidatingKey, ZSASchnorr},
         note::Nullifier,
-        orchard_flavor::OrchardZSA,
     },
     rand_core::OsRng,
 };
@@ -1401,11 +1401,11 @@ mod tests {
         crate::transaction::fees::zip317,
         nonempty::NonEmpty,
         orchard::{
+            flavor::OrchardVanilla,
             issuance::{compute_asset_desc_hash, IssueInfo},
             issuance_auth::{IssueAuthKey, IssueValidatingKey},
             keys::{FullViewingKey, Scope, SpendAuthorizingKey, SpendingKey},
             note::AssetBase,
-            orchard_flavor::OrchardVanilla,
             primitives::OrchardDomain,
             tree::MerkleHashOrchard,
             value::NoteValue,
