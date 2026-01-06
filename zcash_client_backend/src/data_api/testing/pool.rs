@@ -86,7 +86,7 @@ use {
 use zcash_protocol::PoolType;
 
 #[cfg(feature = "pczt")]
-use orchard::orchard_flavor::OrchardVanilla;
+use orchard::flavor::OrchardVanilla;
 #[cfg(feature = "pczt")]
 use pczt::roles::{prover::Prover, signer::Signer};
 
