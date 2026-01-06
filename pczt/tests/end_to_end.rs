@@ -358,6 +358,7 @@ fn orchard_to_orchard() {
             .unwrap();
         let (bundle, meta) = orchard_builder
             .build::<i64, OrchardVanilla>(&mut rng)
+            .unwrap()
             .unwrap();
         let action = bundle
             .actions()
