@@ -66,8 +66,8 @@ use {
         bundle::Authorization,
         flavor::OrchardZSA,
         issuance,
+        issuance::auth::{IssueAuthKey, IssueValidatingKey, ZSASchnorr},
         issuance::{IssueBundle, IssueInfo},
-        issuance_auth::{IssueAuthKey, IssueValidatingKey, ZSASchnorr},
         note::Nullifier,
     },
     rand_core::OsRng,
@@ -380,7 +380,7 @@ pub struct Builder<'a, P, U: sapling::builder::ProverProgress> {
     #[cfg(zcash_unstable = "nu7")]
     issuance_builder: Option<IssueBundle<issuance::AwaitingNullifier>>,
     #[cfg(zcash_unstable = "nu7")]
-    issuance_isk: Option<orchard::issuance_auth::IssueAuthKey<ZSASchnorr>>,
+    issuance_isk: Option<orchard::issuance::auth::IssueAuthKey<ZSASchnorr>>,
     #[cfg(zcash_unstable = "zfuture")]
     tze_builder: TzeBuilder<'a, TransactionData<Unauthorized>>,
     #[cfg(not(zcash_unstable = "zfuture"))]
@@ -1402,8 +1402,8 @@ mod tests {
         nonempty::NonEmpty,
         orchard::{
             flavor::OrchardVanilla,
+            issuance::auth::{IssueAuthKey, IssueValidatingKey},
             issuance::{compute_asset_desc_hash, IssueInfo},
-            issuance_auth::{IssueAuthKey, IssueValidatingKey},
             keys::{FullViewingKey, Scope, SpendAuthorizingKey, SpendingKey},
             note::AssetBase,
             primitives::OrchardDomain,
