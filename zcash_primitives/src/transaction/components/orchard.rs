@@ -18,9 +18,9 @@ use orchard::{
     bundle::{Authorization, Authorized, Flags},
     flavor::OrchardVanilla,
     note::{ExtractedNoteCommitment, Nullifier, TransmittedNoteCiphertext},
-    orchard_sighash_versioning::{OrchardSighashVersion, OrchardVersionedSig},
     primitives::redpallas::{self, SigType, Signature, SpendAuth, VerificationKey},
     primitives::OrchardPrimitives,
+    sighash_versioning::{OrchardSighashVersion, OrchardVersionedSig},
     value::ValueCommitment,
     Action, Anchor, Bundle,
 };
@@ -452,8 +452,8 @@ mod tests {
     use {
         super::{read_versioned_signature, write_versioned_signature},
         alloc::vec::Vec,
-        orchard::orchard_sighash_versioning::{OrchardSighashVersion, OrchardVersionedSig},
         orchard::primitives::redpallas,
+        orchard::sighash_versioning::{OrchardSighashVersion, OrchardVersionedSig},
         rand::rngs::OsRng,
         rand::RngCore,
         std::io::Cursor,
