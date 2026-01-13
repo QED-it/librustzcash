@@ -72,8 +72,8 @@ use std::{
     num::{NonZeroU32, TryFromIntError},
 };
 
-use incrementalmerkletree::{frontier::Frontier, Retention};
-use shardtree::{error::ShardTreeError, store::ShardStore, ShardTree};
+use incrementalmerkletree::{Retention, frontier::Frontier};
+use shardtree::{ShardTree, error::ShardTreeError, store::ShardStore};
 
 use zcash_keys::{
     address::{Address, UnifiedAddress},
@@ -83,12 +83,12 @@ use zcash_keys::{
 };
 use zcash_primitives::{block::BlockHash, transaction::Transaction};
 use zcash_protocol::{
+    ShieldedProtocol, TxId,
     consensus::BlockHeight,
     memo::{Memo, MemoBytes},
     value::{BalanceError, Zatoshis},
-    ShieldedProtocol, TxId,
 };
-use zip32::{fingerprint::SeedFingerprint, DiversifierIndex};
+use zip32::{DiversifierIndex, fingerprint::SeedFingerprint};
 
 use self::{
     chain::{ChainState, CommitmentTreeRoot},
@@ -1447,7 +1447,9 @@ pub trait InputSource {
         &self,
         _outpoint: &OutPoint,
     ) -> Result<Option<WalletTransparentOutput>, Self::Error> {
-        unimplemented!("InputSource::get_spendable_transparent_output must be overridden for wallets to use the `transparent-inputs` feature")
+        unimplemented!(
+            "InputSource::get_spendable_transparent_output must be overridden for wallets to use the `transparent-inputs` feature"
+        )
     }
 
     /// Returns the list of spendable transparent outputs received by this wallet at `address`
@@ -1465,7 +1467,9 @@ pub trait InputSource {
         _target_height: TargetHeight,
         _confirmations_policy: ConfirmationsPolicy,
     ) -> Result<Vec<WalletTransparentOutput>, Self::Error> {
-        unimplemented!("InputSource::get_spendable_transparent_outputs must be overridden for wallets to use the `transparent-inputs` feature")
+        unimplemented!(
+            "InputSource::get_spendable_transparent_outputs must be overridden for wallets to use the `transparent-inputs` feature"
+        )
     }
 }
 
@@ -1667,7 +1671,9 @@ pub trait WalletRead {
         &self,
         _query: NullifierQuery,
     ) -> Result<Vec<(Self::AccountId, orchard::note::Nullifier)>, Self::Error> {
-        unimplemented!("WalletRead::get_orchard_nullifiers must be overridden for wallets to use the `orchard` feature")
+        unimplemented!(
+            "WalletRead::get_orchard_nullifiers must be overridden for wallets to use the `orchard` feature"
+        )
     }
 
     /// Returns the set of non-ephemeral transparent receivers associated with the given
@@ -1695,7 +1701,9 @@ pub trait WalletRead {
         _include_change: bool,
         _include_standalone: bool,
     ) -> Result<HashMap<TransparentAddress, Option<TransparentAddressMetadata>>, Self::Error> {
-        unimplemented!("WalletRead::get_transparent_receivers must be overridden for wallets to use the `transparent-inputs` feature")
+        unimplemented!(
+            "WalletRead::get_transparent_receivers must be overridden for wallets to use the `transparent-inputs` feature"
+        )
     }
 
     /// Returns a mapping from each transparent receiver associated with the specified account
@@ -1709,7 +1717,9 @@ pub trait WalletRead {
         _target_height: TargetHeight,
         _confirmations_policy: ConfirmationsPolicy,
     ) -> Result<HashMap<TransparentAddress, Balance>, Self::Error> {
-        unimplemented!("WalletRead::get_transparent_balances must be overridden for wallets to use the `transparent-inputs` feature")
+        unimplemented!(
+            "WalletRead::get_transparent_balances must be overridden for wallets to use the `transparent-inputs` feature"
+        )
     }
 
     /// Returns the metadata associated with a given transparent receiver in an account
@@ -1764,7 +1774,9 @@ pub trait WalletRead {
     /// should start searching for UTXOs.
     #[cfg(feature = "transparent-inputs")]
     fn utxo_query_height(&self, _account: Self::AccountId) -> Result<BlockHeight, Self::Error> {
-        unimplemented!("WalletRead::utxo_query_height must be overridden for wallets to use the `transparent-inputs` feature")
+        unimplemented!(
+            "WalletRead::utxo_query_height must be overridden for wallets to use the `transparent-inputs` feature"
+        )
     }
 
     /// Returns a vector of ephemeral transparent addresses associated with the given
@@ -1806,7 +1818,9 @@ pub trait WalletRead {
         _account: Self::AccountId,
         _index_range: Option<Range<NonHardenedChildIndex>>,
     ) -> Result<Vec<(TransparentAddress, TransparentAddressMetadata)>, Self::Error> {
-        unimplemented!("WalletRead::get_known_ephemeral_addresses must be overridden for wallets to use the `transparent-inputs` feature")
+        unimplemented!(
+            "WalletRead::get_known_ephemeral_addresses must be overridden for wallets to use the `transparent-inputs` feature"
+        )
     }
 
     /// If a given ephemeral address might have been reserved, i.e. would be included in
@@ -1912,7 +1926,9 @@ pub trait WalletTest: InputSource + WalletRead {
         _outpoint: &OutPoint,
         _allow_unspendable: bool,
     ) -> Result<Option<WalletTransparentOutput>, <Self as InputSource>::Error> {
-        unimplemented!("WalletTest::get_transparent_output must be overridden for wallets to use the `transparent-inputs` feature")
+        unimplemented!(
+            "WalletTest::get_transparent_output must be overridden for wallets to use the `transparent-inputs` feature"
+        )
     }
 
     /// Returns all the notes that have been received by the wallet.
@@ -2769,7 +2785,9 @@ pub trait WalletWrite: WalletRead {
         _account: Self::AccountId,
         _pubkey: secp256k1::PublicKey,
     ) -> Result<(), Self::Error> {
-        unimplemented!("WalletWrite::import_standalone_transparent_pubkey must be overridden for wallets to use the `transparent-key-import` feature")
+        unimplemented!(
+            "WalletWrite::import_standalone_transparent_pubkey must be overridden for wallets to use the `transparent-key-import` feature"
+        )
     }
 
     /// Generates, persists, and marks as exposed the next available diversified address for the
@@ -2901,7 +2919,9 @@ pub trait WalletWrite: WalletRead {
         _account_id: Self::AccountId,
         _n: usize,
     ) -> Result<Vec<(TransparentAddress, TransparentAddressMetadata)>, Self::Error> {
-        unimplemented!("WalletWrite::reserve_next_n_ephemeral_addresses must be overridden for wallets to use the `transparent-inputs` feature")
+        unimplemented!(
+            "WalletWrite::reserve_next_n_ephemeral_addresses must be overridden for wallets to use the `transparent-inputs` feature"
+        )
     }
 
     /// Updates the wallet backend with respect to the status of a specific transaction, from the
@@ -2930,7 +2950,9 @@ pub trait WalletWrite: WalletRead {
         _request: TransactionsInvolvingAddress,
         _as_of_height: BlockHeight,
     ) -> Result<(), Self::Error> {
-        unimplemented!("WalletWrite::notify_address_checked must be overridden for wallets to use the `transparent-inputs` feature")
+        unimplemented!(
+            "WalletWrite::notify_address_checked must be overridden for wallets to use the `transparent-inputs` feature"
+        )
     }
 }
 
@@ -2940,11 +2962,7 @@ pub trait WalletCommitmentTrees {
     type Error: Debug;
 
     /// The type of the backing [`ShardStore`] for the Sapling note commitment tree.
-    type SaplingShardStore<'a>: ShardStore<
-        H = sapling::Node,
-        CheckpointId = BlockHeight,
-        Error = Self::Error,
-    >;
+    type SaplingShardStore<'a>: ShardStore<H = sapling::Node, CheckpointId = BlockHeight, Error = Self::Error>;
 
     /// Evaluates the given callback function with a reference to the Sapling
     /// note commitment tree maintained by the wallet.
@@ -2972,10 +2990,10 @@ pub trait WalletCommitmentTrees {
     /// The type of the backing [`ShardStore`] for the Orchard note commitment tree.
     #[cfg(feature = "orchard")]
     type OrchardShardStore<'a>: ShardStore<
-        H = orchard::tree::MerkleHashOrchard,
-        CheckpointId = BlockHeight,
-        Error = Self::Error,
-    >;
+            H = orchard::tree::MerkleHashOrchard,
+            CheckpointId = BlockHeight,
+            Error = Self::Error,
+        >;
 
     /// Evaluates the given callback function with a reference to the Orchard
     /// note commitment tree maintained by the wallet.
