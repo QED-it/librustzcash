@@ -2,7 +2,7 @@
 use {
     crate::{
         encoding::{ReadBytesExt, WriteBytesExt},
-        sighash_versioning::{to_issuance_version, ISSUE_SIGHASH_VERSION_TO_INFO_BYTES},
+        sighash_versioning::{ISSUE_SIGHASH_VERSION_TO_INFO_BYTES, to_issuance_version},
     },
     core2::io::{self, Error, ErrorKind, Read, Write},
     nonempty::NonEmpty,
@@ -97,7 +97,7 @@ fn read_action<R: Read>(
             return Err(Error::new(
                 ErrorKind::InvalidData,
                 "Invalid value for finalize",
-            ))
+            ));
         }
     };
     Ok(IssueAction::from_parts(asset_desc_hash, notes, finalize))
@@ -229,8 +229,8 @@ pub mod testing {
     use proptest::prelude::*;
 
     use orchard::issuance::{
-        testing::{self as t_issue},
         IssueBundle, Signed,
+        testing::{self as t_issue},
     };
 
     use crate::transaction::TxVersion;

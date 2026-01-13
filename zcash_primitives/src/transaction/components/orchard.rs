@@ -4,7 +4,7 @@ use crate::encoding::ReadBytesExt;
 #[cfg(zcash_unstable = "nu7")]
 use {
     crate::encoding::WriteBytesExt,
-    crate::sighash_versioning::{to_orchard_version, ORCHARD_SIGHASH_VERSION_TO_INFO_BYTES},
+    crate::sighash_versioning::{ORCHARD_SIGHASH_VERSION_TO_INFO_BYTES, to_orchard_version},
     crate::transaction::components::issuance::read_asset,
     orchard::{flavor::OrchardZSA, note::AssetBase, value::NoteValue},
 };
@@ -15,14 +15,14 @@ use core::convert::TryFrom;
 use core2::io::{self, Read, Write};
 use nonempty::NonEmpty;
 use orchard::{
+    Action, Anchor, Bundle,
     bundle::{Authorization, Authorized, Flags},
     flavor::OrchardVanilla,
     note::{ExtractedNoteCommitment, Nullifier, TransmittedNoteCiphertext},
-    primitives::redpallas::{self, SigType, Signature, SpendAuth, VerificationKey},
     primitives::OrchardPrimitives,
+    primitives::redpallas::{self, SigType, Signature, SpendAuth, VerificationKey},
     sighash_versioning::{OrchardSighashVersion, OrchardVersionedSig},
     value::ValueCommitment,
-    Action, Anchor, Bundle,
 };
 use zcash_encoding::{Array, CompactSize, Vector};
 use zcash_note_encryption::note_bytes::NoteBytes;
@@ -454,8 +454,8 @@ mod tests {
         alloc::vec::Vec,
         orchard::primitives::redpallas,
         orchard::sighash_versioning::{OrchardSighashVersion, OrchardVersionedSig},
-        rand::rngs::OsRng,
         rand::RngCore,
+        rand::rngs::OsRng,
         std::io::Cursor,
     };
 
@@ -485,7 +485,7 @@ pub mod testing {
     use proptest::prelude::*;
 
     use crate::transaction::{OrchardBundle, TxVersion};
-    use orchard::bundle::{testing as t_orch, Authorized};
+    use orchard::bundle::{Authorized, testing as t_orch};
     use zcash_protocol::value::testing::arb_zat_balance;
 
     #[cfg(zcash_unstable = "nu7")]

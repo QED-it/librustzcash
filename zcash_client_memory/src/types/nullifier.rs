@@ -60,7 +60,7 @@ impl From<orchard::note::Nullifier> for Nullifier {
 
 mod serialization {
     use super::*;
-    use crate::{proto::memwallet as proto, Error};
+    use crate::{Error, proto::memwallet as proto};
 
     impl From<Nullifier> for proto::Nullifier {
         fn from(nullifier: Nullifier) -> Self {
