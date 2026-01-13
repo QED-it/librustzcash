@@ -68,7 +68,7 @@ use {
         issuance,
         issuance::auth::{IssueAuthKey, IssueValidatingKey, ZSASchnorr},
         issuance::{IssueBundle, IssueInfo},
-        note::Nullifier,
+        note::{AssetId, Nullifier},
     },
     rand_core::OsRng,
 };
@@ -775,7 +775,10 @@ impl<P: consensus::Parameters, U: sapling::builder::ProverProgress> Builder<'_, 
                         .actions()
                         .iter()
                         .filter(|&action| {
-                            is_new_asset(&AssetBase::derive(bundle.ik(), action.asset_desc_hash()))
+                            is_new_asset(&AssetBase::custom(&AssetId::new_v0(
+                                bundle.ik(),
+                                action.asset_desc_hash(),
+                            )))
                         })
                         .count()
                 }),
@@ -836,7 +839,10 @@ impl<P: consensus::Parameters, U: sapling::builder::ProverProgress> Builder<'_, 
                         .actions()
                         .iter()
                         .filter(|&action| {
-                            is_new_asset(&AssetBase::derive(bundle.ik(), action.asset_desc_hash()))
+                            is_new_asset(&AssetBase::custom(&AssetId::new_v0(
+                                bundle.ik(),
+                                action.asset_desc_hash(),
+                            )))
                         })
                         .count()
                 }),
@@ -1403,7 +1409,7 @@ mod tests {
             issuance::auth::{IssueAuthKey, IssueValidatingKey},
             issuance::{IssueInfo, compute_asset_desc_hash},
             keys::{FullViewingKey, Scope, SpendAuthorizingKey, SpendingKey},
-            note::AssetBase,
+            note::{AssetBase, AssetId},
             primitives::OrchardDomain,
             tree::MerkleHashOrchard,
             value::NoteValue,
@@ -1990,7 +1996,7 @@ mod tests {
             }
         }
 
-        let prev_issued = [AssetBase::derive(&ik, &asset_1)];
+        let prev_issued = [AssetBase::custom(&AssetId::new_v0(&ik, &asset_1))];
         let is_new_asset = new_asset_predicate(&prev_issued);
 
         // Add spend and output for fees

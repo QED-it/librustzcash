@@ -10,7 +10,7 @@ use {
         issuance::auth::{IssueAuthSig, IssueValidatingKey, ZSASchnorr},
         issuance::sighash_versioning::VerBIP340IssueAuthSig,
         issuance::{IssueAction, IssueAuth, IssueBundle, Signed},
-        note::{AssetBase, RandomSeed, Rho},
+        note::{AssetBase, AssetId, RandomSeed, Rho},
         value::NoteValue,
         {Address, Note},
     },
@@ -88,7 +88,7 @@ fn read_action<R: Read>(
             "Invalid Asset Description Hash in IssueAction",
         )
     })?;
-    let asset = AssetBase::derive(ik, &asset_desc_hash);
+    let asset = AssetBase::custom(&AssetId::new_v0(ik, &asset_desc_hash));
     let notes = Vector::read(&mut reader, |r| read_note(r, asset))?;
     let finalize = match reader.read_u8()? {
         0 => false,
