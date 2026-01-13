@@ -4,7 +4,7 @@ use core::cmp::Ordering;
 use core::fmt;
 use rand::{CryptoRng, RngCore};
 
-use ::sapling::{builder::SaplingMetadata, Note, PaymentAddress};
+use ::sapling::{Note, PaymentAddress, builder::SaplingMetadata};
 use ::transparent::{address::TransparentAddress, builder::TransparentBuilder, bundle::TxOut};
 use zcash_protocol::{
     consensus::{self, BlockHeight, BranchId, NetworkUpgrade, Parameters},
@@ -13,11 +13,11 @@ use zcash_protocol::{
 };
 
 use crate::transaction::{
-    fees::{
-        transparent::{InputView, OutputView},
-        FeeRule,
-    },
     Transaction, TxVersion,
+    fees::{
+        FeeRule,
+        transparent::{InputView, OutputView},
+    },
 };
 
 #[cfg(feature = "std")]
@@ -26,9 +26,9 @@ use std::sync::mpsc::Sender;
 #[cfg(feature = "circuits")]
 use {
     crate::transaction::{
-        sighash::{signature_hash, SignableInput},
-        txid::TxIdDigester,
         OrchardBundle, TransactionData, Unauthorized,
+        sighash::{SignableInput, signature_hash},
+        txid::TxIdDigester,
     },
     ::sapling::prover::{OutputProver, SpendProver},
     ::transparent::builder::TransparentSigningSet,
@@ -40,7 +40,7 @@ use {
     },
 };
 
-use orchard::{builder::BundleType, flavor::OrchardVanilla, note::AssetBase, Address};
+use orchard::{Address, builder::BundleType, flavor::OrchardVanilla, note::AssetBase};
 
 #[cfg(feature = "transparent-inputs")]
 use ::transparent::builder::TransparentInputInfo;
@@ -168,22 +168,15 @@ impl<FE: fmt::Display> fmt::Display for Error<FE> {
                 "Cannot create Orchard transactions without an Orchard anchor, or before NU5 activation"
             ),
             #[cfg(zcash_unstable = "nu7")]
-            Error::IssuanceBuilderNotAvailable => write!(
-                f,
-                "Issuance bundle not initialized"
-            ),
+            Error::IssuanceBuilderNotAvailable => write!(f, "Issuance bundle not initialized"),
             #[cfg(zcash_unstable = "nu7")]
-            Error::IssuanceKeyNotAvailable => write!(
-                f,
-                "Issuance key not initialized"
-            ),
-            #[cfg(zcash_unstable = "nu7",)]
+            Error::IssuanceKeyNotAvailable => write!(f, "Issuance key not initialized"),
+            #[cfg(zcash_unstable = "nu7")]
             Error::IssuanceBundle(err) => write!(f, "Issuance bundle internal error: {:?}", err),
             #[cfg(zcash_unstable = "nu7")]
-            Error::IssuanceBundleAlreadyInitialized => write!(
-                f,
-                "Issuance bundle already initialized"
-            ),
+            Error::IssuanceBundleAlreadyInitialized => {
+                write!(f, "Issuance bundle already initialized")
+            }
             #[cfg(zcash_unstable = "zfuture")]
             Error::TzeBuild(err) => err.fmt(f),
         }
@@ -1268,7 +1261,9 @@ where
 fn first_nullifier<A: Authorization>(orchard_bundle: &Option<OrchardBundle<A>>) -> &Nullifier {
     match orchard_bundle {
         Some(OrchardBundle::OrchardZSA(b)) => b.actions().first().nullifier(),
-        _ => panic!("first_nullifier: called on non-ZSA bundle or empty bundle; expected OrchardZSA with at least one action"),
+        _ => panic!(
+            "first_nullifier: called on non-ZSA bundle or empty bundle; expected OrchardZSA with at least one action"
+        ),
     }
 }
 
@@ -1374,7 +1369,7 @@ mod tests {
     use rand_core::OsRng;
 
     use crate::transaction::builder::BuildConfig;
-    use ::sapling::{zip32::ExtendedSpendingKey, Node, Rseed};
+    use ::sapling::{Node, Rseed, zip32::ExtendedSpendingKey};
     use ::transparent::{address::TransparentAddress, builder::TransparentSigningSet};
     use zcash_protocol::{
         consensus::{NetworkUpgrade, Parameters, TEST_NETWORK},
@@ -1394,7 +1389,7 @@ mod tests {
 
     #[cfg(feature = "transparent-inputs")]
     use {
-        crate::transaction::{builder::DEFAULT_TX_EXPIRY_DELTA, OutPoint, TxOut},
+        crate::transaction::{OutPoint, TxOut, builder::DEFAULT_TX_EXPIRY_DELTA},
         ::transparent::keys::{AccountPrivKey, IncomingViewingKey},
         zip32::AccountId,
     };
@@ -1406,14 +1401,14 @@ mod tests {
         orchard::{
             flavor::OrchardVanilla,
             issuance::auth::{IssueAuthKey, IssueValidatingKey},
-            issuance::{compute_asset_desc_hash, IssueInfo},
+            issuance::{IssueInfo, compute_asset_desc_hash},
             keys::{FullViewingKey, Scope, SpendAuthorizingKey, SpendingKey},
             note::AssetBase,
             primitives::OrchardDomain,
             tree::MerkleHashOrchard,
             value::NoteValue,
         },
-        shardtree::{store::memory::MemoryShardStore, ShardTree},
+        shardtree::{ShardTree, store::memory::MemoryShardStore},
         zcash_note_encryption::try_note_decryption,
         zcash_protocol::memo::Memo,
     };

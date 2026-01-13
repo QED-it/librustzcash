@@ -1,5 +1,5 @@
 use std::{
-    collections::{hash_map::Entry, HashMap},
+    collections::{HashMap, hash_map::Entry},
     num::NonZeroU32,
 };
 
@@ -7,14 +7,14 @@ use nonempty::NonEmpty;
 use secrecy::{ExposeSecret, SecretVec};
 use shardtree::store::ShardStore as _;
 use zcash_client_backend::data_api::{
+    AddressInfo, BlockMetadata, NullifierQuery, WalletRead, WalletSummary, Zip32Derivation,
     scanning::ScanRange,
     wallet::{ConfirmationsPolicy, TargetHeight},
-    AddressInfo, BlockMetadata, NullifierQuery, WalletRead, WalletSummary, Zip32Derivation,
 };
 use zcash_client_backend::{
     data_api::{
-        scanning::ScanPriority, Account as _, AccountBalance, AccountSource, Balance, Progress,
-        Ratio, SeedRelevance, TransactionDataRequest, TransactionStatus,
+        Account as _, AccountBalance, AccountSource, Balance, Progress, Ratio, SeedRelevance,
+        TransactionDataRequest, TransactionStatus, scanning::ScanPriority,
     },
     keys::{UnifiedAddressRequest, UnifiedFullViewingKey, UnifiedSpendingKey},
     wallet::NoteId,
@@ -26,9 +26,9 @@ use zcash_primitives::{
     transaction::{Transaction, TransactionData, TxId},
 };
 use zcash_protocol::{
+    PoolType,
     consensus::{self, BranchId},
     memo::Memo,
-    PoolType,
 };
 use zip32::fingerprint::SeedFingerprint;
 
@@ -36,11 +36,11 @@ use zip32::fingerprint::SeedFingerprint;
 use {
     core::ops::Range,
     zcash_client_backend::wallet::TransparentAddressMetadata,
-    zcash_primitives::legacy::{keys::NonHardenedChildIndex, TransparentAddress},
+    zcash_primitives::legacy::{TransparentAddress, keys::NonHardenedChildIndex},
     zip32::Scope,
 };
 
-use crate::{error::Error, Account, AccountId, MemoryWalletBlock, MemoryWalletDb, Nullifier};
+use crate::{Account, AccountId, MemoryWalletBlock, MemoryWalletDb, Nullifier, error::Error};
 
 impl<P: consensus::Parameters> WalletRead for MemoryWalletDb<P> {
     type Error = Error;

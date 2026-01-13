@@ -9,9 +9,9 @@ use std::time::{Duration, SystemTime, SystemTimeError};
 use nonempty::NonEmpty;
 use rand::RngCore;
 use rand_distr::Distribution;
-use rusqlite::types::Value;
 use rusqlite::OptionalExtension;
-use rusqlite::{named_params, Connection, Row};
+use rusqlite::types::Value;
+use rusqlite::{Connection, Row, named_params};
 use tracing::debug;
 
 use transparent::keys::{NonHardenedChildRange, TransparentKeyScope};
@@ -23,9 +23,9 @@ use transparent::{
 use zcash_address::unified::{Ivk, Typecode, Uivk};
 use zcash_client_backend::{
     data_api::{
-        wallet::{ConfirmationsPolicy, TargetHeight},
         Account, AccountBalance, Balance, OutputStatusFilter, TransactionDataRequest,
         TransactionStatusFilter,
+        wallet::{ConfirmationsPolicy, TargetHeight},
     },
     wallet::{TransparentAddressMetadata, WalletTransparentOutput},
 };
@@ -40,9 +40,9 @@ use zcash_keys::{
 use zcash_primitives::transaction::builder::DEFAULT_TX_EXPIRY_DELTA;
 use zcash_primitives::transaction::fees::zip317;
 use zcash_protocol::{
+    TxId,
     consensus::{self, BlockHeight},
     value::{ZatBalance, Zatoshis},
-    TxId,
 };
 use zcash_script::script;
 use zip32::{DiversifierIndex, Scope};
@@ -50,14 +50,14 @@ use zip32::{DiversifierIndex, Scope};
 #[cfg(feature = "transparent-key-import")]
 use bip32::{PublicKey, PublicKeyBytes};
 
-use super::encoding::{decode_epoch_seconds, ReceiverFlags};
+use super::encoding::{ReceiverFlags, decode_epoch_seconds};
 use super::{
-    account_birthday_internal, chain_tip_height,
+    KeyScope, account_birthday_internal, chain_tip_height,
     encoding::{decode_diversifier_index_be, encode_diversifier_index_be},
-    get_account_ids, get_account_internal, KeyScope,
+    get_account_ids, get_account_internal,
 };
-use crate::{error::SqliteClientError, AccountUuid, TxRef, UtxoId};
 use crate::{AccountRef, AddressRef, GapLimits};
+use crate::{AccountUuid, TxRef, UtxoId, error::SqliteClientError};
 
 pub(crate) mod ephemeral;
 
@@ -1790,19 +1790,19 @@ mod tests {
     use secrecy::Secret;
     use transparent::keys::{NonHardenedChildIndex, TransparentKeyScope};
     use zcash_client_backend::{
-        data_api::{testing::TestBuilder, Account as _, WalletWrite},
+        data_api::{Account as _, WalletWrite, testing::TestBuilder},
         wallet::TransparentAddressMetadata,
     };
     use zcash_primitives::block::BlockHash;
 
     use crate::{
+        GapLimits, WalletDb,
         error::SqliteClientError,
-        testing::{db::TestDbFactory, BlockCache},
+        testing::{BlockCache, db::TestDbFactory},
         wallet::{
             get_account_ref,
             transparent::{ephemeral, find_gap_start, reserve_next_n_addresses},
         },
-        GapLimits, WalletDb,
     };
 
     #[test]

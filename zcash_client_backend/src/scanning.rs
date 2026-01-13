@@ -7,18 +7,18 @@ use std::hash::Hash;
 
 use incrementalmerkletree::{Marking, Position, Retention};
 use sapling::{
-    note_encryption::{CompactOutputDescription, SaplingDomain},
     SaplingIvk,
+    note_encryption::{CompactOutputDescription, SaplingDomain},
 };
 use subtle::{ConditionallySelectable, ConstantTimeEq, CtOption};
 
 use tracing::{debug, trace};
 use zcash_keys::keys::UnifiedFullViewingKey;
-use zcash_note_encryption::{batch, BatchDomain, Domain, ShieldedOutput};
-use zcash_primitives::transaction::{components::sapling::zip212_enforcement, TxId};
+use zcash_note_encryption::{BatchDomain, Domain, ShieldedOutput, batch};
+use zcash_primitives::transaction::{TxId, components::sapling::zip212_enforcement};
 use zcash_protocol::{
-    consensus::{self, BlockHeight, NetworkUpgrade},
     ShieldedProtocol,
+    consensus::{self, BlockHeight, NetworkUpgrade},
 };
 use zip32::Scope;
 
@@ -207,10 +207,10 @@ impl<AccountId, IvkTag> ScanningKeys<AccountId, IvkTag> {
             IvkTag,
             Box<
                 dyn ScanningKeyOps<
-                    OrchardDomain<OrchardVanilla>,
-                    AccountId,
-                    orchard::note::Nullifier,
-                >,
+                        OrchardDomain<OrchardVanilla>,
+                        AccountId,
+                        orchard::note::Nullifier,
+                    >,
             >,
         >,
     ) -> Self {
@@ -267,10 +267,10 @@ impl<AccountId: Copy + Eq + Hash + 'static> ScanningKeys<AccountId, (AccountId, 
             (AccountId, Scope),
             Box<
                 dyn ScanningKeyOps<
-                    OrchardDomain<OrchardVanilla>,
-                    AccountId,
-                    orchard::note::Nullifier,
-                >,
+                        OrchardDomain<OrchardVanilla>,
+                        AccountId,
+                        orchard::note::Nullifier,
+                    >,
             >,
         > = HashMap::new();
 
@@ -464,7 +464,12 @@ impl fmt::Display for ScanError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         use ScanError::*;
         match &self {
-            EncodingInvalid { txid, pool_type, index, .. } => write!(
+            EncodingInvalid {
+                txid,
+                pool_type,
+                index,
+                ..
+            } => write!(
                 f,
                 "{pool_type:?} output {index} of transaction {txid} was improperly encoded."
             ),
@@ -472,17 +477,43 @@ impl fmt::Display for ScanError {
                 f,
                 "The parent hash of proposed block does not correspond to the block hash at height {at_height}."
             ),
-            BlockHeightDiscontinuity { prev_height, new_height } => {
-                write!(f, "Block height discontinuity at height {new_height}; previous height was: {prev_height}")
+            BlockHeightDiscontinuity {
+                prev_height,
+                new_height,
+            } => {
+                write!(
+                    f,
+                    "Block height discontinuity at height {new_height}; previous height was: {prev_height}"
+                )
             }
-            TreeSizeMismatch { protocol, at_height, given, computed } => {
-                write!(f, "The {protocol:?} note commitment tree size provided by a compact block did not match the expected size at height {at_height}; given {given}, expected {computed}")
+            TreeSizeMismatch {
+                protocol,
+                at_height,
+                given,
+                computed,
+            } => {
+                write!(
+                    f,
+                    "The {protocol:?} note commitment tree size provided by a compact block did not match the expected size at height {at_height}; given {given}, expected {computed}"
+                )
             }
-            TreeSizeUnknown { protocol, at_height } => {
-                write!(f, "Unable to determine {protocol:?} note commitment tree size at height {at_height}")
+            TreeSizeUnknown {
+                protocol,
+                at_height,
+            } => {
+                write!(
+                    f,
+                    "Unable to determine {protocol:?} note commitment tree size at height {at_height}"
+                )
             }
-            TreeSizeInvalid { protocol, at_height } => {
-                write!(f, "Received invalid (potentially default) {protocol:?} note commitment tree size metadata at height {at_height}")
+            TreeSizeInvalid {
+                protocol,
+                at_height,
+            } => {
+                write!(
+                    f,
+                    "Received invalid (potentially default) {protocol:?} note commitment tree size metadata at height {at_height}"
+                )
             }
         }
     }
@@ -1170,18 +1201,18 @@ fn find_received<
 #[cfg(any(test, feature = "test-dependencies"))]
 pub mod testing {
     use group::{
-        ff::{Field, PrimeField},
         GroupEncoding,
+        ff::{Field, PrimeField},
     };
     use rand_core::{OsRng, RngCore};
     use sapling::note_encryption::COMPACT_NOTE_SIZE;
     use sapling::{
+        Nullifier,
         constants::SPENDING_KEY_GENERATOR,
-        note_encryption::{sapling_note_encryption, SaplingDomain},
+        note_encryption::{SaplingDomain, sapling_note_encryption},
         util::generate_random_rseed,
         value::NoteValue,
         zip32::DiversifiableFullViewingKey,
-        Nullifier,
     };
     use zcash_note_encryption::Domain;
     use zcash_primitives::{
@@ -1336,7 +1367,7 @@ mod tests {
         scanning::{BatchRunners, ScanningKeys},
     };
 
-    use super::{scan_block, scan_block_with_runners, testing::fake_compact_block, Nullifiers};
+    use super::{Nullifiers, scan_block, scan_block_with_runners, testing::fake_compact_block};
 
     #[test]
     fn scan_block_with_my_tx() {
