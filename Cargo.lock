@@ -2855,7 +2855,7 @@ checksum = "04744f49eae99ab78e0d5c0b603ab218f515ea8cfe5a456d7629ad883a3b6e7d"
 [[package]]
 name = "orchard"
 version = "0.11.0"
-source = "git+https://github.com/QED-it/orchard?rev=382f31921f0382743a9d96ae6a0003a28ab5dc5c#382f31921f0382743a9d96ae6a0003a28ab5dc5c"
+source = "git+https://github.com/QED-it/orchard?rev=7aafdc0b8cc51657fce04f27d9cd93566dca7331#7aafdc0b8cc51657fce04f27d9cd93566dca7331"
 dependencies = [
  "aes",
  "bitvec",
@@ -6736,8 +6736,7 @@ dependencies = [
 [[package]]
 name = "zcash_spec"
 version = "0.2.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ded3f58b93486aa79b85acba1001f5298f27a46489859934954d262533ee2915"
+source = "git+https://github.com/QED-it/zcash_spec?rev=d5e84264d2ad0646b587a837f4e2424ca64d3a05#d5e84264d2ad0646b587a837f4e2424ca64d3a05"
 dependencies = [
  "blake2b_simd",
 ]
