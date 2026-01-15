@@ -1028,7 +1028,7 @@ impl<P: consensus::Parameters, U: sapling::builder::ProverProgress> Builder<'_, 
         #[cfg(zcash_unstable = "nu7")]
         let issue_bundle_awaiting_sighash = self
             .issuance_builder
-            .map(|b| b.update_rho(first_nullifier(&unproven_orchard_bundle)));
+            .map(|b| b.update_rho(first_nullifier(&unproven_orchard_bundle), &mut rng));
 
         let unauthed_tx: TransactionData<Unauthorized> = TransactionData {
             version,
