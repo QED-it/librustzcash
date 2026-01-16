@@ -343,7 +343,7 @@ pub enum OrchardBundle<A: orchard::bundle::Authorization> {
 impl<A> Clone for OrchardBundle<A>
 where
     A: orchard::bundle::Authorization + Clone,
-    //<A as orchard::bundle::Authorization>::SpendAuth: Clone,
+    <A as orchard::bundle::Authorization>::SpendAuth: Clone,
 {
     fn clone(&self) -> Self {
         match self {
