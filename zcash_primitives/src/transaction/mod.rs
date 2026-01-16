@@ -333,11 +333,25 @@ impl PartialEq for Transaction {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub enum OrchardBundle<A: orchard::bundle::Authorization> {
     OrchardVanilla(Bundle<A, ZatBalance, OrchardVanilla>),
     #[cfg(zcash_unstable = "nu7")]
     OrchardZSA(Bundle<A, ZatBalance, OrchardZSA>),
+}
+
+impl<A> Clone for OrchardBundle<A>
+where
+    A: orchard::bundle::Authorization + Clone,
+    //<A as orchard::bundle::Authorization>::SpendAuth: Clone,
+{
+    fn clone(&self) -> Self {
+        match self {
+            OrchardBundle::OrchardVanilla(b) => OrchardBundle::OrchardVanilla(b.clone()),
+            #[cfg(zcash_unstable = "nu7")]
+            OrchardBundle::OrchardZSA(b) => OrchardBundle::OrchardZSA(b.clone()),
+        }
+    }
 }
 
 impl<A: orchard::bundle::Authorization> OrchardBundle<A> {
