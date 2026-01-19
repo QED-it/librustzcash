@@ -294,11 +294,11 @@ pub fn read_versioned_signature<R: Read, T: SigType>(mut reader: R) -> io::Resul
 #[cfg(zcash_unstable = "nu7")]
 pub fn write_versioned_signature<W: Write, T: SigType>(
     mut writer: W,
-    sig: &OrchardSig<T>,
+    versioned_sig: &OrchardSig<T>,
 ) -> io::Result<()> {
-    let sighash_info_bytes = orchard_sighash_kind_to_info(sig.sighash_kind());
+    let sighash_info_bytes = orchard_sighash_kind_to_info(versioned_sig.sighash_kind());
     Vector::write(&mut writer, sighash_info_bytes, |w, b| w.write_u8(*b))?;
-    writer.write_all(&<[u8; 64]>::from(sig.sig()))
+    writer.write_all(&<[u8; 64]>::from(versioned_sig.sig()))
 }
 
 /// Writes an [`orchard::Bundle`] in the v5 transaction format.
