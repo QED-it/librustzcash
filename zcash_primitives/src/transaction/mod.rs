@@ -40,9 +40,9 @@ use self::{
 #[cfg(feature = "circuits")]
 use {::sapling::builder as sapling_builder, orchard::builder::Unproven};
 
+use orchard::note::Nullifier;
 use orchard::orchard_flavor::OrchardVanilla;
 use orchard::Bundle;
-use orchard::note::Nullifier;
 use zcash_protocol::constants::{
     V3_TX_VERSION, V3_VERSION_GROUP_ID, V4_TX_VERSION, V4_VERSION_GROUP_ID, V5_TX_VERSION,
     V5_VERSION_GROUP_ID,
@@ -794,7 +794,7 @@ impl Transaction {
             TxVersion::Sprout(_) | TxVersion::V3 | TxVersion::V4 => Self::from_data_v4(data),
             TxVersion::V5 => Ok(Self::from_data_v5(data)),
             #[cfg(zcash_unstable = "nu7")]
-            TxVersion::V6  => Ok(Self::from_data_v6(data)),
+            TxVersion::V6 => Ok(Self::from_data_v6(data)),
             #[cfg(all(zcash_unstable = "nu7", zcash_unstable = "zfuture"))]
             TxVersion::ZFuture => Ok(Self::from_data_v6(data)),
         }
@@ -850,12 +850,14 @@ impl Transaction {
             }
             TxVersion::V5 => Self::read_v5(reader.into_base_reader(), version),
             #[cfg(zcash_unstable = "nu7")]
-            TxVersion::V6 => if consensus_branch_id == BranchId::Nu7 {
-                Self::read_v6(reader.into_base_reader(), version)
-            } else {
-                // Add if(swap) if there are more V6 branches
-                Self::read_swap(reader.into_base_reader(), version)
-            },
+            TxVersion::V6 => {
+                if consensus_branch_id == BranchId::Nu7 {
+                    Self::read_v6(reader.into_base_reader(), version)
+                } else {
+                    // Add if(swap) if there are more V6 branches
+                    Self::read_swap(reader.into_base_reader(), version)
+                }
+            }
             #[cfg(all(zcash_unstable = "nu7", zcash_unstable = "zfuture"))]
             TxVersion::ZFuture => Self::read_v6(reader.into_base_reader(), version),
         }
@@ -1128,7 +1130,6 @@ impl Transaction {
 
         Ok(Self::from_data_v6(data))
     }
-
 
     #[cfg(zcash_unstable = "zfuture")]
     fn read_tze<R: Read>(mut reader: &mut R) -> io::Result<Option<tze::Bundle<tze::Authorized>>> {

@@ -16,11 +16,11 @@ use core2::io::{self, Read, Write};
 use nonempty::NonEmpty;
 use orchard::{
     bundle::{Authorization, Authorized, Flags},
-    primitives::OrchardPrimitives,
     note::{ExtractedNoteCommitment, Nullifier, TransmittedNoteCiphertext},
     orchard_flavor::OrchardVanilla,
     orchard_sighash_versioning::{OrchardSighashVersion, OrchardVersionedSig},
     primitives::redpallas::{self, SigType, Signature, SpendAuth, VerificationKey},
+    primitives::OrchardPrimitives,
     value::ValueCommitment,
     Action, Anchor, Bundle, Proof,
 };
@@ -29,13 +29,13 @@ use zcash_note_encryption::note_bytes::NoteBytes;
 
 use zcash_protocol::value::ZatBalance;
 
-#[cfg(zcash_unstable = "nu7" /* TODO swap */ )]
-use orchard::{
-    swap_bundle::{ActionGroupAuthorized, SwapBundle},
-    primitives::redpallas::Binding,
-};
 #[cfg(zcash_unstable = "nu7")]
 use orchard::orchard_sighash_versioning::VerSpendAuthSig;
+#[cfg(zcash_unstable = "nu7" /* TODO swap */ )]
+use orchard::{
+    primitives::redpallas::Binding,
+    swap_bundle::{ActionGroupAuthorized, SwapBundle},
+};
 
 pub const FLAG_SPENDS_ENABLED: u8 = 0b0000_0001;
 pub const FLAG_OUTPUTS_ENABLED: u8 = 0b0000_0010;
@@ -134,10 +134,12 @@ pub fn read_v6_bundle<R: Read>(
 
 /// Reads an [`orchard::Bundle`] from a v6 transaction format.
 #[cfg(zcash_unstable = "nu7")]
-pub fn read_orchard_swap_bundle<R: Read>(mut reader: R) -> io::Result<Option<SwapBundle<ZatBalance>>> {
+pub fn read_orchard_swap_bundle<R: Read>(
+    mut reader: R,
+) -> io::Result<Option<SwapBundle<ZatBalance>>> {
     let action_groups = read_action_groups(&mut reader)?;
 
-    if action_groups.is_empty()  {
+    if action_groups.is_empty() {
         return Ok(None);
     }
 
@@ -392,54 +394,53 @@ pub fn write_versioned_signature<W: Write, T: SigType>(
     writer.write_all(&<[u8; 64]>::from(versioned_sig.sig()))
 }
 
-    /// Writes an [`orchard::Bundle`] in the appropriate transaction format.
-    pub fn write_orchard_bundle<W: Write>(
-        mut writer: W,
-        bundle: Option<&OrchardBundle<Authorized>>,
-    ) -> io::Result<()> {
-        if let Some(bundle) = bundle {
-            match bundle {
-                OrchardBundle::OrchardVanilla(b) => write_v5_bundle(b, writer)?,
-                #[cfg(zcash_unstable = "nu7")]
-                OrchardBundle::OrchardZSA(b) => write_v6_bundle(writer, b)?,
-                #[cfg(zcash_unstable = "nu7")]
-                OrchardBundle::OrchardSwap(b) => write_orchard_swap_bundle(writer, b)?,
-            }
-        } else {
-            CompactSize::write(&mut writer, 0)?;
+/// Writes an [`orchard::Bundle`] in the appropriate transaction format.
+pub fn write_orchard_bundle<W: Write>(
+    mut writer: W,
+    bundle: Option<&OrchardBundle<Authorized>>,
+) -> io::Result<()> {
+    if let Some(bundle) = bundle {
+        match bundle {
+            OrchardBundle::OrchardVanilla(b) => write_v5_bundle(b, writer)?,
+            #[cfg(zcash_unstable = "nu7")]
+            OrchardBundle::OrchardZSA(b) => write_v6_bundle(writer, b)?,
+            #[cfg(zcash_unstable = "nu7")]
+            OrchardBundle::OrchardSwap(b) => write_orchard_swap_bundle(writer, b)?,
         }
-
-        Ok(())
+    } else {
+        CompactSize::write(&mut writer, 0)?;
     }
 
+    Ok(())
+}
 
-    /// Writes an [`orchard::Bundle`] in the v5 transaction format.
-    pub fn write_v5_bundle<W: Write>(
-        bundle: &Bundle<Authorized, ZatBalance, OrchardVanilla>,
-        mut writer: W,
-    ) -> io::Result<()> {
-        Vector::write_nonempty(&mut writer, bundle.actions(), |w, a| {
-            write_action_without_auth(w, a)
-        })?;
+/// Writes an [`orchard::Bundle`] in the v5 transaction format.
+pub fn write_v5_bundle<W: Write>(
+    bundle: &Bundle<Authorized, ZatBalance, OrchardVanilla>,
+    mut writer: W,
+) -> io::Result<()> {
+    Vector::write_nonempty(&mut writer, bundle.actions(), |w, a| {
+        write_action_without_auth(w, a)
+    })?;
 
-        writer.write_all(&[bundle.flags().to_byte()])?;
-        writer.write_all(&bundle.value_balance().to_i64_le_bytes())?;
-        writer.write_all(&bundle.anchor().to_bytes())?;
-        Vector::write(
-            &mut writer,
-            bundle.authorization().proof().unwrap().as_ref(),
-            |w, b| w.write_all(&[*b]),
-        )?;
-        Array::write(
-            &mut writer,
-            bundle.actions().iter().map(|a| a.authorization().sig()),
-            |w, auth| w.write_all(&<[u8; 64]>::from(*auth)),
-        )?;
-        writer.write_all(&<[u8; 64]>::from(
-            bundle.authorization().binding_signature().sig(),
-        ))?;
-        Ok(())
-    }
+    writer.write_all(&[bundle.flags().to_byte()])?;
+    writer.write_all(&bundle.value_balance().to_i64_le_bytes())?;
+    writer.write_all(&bundle.anchor().to_bytes())?;
+    Vector::write(
+        &mut writer,
+        bundle.authorization().proof().unwrap().as_ref(),
+        |w, b| w.write_all(&[*b]),
+    )?;
+    Array::write(
+        &mut writer,
+        bundle.actions().iter().map(|a| a.authorization().sig()),
+        |w, auth| w.write_all(&<[u8; 64]>::from(*auth)),
+    )?;
+    writer.write_all(&<[u8; 64]>::from(
+        bundle.authorization().binding_signature().sig(),
+    ))?;
+    Ok(())
+}
 
 #[cfg(zcash_unstable = "nu7")]
 fn read_note_value<R: Read>(mut reader: R) -> io::Result<NoteValue> {
@@ -477,56 +478,55 @@ pub fn write_v6_bundle<W: Write>(
     Ok(())
 }
 
+/// Writes an [`orchard::Bundle`] in the appropriate transaction format.
+#[cfg(zcash_unstable = "nu7")]
+pub fn write_orchard_swap_bundle<W: Write>(
+    mut writer: W,
+    bundle: &SwapBundle<ZatBalance>,
+) -> io::Result<()> {
+    CompactSize::write(&mut writer, bundle.action_groups().len())?;
+    bundle
+        .action_groups()
+        .into_iter()
+        .for_each(|ag| write_action_group(&mut writer, ag).unwrap());
+    write_bundle_balance_metadata(
+        &mut writer,
+        bundle.value_balance(),
+        bundle.binding_signature(),
+    )?;
+    Ok(())
+}
 
-    /// Writes an [`orchard::Bundle`] in the appropriate transaction format.
-    #[cfg(zcash_unstable = "nu7")]
-    pub fn write_orchard_swap_bundle<W: Write>(
-        mut writer: W,
-        bundle: &SwapBundle<ZatBalance>,
-    ) -> io::Result<()> {
-        CompactSize::write(&mut writer, bundle.action_groups().len())?;
-        bundle
-            .action_groups()
-            .into_iter()
-            .for_each(|ag| write_action_group(&mut writer, ag).unwrap());
-        write_bundle_balance_metadata(
-            &mut writer,
-            bundle.value_balance(),
-            bundle.binding_signature(),
-        )?;
-        Ok(())
-    }
+#[cfg(zcash_unstable = "nu7")]
+fn write_action_group<W: Write, A: Authorization<SpendAuth = VerSpendAuthSig>>(
+    mut writer: W,
+    bundle: &orchard::Bundle<A, ZatBalance, OrchardZSA>,
+) -> io::Result<()> {
+    Vector::write_nonempty(&mut writer, bundle.actions(), |w, a| {
+        write_action_without_auth(w, a)
+    })?;
 
-    #[cfg(zcash_unstable = "nu7")]
-    fn write_action_group<W: Write, A: Authorization<SpendAuth = VerSpendAuthSig>>(
-        mut writer: W,
-        bundle: &orchard::Bundle<A, ZatBalance, OrchardZSA>,
-    ) -> io::Result<()> {
-        Vector::write_nonempty(&mut writer, bundle.actions(), |w, a| {
-            write_action_without_auth(w, a)
-        })?;
+    writer.write_all(&[bundle.flags().to_byte()])?;
+    writer.write_all(&bundle.anchor().to_bytes())?;
 
-        writer.write_all(&[bundle.flags().to_byte()])?;
-        writer.write_all(&bundle.anchor().to_bytes())?;
+    // Timelimit must be zero for NU7
+    writer.write_u32_le(bundle.expiry_height())?;
 
-        // Timelimit must be zero for NU7
-        writer.write_u32_le(bundle.expiry_height())?;
+    write_burn(&mut writer, bundle.burn())?;
 
-        write_burn(&mut writer, bundle.burn())?;
+    Vector::write(
+        &mut writer,
+        bundle.authorization().proof().unwrap().as_ref(),
+        |w, b| w.write_u8(*b),
+    )?;
+    Array::write(
+        &mut writer,
+        bundle.actions().iter().map(|a| a.authorization()),
+        |w, auth| write_versioned_signature(w, auth),
+    )?;
 
-        Vector::write(
-            &mut writer,
-            bundle.authorization().proof().unwrap().as_ref(),
-            |w, b| w.write_u8(*b),
-        )?;
-        Array::write(
-            &mut writer,
-            bundle.actions().iter().map(|a| a.authorization()),
-            |w, auth| write_versioned_signature(w, auth),
-        )?;
-
-        Ok(())
-    }
+    Ok(())
+}
 
 #[cfg(zcash_unstable = "nu7")]
 fn write_bundle_balance_metadata<W: Write>(

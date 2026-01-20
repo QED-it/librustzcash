@@ -60,6 +60,11 @@ use crate::{
     },
 };
 use orchard::builder::BuildError::BundleTypeNotSatisfiable;
+#[cfg(zcash_unstable = "nu7" /* TODO swap */ )]
+use orchard::{
+    primitives::redpallas::{Binding, SigningKey},
+    swap_bundle::{ActionGroupAuthorized, SwapBundle},
+};
 #[cfg(zcash_unstable = "nu7")]
 use {
     orchard::{
@@ -71,11 +76,6 @@ use {
         orchard_flavor::OrchardZSA,
     },
     rand_core::OsRng,
-};
-#[cfg(zcash_unstable = "nu7" /* TODO swap */ )]
-use orchard::{
-    primitives::redpallas::{Binding, SigningKey},
-    swap_bundle::{ActionGroupAuthorized, SwapBundle},
 };
 
 use super::components::sapling::zip212_enforcement;
@@ -1046,7 +1046,7 @@ impl<P: consensus::Parameters, U: sapling::builder::ProverProgress> Builder<'_, 
             if bundle_type == BundleType::DEFAULT_SWAP {
                 #[cfg(zcash_unstable = "nu7")]
                 {
-                    if !builder.is_empty()  || self.action_groups.is_empty() {
+                    if !builder.is_empty() || self.action_groups.is_empty() {
                         // TODO should build empty too
                         let timelimit: u32 = (self.target_height + 10).into(); // TODO default(?) timelimit
 
@@ -1085,24 +1085,23 @@ impl<P: consensus::Parameters, U: sapling::builder::ProverProgress> Builder<'_, 
                         .iter()
                         .map(|b| {
                             b.clone()
-                                .try_map_value_balance(|v| Ok::<i64, core::convert::Infallible>(v.into()))
+                                .try_map_value_balance(|v| {
+                                    Ok::<i64, core::convert::Infallible>(v.into())
+                                })
                                 .unwrap()
                         })
                         .collect();
 
                     // Create a temporary SwapBundle<i64> to compute the binding signature
-                    let temp_swap_bundle =
-                        SwapBundle::new(&mut rng, action_groups_i64, bsks);
+                    let temp_swap_bundle = SwapBundle::new(&mut rng, action_groups_i64, bsks);
 
                     // Extract the binding signature and use it with the original ZatBalance action_groups
                     let binding_signature = temp_swap_bundle.binding_signature().clone();
 
                     // In this case the bundle is, in fact, already authorized
-                    unproven_orchard_bundle = Some(OrchardBundle::OrchardSwap(SwapBundle::from_parts(
-                        action_groups,
-                        value_balance,
-                        binding_signature,
-                    )));
+                    unproven_orchard_bundle = Some(OrchardBundle::OrchardSwap(
+                        SwapBundle::from_parts(action_groups, value_balance, binding_signature),
+                    ));
                 }
                 #[cfg(not(zcash_unstable = "nu7"))]
                 return Err(Error::OrchardBuild(BundleTypeNotSatisfiable));
@@ -1425,8 +1424,8 @@ impl<'a, P: consensus::Parameters, U: sapling::builder::ProverProgress> Extensio
 
 #[cfg(any(test, feature = "test-dependencies"))]
 mod testing {
-    use std::convert::Infallible;
     use super::{BuildResult, Builder, Error};
+    use std::convert::Infallible;
 
     use crate::transaction::fees::zip317;
     use ::sapling::prover::mock::{MockOutputProver, MockSpendProver};
@@ -1524,7 +1523,8 @@ mod testing {
                 &MockOutputProver,
                 #[allow(deprecated)]
                 &fee_rule,
-                #[cfg(zcash_unstable = "nu7")] |_| true,
+                #[cfg(zcash_unstable = "nu7")]
+                |_| true,
             )
         }
     }
@@ -1557,16 +1557,14 @@ mod tests {
     use {
         crate::transaction::fees::zip317::FeeError,
         orchard::builder::BundleType,
-        orchard::keys::{
-            FullViewingKey, SpendingKey,
-        },
+        orchard::keys::{FullViewingKey, SpendingKey},
         orchard::note::AssetBase,
         orchard::orchard_flavor::OrchardZSA,
         orchard::tree::MerklePath,
         orchard::value::NoteValue,
         orchard::Address,
         orchard::Note,
-        zcash_protocol::consensus::{REGTEST_NETWORK, RegtestNetwork},
+        zcash_protocol::consensus::{RegtestNetwork, REGTEST_NETWORK},
         zcash_protocol::constants::testnet::COIN_TYPE,
         zip32::Scope::External,
     };
@@ -1601,7 +1599,7 @@ mod tests {
         orchard::{
             issuance::{compute_asset_desc_hash, IssueInfo},
             issuance_auth::{IssueAuthKey, IssueValidatingKey},
-            keys::{SpendAuthorizingKey},
+            keys::SpendAuthorizingKey,
             orchard_flavor::OrchardVanilla,
             primitives::OrchardDomain,
         },

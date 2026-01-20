@@ -33,8 +33,8 @@ use crate::transaction::{
 use {
     crate::sighash_versioning::ISSUE_SIGHASH_VERSION_TO_INFO_BYTES,
     crate::transaction::components::sapling::SAPLING_SIGHASH_INFO_V0,
-    crate::transaction::TRANSPARENT_SIGHASH_INFO_V0,
     crate::transaction::OrchardBundle::{OrchardSwap, OrchardZSA},
+    crate::transaction::TRANSPARENT_SIGHASH_INFO_V0,
     orchard::issuance::{IssueBundle, Signed},
     zcash_encoding::Vector,
 };
@@ -595,7 +595,6 @@ impl TransactionDigest<Authorized> for BlockTxCommitmentDigester {
                 }
                 #[cfg(zcash_unstable = "nu7" /* TODO swap */ )]
                 OrchardSwap(bundle) => bundle.commitment().0, // TODO double check this is a right commitment. possibly rename for uniformity
-
             },
         )
     }

@@ -5,9 +5,9 @@ use ::transparent::{
     bundle as transparent,
     keys::{AccountPrivKey, IncomingViewingKey},
 };
-use orchard::primitives::OrchardDomain;
 use orchard::note::AssetBase;
 use orchard::orchard_flavor::OrchardVanilla;
+use orchard::primitives::OrchardDomain;
 use orchard::primitives::OrchardDomain;
 use orchard::tree::MerkleHashOrchard;
 use pczt::{
