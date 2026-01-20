@@ -95,7 +95,7 @@ fn transparent_to_orchard() {
             Some(orchard_ovk),
             recipient,
             100_000,
-            AssetBase::native(),
+            AssetBase::zatoshi(),
             MemoBytes::empty(),
         )
         .unwrap();
@@ -104,7 +104,7 @@ fn transparent_to_orchard() {
             Some(orchard_fvk.to_ovk(zip32::Scope::Internal)),
             orchard_fvk.address_at(0u32, orchard::keys::Scope::Internal),
             885_000,
-            AssetBase::native(),
+            AssetBase::zatoshi(),
             MemoBytes::empty(),
         )
         .unwrap();
@@ -230,7 +230,7 @@ fn sapling_to_orchard() {
             Some(sapling_dfvk.to_ovk(zip32::Scope::External).0.into()),
             recipient,
             100_000,
-            AssetBase::native(),
+            AssetBase::zatoshi(),
             MemoBytes::empty(),
         )
         .unwrap();
@@ -352,7 +352,7 @@ fn orchard_to_orchard() {
                 None,
                 recipient,
                 value,
-                AssetBase::native(),
+                AssetBase::zatoshi(),
                 Memo::Empty.encode().into_bytes(),
             )
             .unwrap();
@@ -404,7 +404,7 @@ fn orchard_to_orchard() {
             Some(orchard_ovk),
             recipient,
             100_000,
-            AssetBase::native(),
+            AssetBase::zatoshi(),
             MemoBytes::empty(),
         )
         .unwrap();
@@ -413,7 +413,7 @@ fn orchard_to_orchard() {
             Some(orchard_fvk.to_ovk(zip32::Scope::Internal)),
             orchard_fvk.address_at(0u32, orchard::keys::Scope::Internal),
             890_000,
-            AssetBase::native(),
+            AssetBase::zatoshi(),
             MemoBytes::empty(),
         )
         .unwrap();

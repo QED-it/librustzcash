@@ -1352,7 +1352,7 @@ where
                     orchard_external_ovk.clone(),
                     to,
                     payment.amount().into(),
-                    AssetBase::native(),
+                    AssetBase::zatoshi(),
                     memo.clone(),
                 )?;
                 orchard_output_meta.push((
@@ -1477,7 +1477,7 @@ where
                             .ok_or(Error::KeyNotAvailable(PoolType::ORCHARD))?
                             .address_at(0u32, orchard::keys::Scope::Internal),
                         change_value.value().into(),
-                        AssetBase::native(),
+                        AssetBase::zatoshi(),
                         memo.clone(),
                     )?;
                     orchard_output_meta.push((
@@ -2118,7 +2118,7 @@ where
                     orchard::note::RandomSeed::from_bytes(*rseed, &rho).into_option()
                 })?;
 
-                orchard::Note::from_parts(recipient, value, AssetBase::native(), rho, rseed)
+                orchard::Note::from_parts(recipient, value, AssetBase::zatoshi(), rho, rseed)
                     .into_option()
             };
 
