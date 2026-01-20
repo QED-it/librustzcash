@@ -1072,11 +1072,36 @@ impl<P: consensus::Parameters, U: sapling::builder::ProverProgress> Builder<'_, 
                     let (action_groups, bsks): (Vec<_>, Vec<_>) =
                         self.action_groups.into_iter().unzip();
 
+                    // Compute value_balance by summing the value balances of all action groups
+                    let value_balance = action_groups
+                        .iter()
+                        .map(|a| *a.value_balance())
+                        .try_fold(ZatBalance::zero(), |acc, v| acc + v)
+                        .expect("value balance overflow");
+
+                    // Convert action_groups to i64 for SwapBundle::new (which requires Add<Output=V>)
+                    // ZatBalance's Add returns Option<ZatBalance>, so we use i64 intermediately
+                    let action_groups_i64: Vec<_> = action_groups
+                        .iter()
+                        .map(|b| {
+                            b.clone()
+                                .try_map_value_balance(|v| Ok::<i64, core::convert::Infallible>(v.into()))
+                                .unwrap()
+                        })
+                        .collect();
+
+                    // Create a temporary SwapBundle<i64> to compute the binding signature
+                    let temp_swap_bundle =
+                        SwapBundle::new(&mut rng, action_groups_i64, bsks);
+
+                    // Extract the binding signature and use it with the original ZatBalance action_groups
+                    let binding_signature = temp_swap_bundle.binding_signature().clone();
+
                     // In this case the bundle is, in fact, already authorized
-                    unproven_orchard_bundle = Some(OrchardBundle::OrchardSwap(SwapBundle::new(
-                        &mut rng,
+                    unproven_orchard_bundle = Some(OrchardBundle::OrchardSwap(SwapBundle::from_parts(
                         action_groups,
-                        bsks,
+                        value_balance,
+                        binding_signature,
                     )));
                 }
                 #[cfg(not(zcash_unstable = "nu7"))]
