@@ -23,7 +23,7 @@ use super::{
     TzeDigests,
     components::tze::{self, TzeIn, TzeOut},
 };
-use crate::sighash_versioning::ORCHARD_SIGHASH_VERSION_TO_INFO_BYTES;
+use crate::sighash_versioning::orchard_sighash_kind_to_info;
 use crate::transaction::OrchardBundle::OrchardVanilla;
 use crate::transaction::{
     Authorization, Authorized, OrchardBundle, TransactionDigest, TransparentDigests, TxDigests,
@@ -31,7 +31,7 @@ use crate::transaction::{
 };
 #[cfg(zcash_unstable = "nu7")]
 use {
-    crate::sighash_versioning::ISSUE_SIGHASH_VERSION_TO_INFO_BYTES,
+    crate::sighash_versioning::issue_sighash_kind_to_info,
     crate::transaction::OrchardBundle::OrchardZSA,
     crate::transaction::TRANSPARENT_SIGHASH_INFO_V0,
     crate::transaction::components::sapling::SAPLING_SIGHASH_INFO_V0,
@@ -580,13 +580,13 @@ impl TransactionDigest<Authorized> for BlockTxCommitmentDigester {
             |b| match b {
                 OrchardVanilla(bundle) => {
                     bundle
-                        .authorizing_commitment(&ORCHARD_SIGHASH_VERSION_TO_INFO_BYTES)
+                        .authorizing_commitment(orchard_sighash_kind_to_info)
                         .0
                 }
                 #[cfg(zcash_unstable = "nu7")]
                 OrchardZSA(bundle) => {
                     bundle
-                        .authorizing_commitment(&ORCHARD_SIGHASH_VERSION_TO_INFO_BYTES)
+                        .authorizing_commitment(orchard_sighash_kind_to_info)
                         .0
                 }
             },
@@ -597,10 +597,7 @@ impl TransactionDigest<Authorized> for BlockTxCommitmentDigester {
     fn digest_issue(&self, issue_bundle: Option<&IssueBundle<Signed>>) -> Self::IssueDigest {
         issue_bundle.map_or_else(
             orchard_bundle::commitments::hash_issue_bundle_auth_empty,
-            |b| {
-                b.authorizing_commitment(&ISSUE_SIGHASH_VERSION_TO_INFO_BYTES)
-                    .0
-            },
+            |b| b.authorizing_commitment(issue_sighash_kind_to_info).0,
         )
     }
 

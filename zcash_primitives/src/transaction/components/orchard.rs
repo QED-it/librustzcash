@@ -4,7 +4,7 @@ use crate::encoding::ReadBytesExt;
 #[cfg(zcash_unstable = "nu7")]
 use {
     crate::encoding::WriteBytesExt,
-    crate::sighash_versioning::{ORCHARD_SIGHASH_VERSION_TO_INFO_BYTES, to_orchard_version},
+    crate::sighash_versioning::{orchard_sighash_kind_from_info, orchard_sighash_kind_to_info},
     crate::transaction::components::issuance::read_asset,
     orchard::{flavor::OrchardZSA, note::AssetBase, value::NoteValue},
 };
@@ -21,7 +21,7 @@ use orchard::{
     note::{ExtractedNoteCommitment, Nullifier, TransmittedNoteCiphertext},
     primitives::OrchardPrimitives,
     primitives::redpallas::{self, SigType, Signature, SpendAuth, VerificationKey},
-    sighash_versioning::{OrchardSighashVersion, OrchardVersionedSig},
+    sighash_kind::{OrchardSig, OrchardSighashKind},
     value::ValueCommitment,
 };
 use zcash_encoding::{Array, CompactSize, Vector};
@@ -266,28 +266,27 @@ pub fn read_anchor<R: Read>(mut reader: R) -> io::Result<Anchor> {
         .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "invalid Orchard anchor"))
 }
 
-pub fn read_signature<R: Read, T: SigType>(mut reader: R) -> io::Result<OrchardVersionedSig<T>> {
+pub fn read_signature<R: Read, T: SigType>(mut reader: R) -> io::Result<OrchardSig<T>> {
     let mut bytes = [0u8; 64];
     reader.read_exact(&mut bytes)?;
-    Ok(OrchardVersionedSig::new(
-        OrchardSighashVersion::NoVersion,
+    Ok(OrchardSig::new(
+        OrchardSighashKind::AllEffecting,
         Signature::from(bytes),
     ))
 }
 
 #[cfg(zcash_unstable = "nu7")]
-pub fn read_versioned_signature<R: Read, T: SigType>(
-    mut reader: R,
-) -> io::Result<OrchardVersionedSig<T>> {
+pub fn read_versioned_signature<R: Read, T: SigType>(mut reader: R) -> io::Result<OrchardSig<T>> {
     let sighash_info_bytes = Vector::read(&mut reader, |r| r.read_u8())?;
-    let sighash_version = to_orchard_version(sighash_info_bytes).ok_or_else(|| {
-        io::Error::new(io::ErrorKind::InvalidInput, "Unknown Orchard sighash info")
-    })?;
+    let sighash_kind =
+        orchard_sighash_kind_from_info(sighash_info_bytes.as_slice()).ok_or_else(|| {
+            io::Error::new(io::ErrorKind::InvalidInput, "Unknown Orchard sighash info")
+        })?;
 
     let mut signature_bytes = [0u8; 64];
     reader.read_exact(&mut signature_bytes)?;
-    Ok(OrchardVersionedSig::new(
-        sighash_version,
+    Ok(OrchardSig::new(
+        sighash_kind,
         Signature::from(signature_bytes),
     ))
 }
@@ -295,16 +294,9 @@ pub fn read_versioned_signature<R: Read, T: SigType>(
 #[cfg(zcash_unstable = "nu7")]
 pub fn write_versioned_signature<W: Write, T: SigType>(
     mut writer: W,
-    versioned_sig: &OrchardVersionedSig<T>,
+    versioned_sig: &OrchardSig<T>,
 ) -> io::Result<()> {
-    let sighash_info_bytes = ORCHARD_SIGHASH_VERSION_TO_INFO_BYTES
-        .get(versioned_sig.version())
-        .ok_or_else(|| {
-            io::Error::new(
-                io::ErrorKind::InvalidInput,
-                "Unknown Orchard sighash version",
-            )
-        })?;
+    let sighash_info_bytes = orchard_sighash_kind_to_info(versioned_sig.sighash_kind());
     Vector::write(&mut writer, sighash_info_bytes, |w, b| w.write_u8(*b))?;
     writer.write_all(&<[u8; 64]>::from(versioned_sig.sig()))
 }
@@ -453,7 +445,7 @@ mod tests {
         super::{read_versioned_signature, write_versioned_signature},
         alloc::vec::Vec,
         orchard::primitives::redpallas,
-        orchard::sighash_versioning::{OrchardSighashVersion, OrchardVersionedSig},
+        orchard::sighash_kind::{OrchardSig, OrchardSighashKind},
         rand::RngCore,
         rand::rngs::OsRng,
         std::io::Cursor,
@@ -465,7 +457,7 @@ mod tests {
         let mut sig_bytes = [0u8; 64];
         OsRng.fill_bytes(&mut sig_bytes);
         let sig = redpallas::Signature::<redpallas::SpendAuth>::from(sig_bytes);
-        let versioned_sig = OrchardVersionedSig::new(OrchardSighashVersion::V0, sig);
+        let versioned_sig = OrchardSig::new(OrchardSighashKind::AllEffecting, sig);
 
         // Write the versioned signature to a buffer
         let mut buf = Vec::new();
