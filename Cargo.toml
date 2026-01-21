@@ -60,7 +60,7 @@ zcash_spec = "0.2"
 # Payment protocols
 # - Sapling
 bitvec = { version = "1", default-features = false, features = ["alloc"] }
-blake2s_simd = { version = "1", default-features = false }
+blake2s_simd = { version = "=1.0.2", default-features = false }
 bls12_381 = "0.8"
 jubjub = "0.10"
 redjubjub = { version = "0.8", default-features = false }
