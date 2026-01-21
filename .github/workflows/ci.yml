@@ -352,7 +352,7 @@ jobs:
         run: rustup target add ${{ matrix.target }}
       - name: Build for target
         working-directory: ./ci-build
-        run: cargo build --verbose --target ${{ matrix.target }}
+        run: cargo build --locked --verbose --target ${{ matrix.target }}
 
   build-nostd:
     name: Build target ${{ matrix.target }}
@@ -378,8 +378,6 @@ jobs:
         run: |
           echo "[patch.crates-io]" >> ./ci-build/Cargo.toml
           cat ./crates/Cargo.toml | sed "0,/.\+\(patch.crates.\+\)/d" >> ./ci-build/Cargo.toml
-      - name: Copy Cargo.lock to synthetic crate
-        run: cp ./crates/Cargo.lock ./ci-build/
       - name: Add no_std pragma to lib.rs
         run: |
           echo "#![no_std]" > ./ci-build/src/lib.rs
@@ -395,12 +393,14 @@ jobs:
       - name: Add lazy_static with the spin_no_std feature
         working-directory: ./ci-build
         run: cargo add lazy_static --features "spin_no_std"
+      - name: Copy Cargo.lock to synthetic crate
+        run: cp ./crates/Cargo.lock ./ci-build/
       - name: Add target
         working-directory: ./ci-build
         run: rustup target add ${{ matrix.target }}
       - name: Build for target
         working-directory: ./ci-build
-        run: cargo build --verbose --target ${{ matrix.target }}
+        run: cargo build --locked --verbose --target ${{ matrix.target }}
 
   bitrot:
     name: Bitrot check
