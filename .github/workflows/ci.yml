@@ -378,6 +378,8 @@ jobs:
         run: |
           echo "[patch.crates-io]" >> ./ci-build/Cargo.toml
           cat ./crates/Cargo.toml | sed "0,/.\+\(patch.crates.\+\)/d" >> ./ci-build/Cargo.toml
+      - name: Copy Cargo.lock to synthetic crate
+        run: cp ./crates/Cargo.lock ./ci-build/
       - name: Add no_std pragma to lib.rs
         run: |
           echo "#![no_std]" > ./ci-build/src/lib.rs
