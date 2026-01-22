@@ -1425,7 +1425,6 @@ impl<'a, P: consensus::Parameters, U: sapling::builder::ProverProgress> Extensio
 #[cfg(any(test, feature = "test-dependencies"))]
 mod testing {
     use super::{BuildResult, Builder, Error};
-    use std::convert::Infallible;
 
     use crate::transaction::fees::zip317;
     use ::sapling::prover::mock::{MockOutputProver, MockSpendProver};
@@ -1433,7 +1432,6 @@ mod testing {
     use rand_core::CryptoRng;
     use transparent::builder::TransparentSigningSet;
     use zcash_protocol::consensus;
-    use zcash_protocol::value::Zatoshis;
 
     impl<'a, P: consensus::Parameters, U: sapling::builder::ProverProgress> Builder<'a, P, U> {
         /// Build the transaction using mocked randomness and proving capabilities.
@@ -1477,54 +1475,6 @@ mod testing {
                 &zip317::FeeRule::standard(),
                 #[cfg(zcash_unstable = "nu7")]
                 is_new_asset,
-            )
-        }
-    }
-
-    impl<'a, P: consensus::Parameters, U: sapling::builder::ProverProgress> Builder<'a, P, U> {
-        /// Build the transaction using mocked randomness and proving capabilities.
-        /// DO NOT USE EXCEPT FOR UNIT TESTING.
-        pub fn mock_build_no_fee<R: RngCore>(
-            self,
-            transparent_signing_set: &TransparentSigningSet,
-            sapling_extsks: &[sapling::zip32::ExtendedSpendingKey],
-            orchard_saks: &[orchard::keys::SpendAuthorizingKey],
-            rng: R,
-        ) -> Result<BuildResult, Error<Infallible>> {
-            struct FakeCryptoRng<R: RngCore>(R);
-            impl<R: RngCore> CryptoRng for FakeCryptoRng<R> {}
-            impl<R: RngCore> RngCore for FakeCryptoRng<R> {
-                fn next_u32(&mut self) -> u32 {
-                    self.0.next_u32()
-                }
-
-                fn next_u64(&mut self) -> u64 {
-                    self.0.next_u64()
-                }
-
-                fn fill_bytes(&mut self, dest: &mut [u8]) {
-                    self.0.fill_bytes(dest)
-                }
-
-                fn try_fill_bytes(&mut self, dest: &mut [u8]) -> Result<(), rand_core::Error> {
-                    self.0.try_fill_bytes(dest)
-                }
-            }
-
-            #[allow(deprecated)]
-            let fee_rule = crate::transaction::fees::fixed::FeeRule::non_standard(Zatoshis::ZERO);
-
-            self.build(
-                transparent_signing_set,
-                sapling_extsks,
-                orchard_saks,
-                FakeCryptoRng(rng),
-                &MockSpendProver,
-                &MockOutputProver,
-                #[allow(deprecated)]
-                &fee_rule,
-                #[cfg(zcash_unstable = "nu7")]
-                |_| true,
             )
         }
     }

@@ -8,7 +8,6 @@ use ::transparent::{
 use orchard::note::AssetBase;
 use orchard::orchard_flavor::OrchardVanilla;
 use orchard::primitives::OrchardDomain;
-use orchard::primitives::OrchardDomain;
 use orchard::tree::MerkleHashOrchard;
 use pczt::{
     roles::{
