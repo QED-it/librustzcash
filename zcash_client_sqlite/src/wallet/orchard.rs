@@ -186,7 +186,7 @@ pub(crate) fn to_received_note<P: consensus::Parameters>(
             let note = Option::from(Note::from_parts(
                 recipient,
                 orchard::value::NoteValue::from_raw(note_value),
-                AssetBase::native(),
+                AssetBase::zatoshi(),
                 rho,
                 rseed,
             ))

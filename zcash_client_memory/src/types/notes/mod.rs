@@ -132,7 +132,7 @@ mod serialization {
                         orchard::Note::from_parts(
                             recipient,
                             value,
-                            AssetBase::native(),
+                            AssetBase::zatoshi(),
                             rho,
                             rseed,
                         )

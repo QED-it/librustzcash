@@ -613,7 +613,7 @@ impl<P: consensus::Parameters, U: sapling::builder::ProverProgress> Builder<'_, 
         memo: MemoBytes,
     ) -> Result<(), Error<FE>> {
         let bundle_type = self.build_config.orchard_bundle_type()?;
-        if bundle_type == BundleType::DEFAULT && !bool::from(asset.is_native()) {
+        if bundle_type == BundleType::DEFAULT && !bool::from(asset.is_zatoshi()) {
             return Err(Error::OrchardBuild(BundleTypeNotSatisfiable));
         }
         self.orchard_builder
@@ -1934,7 +1934,7 @@ mod tests {
                     None,
                     recipient,
                     NoteValue::from_raw(OLD_NOTE_VALUE),
-                    AssetBase::native(),
+                    AssetBase::zatoshi(),
                     Memo::Empty.encode().into_bytes(),
                 )
                 .unwrap();
@@ -1989,7 +1989,7 @@ mod tests {
             previously_issued: &[AssetBase],
         ) -> impl Fn(&AssetBase) -> bool + '_ {
             move |asset: &AssetBase| {
-                if *asset == AssetBase::native() {
+                if *asset == AssetBase::zatoshi() {
                     return false;
                 }
                 !previously_issued.contains(asset)
@@ -2008,7 +2008,7 @@ mod tests {
                 Some(fvk.to_ovk(Scope::External)),
                 recipient,
                 (OLD_NOTE_VALUE - EXPECTED_FEE).into(),
-                AssetBase::native(),
+                AssetBase::zatoshi(),
                 MemoBytes::empty(),
             )
             .unwrap();
