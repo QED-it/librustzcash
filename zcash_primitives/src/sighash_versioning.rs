@@ -2,6 +2,8 @@
 //!
 //! [ZIP-246]: https://zips.z.cash/zip-0246
 
+use alloc::vec::Vec;
+
 use orchard::sighash_kind::OrchardSighashKind;
 
 #[cfg(zcash_unstable = "nu7")]
@@ -13,9 +15,9 @@ const ORCHARD_SIGHASH_INFO_V0: [u8; 1] = [0];
 
 /// Returns the Orchard sighash info encoding corresponding to the given
 /// [`OrchardSighashKind`].
-pub(crate) fn orchard_sighash_kind_to_info(kind: &OrchardSighashKind) -> &'static [u8] {
+pub(crate) fn orchard_sighash_kind_to_info(kind: &OrchardSighashKind) -> Vec<u8> {
     match kind {
-        OrchardSighashKind::AllEffecting => &ORCHARD_SIGHASH_INFO_V0,
+        OrchardSighashKind::AllEffecting => ORCHARD_SIGHASH_INFO_V0.to_vec(),
     }
 }
 
@@ -38,9 +40,9 @@ const ISSUE_SIGHASH_INFO_V0: [u8; 1] = [0];
 /// Returns the Issuance sighash info encoding corresponding to the given
 /// [`IssueSighashKind`].
 #[cfg(zcash_unstable = "nu7")]
-pub(crate) fn issue_sighash_kind_to_info(kind: &IssueSighashKind) -> &'static [u8] {
+pub(crate) fn issue_sighash_kind_to_info(kind: &IssueSighashKind) -> Vec<u8> {
     match kind {
-        IssueSighashKind::AllEffecting => &ISSUE_SIGHASH_INFO_V0,
+        IssueSighashKind::AllEffecting => ISSUE_SIGHASH_INFO_V0.to_vec(),
     }
 }
 
@@ -66,7 +68,7 @@ mod tests {
         for kind in kinds {
             // kind -> info -> kind
             let info = orchard_sighash_kind_to_info(&kind);
-            let parsed = orchard_sighash_kind_from_info(info)
+            let parsed = orchard_sighash_kind_from_info(&info)
                 .expect("SighashInfo produced by orchard_sighash_kind_to_info must be parsable.");
             assert_eq!(parsed, kind);
         }
@@ -85,7 +87,7 @@ mod tests {
         for kind in kinds {
             // kind -> info -> kind
             let info = issue_sighash_kind_to_info(&kind);
-            let parsed = issue_sighash_kind_from_info(info)
+            let parsed = issue_sighash_kind_from_info(&info)
                 .expect("SighashInfo produced by issue_sighash_kind_to_info must be parsable.");
             assert_eq!(parsed, kind);
         }

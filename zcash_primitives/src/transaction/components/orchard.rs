@@ -297,7 +297,7 @@ pub fn write_versioned_signature<W: Write, T: SigType>(
     versioned_sig: &OrchardSig<T>,
 ) -> io::Result<()> {
     let sighash_info_bytes = orchard_sighash_kind_to_info(versioned_sig.sighash_kind());
-    Vector::write(&mut writer, sighash_info_bytes, |w, b| w.write_u8(*b))?;
+    Vector::write(&mut writer, &sighash_info_bytes, |w, b| w.write_u8(*b))?;
     writer.write_all(&<[u8; 64]>::from(versioned_sig.sig()))
 }
 

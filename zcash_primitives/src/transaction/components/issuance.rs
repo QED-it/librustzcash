@@ -165,7 +165,7 @@ pub fn write_bundle<W: Write>(
         Vector::write_nonempty(&mut writer, bundle.actions(), write_action)?;
         let sighash_info_bytes =
             issue_sighash_kind_to_info(bundle.authorization().signature().sighash_kind());
-        Vector::write(&mut writer, sighash_info_bytes, |w, b| w.write_u8(*b))?;
+        Vector::write(&mut writer, &sighash_info_bytes, |w, b| w.write_u8(*b))?;
 
         Vector::write(
             &mut writer,
