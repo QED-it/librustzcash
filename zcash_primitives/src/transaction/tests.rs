@@ -23,6 +23,9 @@ use super::components::tze;
 #[cfg(all(test, zcash_unstable = "nu7"))]
 use crate::transaction::OrchardBundle::OrchardZSA;
 
+#[cfg(all(test, zcash_unstable = "nu7" /* TODO swap */ ))]
+use crate::transaction::OrchardBundle::OrchardSwap;
+
 #[cfg(all(test, zcash_unstable = "nu7", feature = "zip-233"))]
 use super::sighash_v6::v6_signature_hash;
 
@@ -63,11 +66,15 @@ fn check_roundtrip(tx: Transaction) -> Result<(), TestCaseError> {
             OrchardVanilla(b) => *b.value_balance(),
             #[cfg(zcash_unstable = "nu7")]
             OrchardZSA(b) => *b.value_balance(),
+            #[cfg(zcash_unstable = "nu7")]
+            OrchardSwap(b) => *b.value_balance(),
         }),
         txo.orchard_bundle.as_ref().map(|v| match v {
             OrchardVanilla(b) => *b.value_balance(),
             #[cfg(zcash_unstable = "nu7")]
             OrchardZSA(b) => *b.value_balance(),
+            #[cfg(zcash_unstable = "nu7")]
+            OrchardSwap(b) => *b.value_balance(),
         })
     );
     #[cfg(zcash_unstable = "nu7")]
@@ -144,6 +151,15 @@ proptest! {
     #![proptest_config(ProptestConfig::with_cases(10))]
     #[test]
     fn tx_serialization_roundtrip_nu7(tx in arb_tx(BranchId::Nu7)) {
+        check_roundtrip(tx)?;
+    }
+}
+
+#[cfg(zcash_unstable = "nu7")]
+proptest! {
+    #![proptest_config(ProptestConfig::with_cases(10))]
+    #[test]
+    fn tx_serialization_roundtrip_swap(tx in arb_tx(BranchId::Swap)) {
         check_roundtrip(tx)?;
     }
 }

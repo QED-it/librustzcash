@@ -2872,7 +2872,7 @@ checksum = "04744f49eae99ab78e0d5c0b603ab218f515ea8cfe5a456d7629ad883a3b6e7d"
 [[package]]
 name = "orchard"
 version = "0.11.0"
-source = "git+https://github.com/QED-it/orchard?rev=2083efe8d57e6073914ae296db2d41f8bfe1de50#2083efe8d57e6073914ae296db2d41f8bfe1de50"
+source = "git+https://github.com/QED-it/orchard?rev=d91aaf146364a06de1653e64f93b56fac5b3ca0f#d91aaf146364a06de1653e64f93b56fac5b3ca0f"
 dependencies = [
  "aes",
  "bitvec",
@@ -6677,6 +6677,7 @@ dependencies = [
  "memuse",
  "nonempty",
  "orchard",
+ "pasta_curves",
  "pprof",
  "proptest",
  "rand",
@@ -6695,6 +6696,7 @@ dependencies = [
  "zcash_note_encryption",
  "zcash_protocol",
  "zcash_script",
+ "zcash_spec",
  "zcash_transparent",
  "zip32",
 ]

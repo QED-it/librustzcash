@@ -148,6 +148,10 @@ impl<'a> TransactionExtractor<'a> {
                     OrchardBundle::OrchardZSA(_) => {
                         unimplemented!("PCZT support for ZSA is not implemented.")
                     }
+                    #[cfg(zcash_unstable = "nu7")]
+                    OrchardBundle::OrchardSwap(_) => {
+                        unimplemented!("PCZT support for ZSA is not implemented.")
+                    }
                 })
                 .transpose()
             },

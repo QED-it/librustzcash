@@ -345,8 +345,13 @@ jobs:
       - name: Add zcash_client_backend as a dependency of the synthetic crate
         working-directory: ./ci-build
         run: cargo add --path ../crates/zcash_client_backend
-      - name: Copy pinned dependencies into synthetic crate
-        run: cp crates/Cargo.lock ci-build/
+      - name: Pin transitive dependencies to avoid incompatible crates
+        working-directory: ./ci-build
+        run: |
+          cargo add blake2b_simd@=1.0.2 --no-default-features
+          cargo add blake2s_simd@=1.0.2 --no-default-features
+          cargo add constant_time_eq@=0.3.0
+          cargo add indexmap@=2.6.0
       - name: Add target
         working-directory: ./ci-build
         run: rustup target add ${{ matrix.target }}
@@ -393,6 +398,13 @@ jobs:
       - name: Add lazy_static with the spin_no_std feature
         working-directory: ./ci-build
         run: cargo add lazy_static --features "spin_no_std"
+      - name: Pin transitive dependencies to avoid incompatible crates
+        working-directory: ./ci-build
+        run: |
+          cargo add blake2b_simd@=1.0.2 --no-default-features
+          cargo add blake2s_simd@=1.0.2 --no-default-features
+          cargo add constant_time_eq@=0.3.0
+          cargo add indexmap@=2.6.0 --no-default-features
       - name: Add target
         working-directory: ./ci-build
         run: rustup target add ${{ matrix.target }}

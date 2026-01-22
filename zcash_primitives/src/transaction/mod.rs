@@ -40,6 +40,7 @@ use self::{
 #[cfg(feature = "circuits")]
 use {::sapling::builder as sapling_builder, orchard::builder::Unproven};
 
+use orchard::note::Nullifier;
 use orchard::orchard_flavor::OrchardVanilla;
 use orchard::Bundle;
 use zcash_protocol::constants::{
@@ -54,6 +55,9 @@ use {
 
 #[cfg(zcash_unstable = "nu7")]
 use zcash_protocol::constants::{V6_TX_VERSION, V6_VERSION_GROUP_ID};
+
+#[cfg(zcash_unstable = "nu7" /* TODO swap */ )]
+use orchard::swap_bundle::SwapBundle;
 
 #[cfg(zcash_unstable = "zfuture")]
 use {
@@ -257,6 +261,8 @@ impl TxVersion {
             BranchId::Nu6_1 => TxVersion::V5,
             #[cfg(zcash_unstable = "nu7")]
             BranchId::Nu7 => TxVersion::V6,
+            #[cfg(zcash_unstable = "nu7" /* TODO swap */ )]
+            BranchId::Swap => TxVersion::V6,
             #[cfg(zcash_unstable = "zfuture")]
             BranchId::ZFuture => TxVersion::ZFuture,
         }
@@ -338,6 +344,14 @@ pub enum OrchardBundle<A: orchard::bundle::Authorization> {
     OrchardVanilla(Bundle<A, ZatBalance, OrchardVanilla>),
     #[cfg(zcash_unstable = "nu7")]
     OrchardZSA(Bundle<A, ZatBalance, OrchardZSA>),
+    #[cfg(zcash_unstable = "nu7" /* TODO swap */ )]
+    OrchardSwap(SwapBundle<ZatBalance>),
+}
+
+/// Errors that can occur during transaction construction.
+#[derive(Debug)]
+pub enum BundleError {
+    WrongBundleType,
 }
 
 impl<A: orchard::bundle::Authorization> OrchardBundle<A> {
@@ -346,6 +360,8 @@ impl<A: orchard::bundle::Authorization> OrchardBundle<A> {
             OrchardBundle::OrchardVanilla(b) => b.value_balance(),
             #[cfg(zcash_unstable = "nu7")]
             OrchardBundle::OrchardZSA(b) => b.value_balance(),
+            #[cfg(zcash_unstable = "nu7")]
+            OrchardBundle::OrchardSwap(b) => b.value_balance(),
         }
     }
 
@@ -363,6 +379,8 @@ impl<A: orchard::bundle::Authorization> OrchardBundle<A> {
             OrchardBundle::OrchardZSA(b) => {
                 OrchardBundle::OrchardZSA(b.map_authorization(context, spend_auth, step))
             }
+            #[cfg(zcash_unstable = "nu7")]
+            OrchardBundle::OrchardSwap(b) => OrchardBundle::OrchardSwap(b), // TODO check that we actually ever map this particular authorization
         }
     }
 
@@ -370,15 +388,40 @@ impl<A: orchard::bundle::Authorization> OrchardBundle<A> {
         match self {
             OrchardBundle::OrchardVanilla(b) => b,
             #[cfg(zcash_unstable = "nu7")]
-            OrchardBundle::OrchardZSA(_) => panic!("Wrong bundle type"),
+            _ => panic!("Wrong bundle type"),
         }
     }
 
     #[cfg(zcash_unstable = "nu7")]
     pub fn as_zsa_bundle(&self) -> &Bundle<A, ZatBalance, OrchardZSA> {
         match self {
-            OrchardBundle::OrchardVanilla(_) => panic!("Wrong bundle type"),
             OrchardBundle::OrchardZSA(b) => b,
+            _ => panic!("Wrong bundle type"),
+        }
+    }
+
+    #[cfg(zcash_unstable = "nu7")]
+    pub fn as_swap_bundle(&self) -> &SwapBundle<ZatBalance> {
+        match self {
+            OrchardBundle::OrchardSwap(b) => b,
+            _ => panic!("Wrong bundle type"),
+        }
+    }
+
+    pub fn first_nullifier(&self) -> Option<&Nullifier> {
+        match self {
+            OrchardBundle::OrchardVanilla(b) => Some(b.actions().first().nullifier()),
+            #[cfg(zcash_unstable = "nu7")]
+            OrchardBundle::OrchardZSA(b) => Some(b.actions().first().nullifier()),
+            #[cfg(zcash_unstable = "nu7")]
+            OrchardBundle::OrchardSwap(b) => Some(
+                b.action_groups()
+                    .first()
+                    .unwrap()
+                    .actions()
+                    .first()
+                    .nullifier(),
+            ),
         }
     }
 }
@@ -807,7 +850,14 @@ impl Transaction {
             }
             TxVersion::V5 => Self::read_v5(reader.into_base_reader(), version),
             #[cfg(zcash_unstable = "nu7")]
-            TxVersion::V6 => Self::read_v6(reader.into_base_reader(), version),
+            TxVersion::V6 => {
+                if consensus_branch_id == BranchId::Nu7 {
+                    Self::read_v6(reader.into_base_reader(), version)
+                } else {
+                    // Add if(swap) if there are more V6 branches
+                    Self::read_swap(reader.into_base_reader(), version)
+                }
+            }
             #[cfg(all(zcash_unstable = "nu7", zcash_unstable = "zfuture"))]
             TxVersion::ZFuture => Self::read_v6(reader.into_base_reader(), version),
         }
@@ -1049,6 +1099,38 @@ impl Transaction {
             .map_err(|_| io::Error::new(io::ErrorKind::InvalidData, "zip233Amount out of range"))
     }
 
+    #[cfg(zcash_unstable = "nu7" /* TODO swap */ )]
+    fn read_swap<R: Read>(mut reader: R, version: TxVersion) -> io::Result<Self> {
+        let header_fragment = Self::read_v6_header_fragment(&mut reader)?;
+        let transparent_bundle = Self::read_transparent_v6(&mut reader)?;
+        let sapling_bundle = sapling_serialization::read_v6_bundle(&mut reader)?;
+        let orchard_zsa_bundle = orchard_serialization::read_orchard_swap_bundle(&mut reader)?;
+        let issue_bundle = issuance::read_bundle(&mut reader)?;
+
+        #[cfg(zcash_unstable = "zfuture")]
+        let tze_bundle = if version.has_tze() {
+            Self::read_tze(&mut reader)?
+        } else {
+            None
+        };
+
+        let data = TransactionData {
+            version,
+            consensus_branch_id: header_fragment.consensus_branch_id,
+            lock_time: header_fragment.lock_time,
+            expiry_height: header_fragment.expiry_height,
+            transparent_bundle,
+            sprout_bundle: None,
+            sapling_bundle,
+            orchard_bundle: orchard_zsa_bundle.map(|b| OrchardBundle::OrchardSwap(b)),
+            issue_bundle,
+            #[cfg(zcash_unstable = "zfuture")]
+            tze_bundle,
+        };
+
+        Ok(Self::from_data_v6(data))
+    }
+
     #[cfg(zcash_unstable = "zfuture")]
     fn read_tze<R: Read>(mut reader: &mut R) -> io::Result<Option<tze::Bundle<tze::Authorized>>> {
         let vin = Vector::read(&mut reader, TzeIn::read)?;
@@ -1156,7 +1238,7 @@ impl Transaction {
         self.write_header(&mut writer)?;
         self.write_transparent(&mut writer)?;
         self.write_v5_sapling(&mut writer)?;
-        orchard_serialization::write_v5_bundle(self.orchard_bundle.as_ref(), &mut writer)?;
+        orchard_serialization::write_orchard_bundle(&mut writer, self.orchard_bundle.as_ref())?;
 
         Ok(())
     }
@@ -1173,7 +1255,7 @@ impl Transaction {
 
         self.write_transparent_v6(&mut writer)?;
         sapling_serialization::write_v6_bundle(&mut writer, self.sapling_bundle.as_ref())?;
-        orchard_serialization::write_v6_bundle(&mut writer, self.orchard_bundle.as_ref())?;
+        orchard_serialization::write_orchard_bundle(&mut writer, self.orchard_bundle.as_ref())?;
         issuance::write_bundle(self.issue_bundle.as_ref(), &mut writer)?;
 
         #[cfg(zcash_unstable = "zfuture")]
@@ -1321,14 +1403,14 @@ pub enum DigestError {
 
 #[cfg(any(test, feature = "test-dependencies"))]
 pub mod testing {
-    use ::transparent::bundle::testing::{self as transparent_testing};
-    use ::zcash_protocol::consensus::BranchId;
+    use crate::consensus::BranchId;
     use proptest::prelude::*;
 
     use super::{
         components::{
             orchard::testing::{self as orchard_testing},
             sapling::testing::{self as sapling_testing},
+            transparent::testing::{self as transparent_testing},
         },
         Authorized, Transaction, TransactionData, TxId, TxVersion,
     };
@@ -1358,6 +1440,8 @@ pub mod testing {
             BranchId::Nu6_1 => Just(TxVersion::V5).boxed(),
             #[cfg(zcash_unstable = "nu7")]
             BranchId::Nu7 => Just(TxVersion::V6).boxed(),
+            #[cfg(zcash_unstable = "nu7" /* TODO swap */ )]
+            BranchId::Swap => Just(TxVersion::V6).boxed(),
             #[cfg(zcash_unstable = "zfuture")]
             BranchId::ZFuture => Just(TxVersion::ZFuture).boxed(),
         }

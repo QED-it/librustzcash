@@ -5,10 +5,10 @@ use ::transparent::{
     bundle as transparent,
     keys::{AccountPrivKey, IncomingViewingKey},
 };
-use orchard::{
-    note::AssetBase, orchard_flavor::OrchardVanilla, primitives::OrchardDomain,
-    tree::MerkleHashOrchard,
-};
+use orchard::note::AssetBase;
+use orchard::orchard_flavor::OrchardVanilla;
+use orchard::primitives::OrchardDomain;
+use orchard::tree::MerkleHashOrchard;
 use pczt::{
     roles::{
         combiner::Combiner, creator::Creator, io_finalizer::IoFinalizer, prover::Prover,

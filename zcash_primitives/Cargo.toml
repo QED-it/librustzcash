@@ -51,6 +51,8 @@ jubjub.workspace = true
 nonempty.workspace = true
 orchard.workspace = true
 sapling.workspace = true
+zcash_spec.workspace = true
+pasta_curves.workspace = true
 
 # - Note Commitment Trees
 incrementalmerkletree = { workspace = true, features = ["legacy-api"] }
@@ -114,7 +116,7 @@ zcash_protocol = { workspace = true, features = ["test-dependencies"] }
 pprof = { version = "0.14", features = ["criterion", "flamegraph"] }
 
 [features]
-default = ["multicore", "std", "circuits"]
+default = ["multicore", "std", "circuits", "non-standard-fees"]
 std = ["document-features", "redjubjub/std"]
 zip-233 = []
 
