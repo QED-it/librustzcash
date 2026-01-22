@@ -517,6 +517,8 @@ mod tests {
                 NetworkUpgrade::Nu6_1 => Some(BlockHeight::from_u32(1_400_000)),
                 #[cfg(zcash_unstable = "nu7")]
                 NetworkUpgrade::Nu7 => Some(BlockHeight::from_u32(1_500_000)),
+                #[cfg(zcash_unstable = "nu7")]
+                NetworkUpgrade::Swap => Some(BlockHeight::from_u32(1_500_000)),
                 NetworkUpgrade::ZFuture => Some(BlockHeight::from_u32(1_500_000)),
             }
         }
