@@ -404,7 +404,7 @@ jobs:
           cargo add blake2b_simd@=1.0.2 --no-default-features
           cargo add blake2s_simd@=1.0.2 --no-default-features
           cargo add constant_time_eq@=0.3.0
-          cargo add indexmap@=2.6.0
+          cargo add indexmap@=2.6.0 --no-default-features
       - name: Add target
         working-directory: ./ci-build
         run: rustup target add ${{ matrix.target }}
