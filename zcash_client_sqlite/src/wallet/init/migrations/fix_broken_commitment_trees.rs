@@ -66,7 +66,13 @@ impl<P: consensus::Parameters> RusqliteMigration for Migration<P> {
             .flatten();
 
         if let Some(h) = max_block_height {
-            truncate_to_height(transaction, &self.params, h)?;
+            truncate_to_height(
+                transaction,
+                &self.params,
+                #[cfg(feature = "transparent-inputs")]
+                &GapLimits::default(),
+                h,
+            )?;
         }
 
         Ok(())
@@ -77,16 +83,23 @@ impl<P: consensus::Parameters> RusqliteMigration for Migration<P> {
     }
 }
 
-/// This is a copy of [`crate::wallet::truncate_to_height`] as of the expected database
-/// state corresponding to this migration. It is duplicated here as later updates to the
-/// database schema require incompatible changes to `truncate_to_height` (specifically,
-/// the addition of the `confirmed_unmined_at_height` column in the `tx_observation_height`
-/// migration).
+/// Truncates the database to at most the given height.
+///
+/// If the requested height is greater than or equal to the height of the last scanned
+/// block, this function does nothing.
+///
+/// This should only be executed inside a transactional context.
+///
+/// Returns the block height to which the database was truncated.
+///
+/// Frozen from `58913805e1b991bc4ee7a040f5d7ce2994f9f16a` prior to the addition of the
+/// `confirmed_unmined_at_height` column in the `tx_observation_height` migration.
 fn truncate_to_height<P: consensus::Parameters>(
     conn: &rusqlite::Transaction,
     params: &P,
+    #[cfg(feature = "transparent-inputs")] gap_limits: &GapLimits,
     max_height: BlockHeight,
-) -> Result<BlockHeight, WalletMigrationError> {
+) -> Result<BlockHeight, SqliteClientError> {
     // Determine a checkpoint to which we can rewind, if any.
     #[cfg(not(feature = "orchard"))]
     let truncation_height_query = r#"
@@ -133,12 +146,10 @@ fn truncate_to_height<P: consensus::Parameters>(
                     .flatten()
                     .map(BlockHeight::from);
 
-                Err(WalletMigrationError::from(
-                    SqliteClientError::RequestedRewindInvalid {
-                        safe_rewind_height: min_truncation_height,
-                        requested_height: max_height,
-                    },
-                ))
+                Err(SqliteClientError::RequestedRewindInvalid {
+                    safe_rewind_height: min_truncation_height,
+                    requested_height: max_height,
+                })
             },
             |h| Ok(BlockHeight::from(h)),
         )?;
@@ -180,10 +191,7 @@ fn truncate_to_height<P: consensus::Parameters>(
     // spends in the transaction.
     conn.execute(
         "UPDATE transparent_received_outputs
-         SET max_observed_unspent_height = CASE
-            WHEN tx.mined_height <= :height THEN :height
-            ELSE NULL
-         END
+         SET max_observed_unspent_height = CASE WHEN tx.mined_height <= :height THEN :height ELSE NULL END
          FROM transactions tx
          WHERE tx.id_tx = transaction_id
          AND max_observed_unspent_height > :height",
@@ -209,7 +217,7 @@ fn truncate_to_height<P: consensus::Parameters>(
             clock: (),
             rng: (),
             #[cfg(feature = "transparent-inputs")]
-            gap_limits: GapLimits::default(),
+            gap_limits: *gap_limits,
         };
         wdb.with_sapling_tree_mut(|tree| {
             tree.truncate_to_checkpoint(&truncation_height)?;
