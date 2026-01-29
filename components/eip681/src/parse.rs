@@ -185,16 +185,6 @@ impl CaseSensitiveHexDigit {
     }
 }
 
-/// ERC-55 validation result.
-pub enum Erc55Result {
-    /// The input was validated.
-    Validated,
-    /// The input could not be validated because it was all lowercase.
-    NotValidatedAllLowercase,
-    /// The input could not be validated because it was all uppercase.
-    NotValidatedAllUppercase,
-}
-
 /// Zero or more consecutive and case-sensitive hexadecimal digits.
 ///
 /// ```abnf
@@ -267,7 +257,7 @@ impl HexDigits {
     }
 
     /// Validates the digits as an Ethereum address according to ERC-55, if possible.   
-    pub fn validate_erc55(&self) -> Result<Erc55Result, ValidationError> {
+    pub fn validate_erc55(&self) -> Result<(), ValidationError> {
         snafu::ensure!(
             self.places.len() == 40,
             IncorrectEthAddressLenSnafu {
@@ -275,27 +265,49 @@ impl HexDigits {
             }
         );
 
-        // If all the digits are lowercase or all are uppercase, we can validate anything besides
-        // the length.
-        if self.is_all_lowercase() {
-            return Ok(Erc55Result::NotValidatedAllLowercase);
-        }
-        if self.is_all_uppercase() {
-            return Ok(Erc55Result::NotValidatedAllUppercase);
-        }
+        // Construct an ERC-55 checksummed address and compare that to the input
+        let address_input = self.to_string();
+        let address_lowercase = address_input.to_ascii_lowercase();
+        let address_hashed = hex::encode(Keccak256::digest(&address_lowercase));
+        let address_checksummed = address_lowercase
+            .chars()
+            .enumerate()
+            .map(|(i, c)| {
+                if c.is_ascii_digit() {
+                    c
+                } else {
+                    let should_uppercase = u8::from_str_radix(&address_hashed[i..i + 1], 16)
+                        .expect("Always a hexadecimal ASCII char")
+                        >= 8;
+                    if should_uppercase {
+                        c.to_uppercase().next().expect("Always the char")
+                    } else {
+                        c
+                    }
+                }
+            })
+            .collect::<String>();
+        snafu::ensure!(
+            address_input == address_checksummed,
+            Erc55ValidationSnafu {
+                reason: {
+                    // It's possible that this was not a checksummed address. It's pretty rare that a checksummed
+                    // address is all lowercase or all uppercase (a probability of 0.0004942706034105575)
+                    if self.is_all_lowercase() {
+                        Erc55ValidationFailureReason::AllLowercase
+                    } else if self.is_all_uppercase() {
+                        Erc55ValidationFailureReason::AllUppercase
+                    } else {
+                        Erc55ValidationFailureReason::ChecksumDoesNotMatch {
+                            expected: address_checksummed,
+                            saw: address_input,
+                        }
+                    }
+                }
+            }
+        );
 
-        // Otherwise mixed casing denotes a checksum, try decoding as an ERC-55 address
-        let hex_string = self.to_string();
-        let hashed_address = hex::encode(Keccak256::digest(hex_string.to_ascii_lowercase()));
-        if hex_string.chars().enumerate().all(|(i, c)| {
-            c.is_ascii_digit()
-                || (u8::from_str_radix(&hashed_address[i..i + 1], 16).unwrap() >= 8)
-                    == c.is_ascii_uppercase()
-        }) {
-            Ok(Erc55Result::Validated)
-        } else {
-            Erc55ValidationSnafu.fail()
-        }
+        Ok(())
     }
 }
 
@@ -1760,6 +1772,59 @@ mod test {
         let number = seen.parameters.value().unwrap().unwrap();
         assert_eq!(2, number.integer().unwrap());
         assert_eq!(2.014e18 as i128, number.as_i128().unwrap());
+    }
+
+    #[test]
+    /// ERC-55 checksum test vectors
+    fn test_vectors_erc_55() {
+        // From https://eips.ethereum.org/EIPS/eip-55#test-cases
+        let addresses = [
+            // All caps
+            "52908400098527886E0F7030069857D2E4169EE7",
+            "8617E340B3D01FA5F11F306F4090FD50E238070D",
+            // All Lower
+            "de709f2102306220921060314715629080e2fb77",
+            "27b1fdb04752bbc536007a920d24acb045561c26",
+            // Normal
+            "5aAeb6053F3E94C9b9A09f33669435E7Ef1BeAed",
+            "fB6916095ca1df60bB79Ce92cE3Ea74c37c5d359",
+            "dbF03B407c01E7cD3CBea99509d93f8DDDC8C6FB",
+            "D1220A0cf47c7B9Be7A2E6BA89F429762e7b9aDb",
+        ];
+
+        for addy in addresses {
+            let (i, hexdigits) = HexDigits::parse_min(addy, 40).unwrap();
+            assert!(i.is_empty(), "Should consume all input");
+            let validation_result = hexdigits.validate_erc55();
+            assert!(
+                validation_result.is_ok(),
+                "ERC-55 validation failed: {}",
+                validation_result.err().unwrap()
+            );
+        }
+
+        // These should fail, as they are the "Normal" cases above, with borked casing
+        let borked_cases = [
+            // Select chars with changed case
+            "5aAeb6053F3E94C9b9A09f33669435E7Ef1BeAEd",
+            "fb6916095ca1df60bB79Ce92cE3Ea74c37c5d359",
+            "dbF03B407C01E7cD3CBea99509d93f8DDDC8C6FB",
+            "D1220A0cf47c7B9BE7A2E6Ba89F429762e7b9aDb",
+            // All lower
+            "d1220a0cf47c7b9be7a2e6ba89f429762e7b9adb",
+            // All upper
+            "d1220a0cf47c7b9be7a2e6ba89f429762e7b9adb",
+        ];
+
+        for addy in borked_cases {
+            let (i, hexdigits) = HexDigits::parse_min(addy, 40).unwrap();
+            assert!(i.is_empty(), "Should consume all input");
+            let validation_result = hexdigits.validate_erc55();
+            assert!(
+                validation_result.is_err(),
+                "ERC-55 validation should have failed",
+            );
+        }
     }
 
     #[test]

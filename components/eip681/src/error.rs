@@ -91,6 +91,18 @@ impl<'a> From<ParseError<'a>> for nom::Err<ParseError<'a>> {
     }
 }
 
+/// All the reasons an ERC-55 check-summed address might fail validation.
+#[derive(Debug, PartialEq)]
+#[non_exhaustive]
+pub enum Erc55ValidationFailureReason {
+    /// The input failed validation, but is all lowercase, and may not have been check-summed.
+    AllLowercase,
+    /// The input failed validation, but is all upper, and may not have been check-summed.
+    AllUppercase,
+    /// The input failed validation.
+    ChecksumDoesNotMatch { expected: String, saw: String },
+}
+
 /// Errors discovered after parsing, usually when attempting to convert parsed
 /// types into numeric types.
 #[derive(Debug, Snafu, PartialEq)]
@@ -132,6 +144,8 @@ pub enum ValidationError {
     },
 
     /// An Ethereum address failed ERC-55 checksum validation.
-    #[snafu(display("ERC-55 checksum validation failure."))]
-    Erc55Validation,
+    #[snafu(display("ERC-55 checksum validation failure: {reason:?}"))]
+    Erc55Validation {
+        reason: Erc55ValidationFailureReason,
+    },
 }
