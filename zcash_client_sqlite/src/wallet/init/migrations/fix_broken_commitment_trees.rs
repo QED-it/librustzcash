@@ -255,7 +255,7 @@ mod tests {
     use crate::{
         testing::db::{test_clock, test_rng},
         wallet::init::{
-            migrations::{support_legacy_sqlite, tx_observation_height, tests::test_migrate},
+            migrations::{support_legacy_sqlite, tests::test_migrate, tx_observation_height},
             WalletMigrator,
         },
         WalletDb,
