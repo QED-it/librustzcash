@@ -1809,7 +1809,7 @@ mod test {
             // All lower
             "d1220a0cf47c7b9be7a2e6ba89f429762e7b9adb",
             // All upper
-            "d1220a0cf47c7b9be7a2e6ba89f429762e7b9adb",
+            "D1220A0CF47C7B9BE7A2E6BA89F429762E7B9ADB",
         ];
 
         for addy in borked_cases {
