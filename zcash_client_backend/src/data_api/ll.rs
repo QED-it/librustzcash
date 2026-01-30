@@ -341,9 +341,11 @@ pub trait LowLevelWalletWrite: LowLevelWalletRead {
     /// When scanning the chain out-of-order, it is necessary to store any nullifiers observed
     /// after a gap in the scanned blocks until the blocks in that gap have been fully scanned, in
     /// order to be able to immediately detect that a received output has already been spent. The
-    /// data store should track a mapping from each nullifier to the block, transaction ID, and
-    /// input index where the nullifier was revealed, so that the state of a note received within
-    /// that "gap" can be properly updated when it is discovered.
+    /// data store should track a mapping from each nullifier to the block, the index of the
+    /// transaction in the block, and the transaction ID, so when a note is received within that
+    /// "gap" its spentness can be determined by checking in the store. For space efficiency, the
+    /// backing store may use the combination of block height and index within the block instead of
+    /// the txid for transaction identification.
     ///
     /// # Parameters
     /// - `block_height`: The height of the block containing the nullifiers.
@@ -388,9 +390,11 @@ pub trait LowLevelWalletWrite: LowLevelWalletRead {
     /// When scanning the chain out-of-order, it is necessary to store any nullifiers observed
     /// after a gap in the scanned blocks until the blocks in that gap have been fully scanned, in
     /// order to be able to immediately detect that a received output has already been spent. The
-    /// data store should track a mapping from each nullifier to the block, transaction ID, and
-    /// input index where the nullifier was revealed, so that the state of a note received within
-    /// that "gap" can be properly updated when it is discovered.
+    /// data store should track a mapping from each nullifier to the block, the index of the
+    /// transaction in the block, and the transaction ID, so when a note is received within that
+    /// "gap" its spentness can be determined by checking in the store. For space efficiency, the
+    /// backing store may use the combination of block height and index within the block instead of
+    /// the txid for transaction identification.
     ///
     /// # Parameters
     /// - `block_height`: The height of the block containing the nullifiers.
