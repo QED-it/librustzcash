@@ -103,24 +103,30 @@ pub fn parse_min(i: &str, min: usize, is_hex: bool) -> nom::IResult<&str, Vec<u8
 
 /// One case-sensitive hexadecimal digit.
 #[repr(u8)]
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq, PartialOrd)]
 pub enum CaseSensitiveHexDigit {
-    Zero = 0,
-    One = 1,
-    Two = 2,
-    Three = 3,
-    Four = 4,
-    Five = 5,
-    Six = 6,
-    Seven = 7,
-    Eight = 8,
-    Nine = 9,
-    A { is_upper: bool } = 10,
-    B { is_upper: bool } = 11,
-    C { is_upper: bool } = 12,
-    D { is_upper: bool } = 13,
-    E { is_upper: bool } = 14,
-    F { is_upper: bool } = 15,
+    Zero,
+    One,
+    Two,
+    Three,
+    Four,
+    Five,
+    Six,
+    Seven,
+    Eight,
+    Nine,
+    UpperA,
+    UpperB,
+    UpperC,
+    UpperD,
+    UpperE,
+    UpperF,
+    LowerA,
+    LowerB,
+    LowerC,
+    LowerD,
+    LowerE,
+    LowerF,
 }
 
 impl core::fmt::Display for CaseSensitiveHexDigit {
@@ -136,18 +142,18 @@ impl core::fmt::Display for CaseSensitiveHexDigit {
             CaseSensitiveHexDigit::Seven => "7",
             CaseSensitiveHexDigit::Eight => "8",
             CaseSensitiveHexDigit::Nine => "9",
-            CaseSensitiveHexDigit::A { is_upper: false } => "a",
-            CaseSensitiveHexDigit::B { is_upper: false } => "b",
-            CaseSensitiveHexDigit::C { is_upper: false } => "c",
-            CaseSensitiveHexDigit::D { is_upper: false } => "d",
-            CaseSensitiveHexDigit::E { is_upper: false } => "e",
-            CaseSensitiveHexDigit::F { is_upper: false } => "f",
-            CaseSensitiveHexDigit::A { is_upper: true } => "A",
-            CaseSensitiveHexDigit::B { is_upper: true } => "B",
-            CaseSensitiveHexDigit::C { is_upper: true } => "C",
-            CaseSensitiveHexDigit::D { is_upper: true } => "D",
-            CaseSensitiveHexDigit::E { is_upper: true } => "E",
-            CaseSensitiveHexDigit::F { is_upper: true } => "F",
+            CaseSensitiveHexDigit::LowerA => "a",
+            CaseSensitiveHexDigit::LowerB => "b",
+            CaseSensitiveHexDigit::LowerC => "c",
+            CaseSensitiveHexDigit::LowerD => "d",
+            CaseSensitiveHexDigit::LowerE => "e",
+            CaseSensitiveHexDigit::LowerF => "f",
+            CaseSensitiveHexDigit::UpperA => "A",
+            CaseSensitiveHexDigit::UpperB => "B",
+            CaseSensitiveHexDigit::UpperC => "C",
+            CaseSensitiveHexDigit::UpperD => "D",
+            CaseSensitiveHexDigit::UpperE => "E",
+            CaseSensitiveHexDigit::UpperF => "F",
         })
     }
 }
@@ -168,18 +174,18 @@ impl CaseSensitiveHexDigit {
             '7' => CaseSensitiveHexDigit::Seven,
             '8' => CaseSensitiveHexDigit::Eight,
             '9' => CaseSensitiveHexDigit::Nine,
-            'a' => CaseSensitiveHexDigit::A { is_upper: false },
-            'b' => CaseSensitiveHexDigit::B { is_upper: false },
-            'c' => CaseSensitiveHexDigit::C { is_upper: false },
-            'd' => CaseSensitiveHexDigit::D { is_upper: false },
-            'e' => CaseSensitiveHexDigit::E { is_upper: false },
-            'f' => CaseSensitiveHexDigit::F { is_upper: false },
-            'A' => CaseSensitiveHexDigit::A { is_upper: true },
-            'B' => CaseSensitiveHexDigit::B { is_upper: true },
-            'C' => CaseSensitiveHexDigit::C { is_upper: true },
-            'D' => CaseSensitiveHexDigit::D { is_upper: true },
-            'E' => CaseSensitiveHexDigit::E { is_upper: true },
-            'F' => CaseSensitiveHexDigit::F { is_upper: true },
+            'a' => CaseSensitiveHexDigit::LowerA,
+            'b' => CaseSensitiveHexDigit::LowerB,
+            'c' => CaseSensitiveHexDigit::LowerC,
+            'd' => CaseSensitiveHexDigit::LowerD,
+            'e' => CaseSensitiveHexDigit::LowerE,
+            'f' => CaseSensitiveHexDigit::LowerF,
+            'A' => CaseSensitiveHexDigit::UpperA,
+            'B' => CaseSensitiveHexDigit::UpperB,
+            'C' => CaseSensitiveHexDigit::UpperC,
+            'D' => CaseSensitiveHexDigit::UpperD,
+            'E' => CaseSensitiveHexDigit::UpperE,
+            'F' => CaseSensitiveHexDigit::UpperF,
             character => NotAHexDigitSnafu { character }.fail()?,
         })
     }
@@ -226,15 +232,10 @@ impl HexDigits {
 
     /// Returns whether all alphabetic digits are lowercase.
     pub fn is_all_lowercase(&self) -> bool {
+        let uppers = CaseSensitiveHexDigit::UpperA..=CaseSensitiveHexDigit::UpperF;
         for digit in self.places.iter() {
-            match digit {
-                CaseSensitiveHexDigit::A { is_upper: true } => return false,
-                CaseSensitiveHexDigit::B { is_upper: true } => return false,
-                CaseSensitiveHexDigit::C { is_upper: true } => return false,
-                CaseSensitiveHexDigit::D { is_upper: true } => return false,
-                CaseSensitiveHexDigit::E { is_upper: true } => return false,
-                CaseSensitiveHexDigit::F { is_upper: true } => return false,
-                _ => {}
+            if uppers.contains(digit) {
+                return false;
             }
         }
         true
@@ -242,15 +243,10 @@ impl HexDigits {
 
     /// Returns whether all alphabetic digits are uppercase.
     pub fn is_all_uppercase(&self) -> bool {
+        let lowers = CaseSensitiveHexDigit::LowerA..=CaseSensitiveHexDigit::LowerF;
         for digit in self.places.iter() {
-            match digit {
-                CaseSensitiveHexDigit::A { is_upper: false } => return false,
-                CaseSensitiveHexDigit::B { is_upper: false } => return false,
-                CaseSensitiveHexDigit::C { is_upper: false } => return false,
-                CaseSensitiveHexDigit::D { is_upper: false } => return false,
-                CaseSensitiveHexDigit::E { is_upper: false } => return false,
-                CaseSensitiveHexDigit::F { is_upper: false } => return false,
-                _ => {}
+            if lowers.contains(digit) {
+                return false;
             }
         }
         true
