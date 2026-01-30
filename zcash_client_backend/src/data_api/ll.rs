@@ -325,7 +325,9 @@ pub trait LowLevelWalletWrite: LowLevelWalletRead {
     /// Updates the backing store to indicate that the Sapling output having the given nullifier is
     /// spent in the transaction referenced by `spent_in_tx`. This may result in multiple distinct
     /// transactions being recorded as having spent the note; only one of these transactions will
-    /// end up having been mined (by consensus.)
+    /// end up having been mined (by consensus). If an attempt is made to associate a nullifier
+    /// with a mined transaction, and another mined transaction reveals the same nullifier,
+    /// implementations of this method must return an error.
     ///
     /// Returns `Ok(true)` if a a new record was added to the data store.
     fn mark_sapling_note_spent(
@@ -369,7 +371,9 @@ pub trait LowLevelWalletWrite: LowLevelWalletRead {
     /// Updates the backing store to indicate that the Orchard output having the given nullifier is
     /// spent in the transaction referenced by `spent_in_tx`. This may result in multiple distinct
     /// transactions being recorded as having spent the note; only one of these transactions will
-    /// end up having been mined (by consensus.)
+    /// end up having been mined (by consensus). If an attempt is made to associate a nullifier
+    /// with a mined transaction, and another mined transaction reveals the same nullifier,
+    /// implementations of this method must return an error.
     ///
     /// Returns `Ok(true)` if a a new record was added to the data store.
     #[cfg(feature = "orchard")]

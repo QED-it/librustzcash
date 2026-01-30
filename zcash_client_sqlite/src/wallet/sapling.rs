@@ -239,16 +239,45 @@ pub(crate) fn mark_sapling_note_spent(
     tx_ref: TxRef,
     nf: &sapling::Nullifier,
 ) -> Result<bool, SqliteClientError> {
-    let mut stmt_mark_sapling_note_spent = conn.prepare_cached(
+    let sql_params = named_params![
+       ":nf": &nf.0[..],
+       ":transaction_id": tx_ref.0
+    ];
+    let has_collision = conn.query_row(
+        "WITH possible_conflicts AS (
+            SELECT s.transaction_id
+            FROM sapling_received_notes n
+            JOIN sapling_received_note_spends s ON s.sapling_received_note_id = n.id
+            JOIN transactions t ON t.id_tx = s.transaction_id
+            WHERE n.nf = :nf
+            AND t.id_tx != :transaction_id
+            AND t.mined_height IS NOT NULL
+        ),
+        mined_tx AS (
+            SELECT t.id_tx AS transaction_id
+            FROM transactions t
+            WHERE t.id_tx = :transaction_id
+            AND t.mined_height IS NOT NULL
+        )
+        SELECT EXISTS(SELECT 1 FROM possible_conflicts) AND EXISTS(SELECT 1 FROM mined_tx)",
+        sql_params,
+        |row| row.get::<_, bool>(0),
+    )?;
+
+    if has_collision {
+        return Err(SqliteClientError::CorruptedData(format!(
+            "A different mined transaction revealing Sapling nullifier {} already exists",
+            hex::encode(&nf.0[..])
+        )));
+    }
+
+    let mut stmt_mark_sapling_note_spent = conn.prepare(
         "INSERT INTO sapling_received_note_spends (sapling_received_note_id, transaction_id)
          SELECT id, :transaction_id FROM sapling_received_notes WHERE nf = :nf
          ON CONFLICT (sapling_received_note_id, transaction_id) DO NOTHING",
     )?;
 
-    match stmt_mark_sapling_note_spent.execute(named_params![
-       ":nf": &nf.0[..],
-       ":transaction_id": tx_ref.0
-    ])? {
+    match stmt_mark_sapling_note_spent.execute(sql_params)? {
         0 => Ok(false),
         1 => Ok(true),
         _ => unreachable!("nf column is marked as UNIQUE"),
