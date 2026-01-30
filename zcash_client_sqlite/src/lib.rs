@@ -1379,13 +1379,7 @@ impl<C: BorrowMut<rusqlite::Connection>, P: consensus::Parameters, CL: Clock, R:
             ll::wallet::put_blocks::<_, SqliteClientError, commitment_tree::Error>(
                 wdb, from_state, blocks,
             )
-            .map_err(|e| match e {
-                ll::wallet::PutBlocksError::NonSequentialBlocks { .. } => {
-                    SqliteClientError::NonSequentialBlocks
-                }
-                ll::wallet::PutBlocksError::Storage(e) => e,
-                ll::wallet::PutBlocksError::ShardTree(e) => SqliteClientError::from(e),
-            })
+            .map_err(SqliteClientError::from)
         })
     }
 
