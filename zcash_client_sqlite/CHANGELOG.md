@@ -10,6 +10,12 @@ workspace.
 
 ## [Unreleased]
 
+## [0.18.11] - 2026-01-29
+
+### Fixed
+- Migration no longer fails for wallets last written with certain older versions
+  of the crate.
+
 ## [0.18.10] - 2025-11-25
 
 ### Fixed

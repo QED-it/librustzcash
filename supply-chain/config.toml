@@ -847,10 +847,6 @@ criteria = "safe-to-deploy"
 version = "0.12.2"
 criteria = "safe-to-deploy"
 
-[[exemptions.pem-rfc7468]]
-version = "0.7.0"
-criteria = "safe-to-deploy"
-
 [[exemptions.petgraph]]
 version = "0.6.5"
 criteria = "safe-to-deploy"
@@ -937,14 +933,6 @@ criteria = "safe-to-deploy"
 
 [[exemptions.proc-macro-crate]]
 version = "1.2.1"
-criteria = "safe-to-deploy"
-
-[[exemptions.proc-macro-error-attr2]]
-version = "2.0.0"
-criteria = "safe-to-deploy"
-
-[[exemptions.proc-macro-error2]]
-version = "2.0.1"
 criteria = "safe-to-deploy"
 
 [[exemptions.proptest]]
