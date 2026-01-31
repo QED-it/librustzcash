@@ -10,7 +10,7 @@ workspace.
 
 ## [Unreleased]
 
-## [0.18.11] - 2026-01-29
+## [0.18.11, 0.19.2] - 2026-01-30
 
 ### Fixed
 - Migration no longer fails for wallets last written with certain older versions
