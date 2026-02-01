@@ -3,6 +3,7 @@
 use std::{borrow::Cow, collections::BTreeMap};
 
 use nom::{AsChar, Parser};
+use sha3::{Digest, Keccak256};
 use snafu::{OptionExt, ResultExt};
 
 use crate::error::*;
@@ -93,27 +94,117 @@ pub fn parse_min(i: &str, min: usize, is_hex: bool) -> nom::IResult<&str, Vec<u8
         data.len() >= min,
         DigitsMinimumSnafu {
             min,
-            digits: data,
+            digits_len: data.len(),
             input: i
         }
     );
     Ok((i, data))
 }
 
-/// Zero or more consecutive hexadecimal digits.
+/// One case-sensitive hexadecimal digit.
+#[repr(u8)]
+#[derive(Clone, Copy, Debug, PartialEq, PartialOrd)]
+pub enum CaseSensitiveHexDigit {
+    Zero,
+    One,
+    Two,
+    Three,
+    Four,
+    Five,
+    Six,
+    Seven,
+    Eight,
+    Nine,
+    UpperA,
+    UpperB,
+    UpperC,
+    UpperD,
+    UpperE,
+    UpperF,
+    LowerA,
+    LowerB,
+    LowerC,
+    LowerD,
+    LowerE,
+    LowerF,
+}
+
+impl core::fmt::Display for CaseSensitiveHexDigit {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(match self {
+            CaseSensitiveHexDigit::Zero => "0",
+            CaseSensitiveHexDigit::One => "1",
+            CaseSensitiveHexDigit::Two => "2",
+            CaseSensitiveHexDigit::Three => "3",
+            CaseSensitiveHexDigit::Four => "4",
+            CaseSensitiveHexDigit::Five => "5",
+            CaseSensitiveHexDigit::Six => "6",
+            CaseSensitiveHexDigit::Seven => "7",
+            CaseSensitiveHexDigit::Eight => "8",
+            CaseSensitiveHexDigit::Nine => "9",
+            CaseSensitiveHexDigit::LowerA => "a",
+            CaseSensitiveHexDigit::LowerB => "b",
+            CaseSensitiveHexDigit::LowerC => "c",
+            CaseSensitiveHexDigit::LowerD => "d",
+            CaseSensitiveHexDigit::LowerE => "e",
+            CaseSensitiveHexDigit::LowerF => "f",
+            CaseSensitiveHexDigit::UpperA => "A",
+            CaseSensitiveHexDigit::UpperB => "B",
+            CaseSensitiveHexDigit::UpperC => "C",
+            CaseSensitiveHexDigit::UpperD => "D",
+            CaseSensitiveHexDigit::UpperE => "E",
+            CaseSensitiveHexDigit::UpperF => "F",
+        })
+    }
+}
+
+impl CaseSensitiveHexDigit {
+    /// Attempt to create a new `CaseSensitiveHexDigit` from a character.
+    ///
+    /// Fails if `c` is not in `0..=9`, `a..=f` or `A..=F`.
+    pub fn from_char(c: char) -> Result<Self, ParseError<'static>> {
+        Ok(match c {
+            '0' => CaseSensitiveHexDigit::Zero,
+            '1' => CaseSensitiveHexDigit::One,
+            '2' => CaseSensitiveHexDigit::Two,
+            '3' => CaseSensitiveHexDigit::Three,
+            '4' => CaseSensitiveHexDigit::Four,
+            '5' => CaseSensitiveHexDigit::Five,
+            '6' => CaseSensitiveHexDigit::Six,
+            '7' => CaseSensitiveHexDigit::Seven,
+            '8' => CaseSensitiveHexDigit::Eight,
+            '9' => CaseSensitiveHexDigit::Nine,
+            'a' => CaseSensitiveHexDigit::LowerA,
+            'b' => CaseSensitiveHexDigit::LowerB,
+            'c' => CaseSensitiveHexDigit::LowerC,
+            'd' => CaseSensitiveHexDigit::LowerD,
+            'e' => CaseSensitiveHexDigit::LowerE,
+            'f' => CaseSensitiveHexDigit::LowerF,
+            'A' => CaseSensitiveHexDigit::UpperA,
+            'B' => CaseSensitiveHexDigit::UpperB,
+            'C' => CaseSensitiveHexDigit::UpperC,
+            'D' => CaseSensitiveHexDigit::UpperD,
+            'E' => CaseSensitiveHexDigit::UpperE,
+            'F' => CaseSensitiveHexDigit::UpperF,
+            character => NotAHexDigitSnafu { character }.fail()?,
+        })
+    }
+}
+
+/// Zero or more consecutive and case-sensitive hexadecimal digits.
 ///
 /// ```abnf
 /// *HEXDIG
 /// ```
 #[derive(Clone, Debug, PartialEq)]
 pub struct HexDigits {
-    places: Vec<u8>,
+    places: Vec<CaseSensitiveHexDigit>,
 }
 
 impl core::fmt::Display for HexDigits {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         for n in self.places.iter() {
-            f.write_fmt(format_args!("{n:x}"))?;
+            f.write_fmt(format_args!("{n}"))?;
         }
         Ok(())
     }
@@ -122,8 +213,97 @@ impl core::fmt::Display for HexDigits {
 impl HexDigits {
     /// Parse at least `min` digits.
     pub fn parse_min(i: &str, min: usize) -> nom::IResult<&str, Self, ParseError<'_>> {
-        let (i, places) = parse_min(i, min, true)?;
+        let (i, data) = nom::bytes::complete::take_while(|c: char| c.is_ascii_hexdigit())(i)?;
+        snafu::ensure!(
+            data.len() >= min,
+            DigitsMinimumSnafu {
+                min,
+                digits_len: data.len(),
+                input: i
+            }
+        );
+        let mut places = vec![];
+        for c in data.chars() {
+            let digit = CaseSensitiveHexDigit::from_char(c)?;
+            places.push(digit);
+        }
         Ok((i, HexDigits { places }))
+    }
+
+    /// Returns whether all alphabetic digits are lowercase.
+    pub fn is_all_lowercase(&self) -> bool {
+        let uppers = CaseSensitiveHexDigit::UpperA..=CaseSensitiveHexDigit::UpperF;
+        for digit in self.places.iter() {
+            if uppers.contains(digit) {
+                return false;
+            }
+        }
+        true
+    }
+
+    /// Returns whether all alphabetic digits are uppercase.
+    pub fn is_all_uppercase(&self) -> bool {
+        let lowers = CaseSensitiveHexDigit::LowerA..=CaseSensitiveHexDigit::LowerF;
+        for digit in self.places.iter() {
+            if lowers.contains(digit) {
+                return false;
+            }
+        }
+        true
+    }
+
+    /// Validates the digits as an Ethereum address according to ERC-55, if possible.   
+    pub fn validate_erc55(&self) -> Result<(), ValidationError> {
+        snafu::ensure!(
+            self.places.len() == 40,
+            IncorrectEthAddressLenSnafu {
+                len: self.places.len()
+            }
+        );
+
+        // Construct an ERC-55 checksummed address and compare that to the input
+        let address_input = self.to_string();
+        let address_lowercase = address_input.to_ascii_lowercase();
+        let address_hashed = hex::encode(Keccak256::digest(&address_lowercase));
+        let address_checksummed = address_lowercase
+            .chars()
+            .enumerate()
+            .map(|(i, c)| {
+                if c.is_ascii_digit() {
+                    c
+                } else {
+                    let should_uppercase = u8::from_str_radix(&address_hashed[i..i + 1], 16)
+                        .expect("Always a hexadecimal ASCII char")
+                        >= 8;
+                    if should_uppercase {
+                        c.to_uppercase().next().expect("Always the char")
+                    } else {
+                        c
+                    }
+                }
+            })
+            .collect::<String>();
+        snafu::ensure!(
+            address_input == address_checksummed,
+            Erc55ValidationSnafu {
+                reason: {
+                    // It's possible that this was not a checksummed address. It's pretty rare that a checksummed
+                    // address is all lowercase or all uppercase (a probability of 0.0004942706034105575)
+                    if self.is_all_lowercase() {
+                        Erc55ValidationFailureReason::AllLowercase
+                    } else if self.is_all_uppercase() {
+                        Erc55ValidationFailureReason::AllUppercase
+                    } else {
+                        Erc55ValidationFailureReason::ChecksumDoesNotMatch {
+                            expected: address_checksummed,
+                            saw: address_input,
+                        }
+                    }
+                }
+            }
+        );
+
+        Ok(())
     }
 }
 
@@ -389,7 +569,7 @@ impl EnsName {
     }
 }
 
-/// An Ethereum address.
+/// An Ethereum address, or an ENS name.
 ///
 /// ```abnf
 /// ethereum_address = ( "0x" 40*HEXDIG ) / ENS_NAME
@@ -397,30 +577,32 @@ impl EnsName {
 ///
 /// Where `ENS_NAME` is [`EnsName`].
 #[derive(Clone, Debug, PartialEq)]
-pub enum EthereumAddress {
-    Hex(HexDigits),
+pub enum EthereumAddressOrEnsName {
+    Address(HexDigits),
     Name(EnsName),
 }
 
-impl core::fmt::Display for EthereumAddress {
+impl core::fmt::Display for EthereumAddressOrEnsName {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            EthereumAddress::Hex(digits) => f.write_fmt(format_args!("0x{digits}")),
-            EthereumAddress::Name(name) => name.fmt(f),
+            EthereumAddressOrEnsName::Address(digits) => f.write_fmt(format_args!("0x{digits}")),
+            EthereumAddressOrEnsName::Name(name) => name.fmt(f),
         }
     }
 }
 
-impl EthereumAddress {
+impl EthereumAddressOrEnsName {
     /// Parse an `EthereumAddress`.
     pub fn parse(i: &str) -> nom::IResult<&str, Self, ParseError<'_>> {
         // Parse "0x" and then 40+ hex digits
-        fn parse_40plus_hex(i: &str) -> nom::IResult<&str, EthereumAddress, ParseError<'_>> {
+        fn parse_40plus_hex(
+            i: &str,
+        ) -> nom::IResult<&str, EthereumAddressOrEnsName, ParseError<'_>> {
             let (i, _) = nom::bytes::complete::tag("0x")(i)?;
             let (i, digits) = HexDigits::parse_min(i, 40)?;
-            Ok((i, EthereumAddress::Hex(digits)))
+            Ok((i, EthereumAddressOrEnsName::Address(digits)))
         }
-        let parse_ens = EnsName::parse.map(EthereumAddress::Name);
+        let parse_ens = EnsName::parse.map(EthereumAddressOrEnsName::Name);
         let mut parse_address = parse_40plus_hex.or(parse_ens);
         let (i, address) = parse_address.parse(i)?;
         Ok((i, address))
@@ -470,7 +652,7 @@ impl UrlEncodedUnicodeString {
 #[derive(Clone, Debug, PartialEq)]
 pub enum Value {
     Number(Number),
-    Address(EthereumAddress),
+    Address(EthereumAddressOrEnsName),
     String(UrlEncodedUnicodeString),
 }
 
@@ -492,7 +674,7 @@ impl Value {
     /// ```
     pub fn parse(i: &str) -> nom::IResult<&str, Self, ParseError<'_>> {
         let mut number = Number::parse.map(Value::Number);
-        let mut ethereum_address = EthereumAddress::parse.map(Value::Address);
+        let mut ethereum_address = EthereumAddressOrEnsName::parse.map(Value::Address);
         let mut string = UrlEncodedUnicodeString::parse.map(Value::String);
 
         // Here there are some interesting corner cases:
@@ -868,7 +1050,7 @@ impl SchemaPrefix {
 #[derive(Debug, PartialEq)]
 pub struct EthereumTransactionRequest {
     pub schema_prefix: SchemaPrefix,
-    pub target_address: EthereumAddress,
+    pub target_address: EthereumAddressOrEnsName,
     pub chain_id: Option<Digits>,
     pub function_name: Option<UrlEncodedUnicodeString>,
     pub parameters: Parameters,
@@ -907,7 +1089,8 @@ impl EthereumTransactionRequest {
     pub fn parse(i: &str) -> nom::IResult<&str, Self, ParseError<'_>> {
         let (i, schema_prefix) = SchemaPrefix::parse(i)?;
         let (i, address_blob) = nom::bytes::complete::is_not("@/?")(i)?;
-        let (remaining_address_input, target_address) = EthereumAddress::parse(address_blob)?;
+        let (remaining_address_input, target_address) =
+            EthereumAddressOrEnsName::parse(address_blob)?;
         snafu::ensure!(
             remaining_address_input.is_empty(),
             UnexpectedLeftoverInputSnafu {
@@ -985,9 +1168,17 @@ mod test {
         arb_digits_in(min_digits..=Digits::MAX_PLACES)
     }
 
+    fn arb_case_sensitive_hex_digit() -> impl Strategy<Value = CaseSensitiveHexDigit> {
+        const HEX_CHARS: &[RangeInclusive<char>] = &['0'..='9', 'a'..='f', 'A'..='F'];
+        prop::char::ranges(Cow::Borrowed(HEX_CHARS)).prop_map(|c| {
+            CaseSensitiveHexDigit::from_char(c).expect("always valid within these ranges")
+        })
+    }
+
     fn arb_hex_digits(min_digits: usize, max_digits: usize) -> impl Strategy<Value = HexDigits> {
         let size_range = min_digits..=max_digits;
-        prop::collection::vec(0..16u8, size_range).prop_map(|places| HexDigits { places })
+        prop::collection::vec(arb_case_sensitive_hex_digit(), size_range)
+            .prop_map(|places| HexDigits { places })
     }
 
     proptest! {
@@ -1225,23 +1416,24 @@ mod test {
     #[test]
     fn hex_address_zero_sanity() {
         let input = "0x0000000000000000000000000000000000000000";
-        let (output, addy) = EthereumAddress::parse(input).unwrap();
+        let (output, addy) = EthereumAddressOrEnsName::parse(input).unwrap();
         assert_eq!("", output, "output was not fully consumed");
         assert_eq!(
-            EthereumAddress::Hex(HexDigits {
-                places: [0; 40].to_vec()
+            EthereumAddressOrEnsName::Address(HexDigits {
+                places: [CaseSensitiveHexDigit::from_char('0').expect("always valid"); 40].to_vec()
             }),
             addy
         );
         assert_eq!(input, &format!("{addy}"));
     }
 
-    fn arb_eth_addy() -> impl Strategy<Value = EthereumAddress> {
-        let hexes: BoxedStrategy<EthereumAddress> = arb_hex_digits(40, 40)
-            .prop_map(EthereumAddress::Hex)
+    fn arb_eth_addy() -> impl Strategy<Value = EthereumAddressOrEnsName> {
+        let hexes: BoxedStrategy<EthereumAddressOrEnsName> = arb_hex_digits(40, 40)
+            .prop_map(EthereumAddressOrEnsName::Address)
             .boxed();
-        let names: BoxedStrategy<EthereumAddress> =
-            arb_happy_ens_name().prop_map(EthereumAddress::Name).boxed();
+        let names: BoxedStrategy<EthereumAddressOrEnsName> = arb_happy_ens_name()
+            .prop_map(EthereumAddressOrEnsName::Name)
+            .boxed();
         hexes.prop_union(names)
     }
 
@@ -1249,7 +1441,7 @@ mod test {
         #[test]
         fn parse_arb_eth_address(expected in arb_eth_addy()) {
             let input = expected.to_string();
-            let (rest, seen) = EthereumAddress::parse(&input).unwrap();
+            let (rest, seen) = EthereumAddressOrEnsName::parse(&input).unwrap();
             assert_eq!("", rest);
             assert_eq!(expected, seen);
         }
@@ -1432,7 +1624,7 @@ mod test {
     /// Parsing a value as an ENS name consumes more input than as a string, so ENS name should
     /// win.
     fn parse_value_ens_name_over_string() {
-        let expected = Value::Address(EthereumAddress::Name(EnsName("aa.a0".to_string())));
+        let expected = Value::Address(EthereumAddressOrEnsName::Name(EnsName("aa.a0".to_string())));
         let input = expected.to_string();
         let (_output, seen) = Value::parse(&input).unwrap();
         pretty_assertions::assert_eq!(expected, seen);
@@ -1524,8 +1716,8 @@ mod test {
     }
 
     proptest! {
-    #[test]
-    fn parse_arb_schema_prefix(expected in arb_schema_prefix()) {
+        #[test]
+        fn parse_arb_schema_prefix(expected in arb_schema_prefix()) {
             let input = expected.to_string();
             let (output, seen) = SchemaPrefix::parse(&input).unwrap();
             assert_eq!("", output);
@@ -1568,13 +1760,67 @@ mod test {
     fn test_vectors_eip_681() {
         let input = "ethereum:0xfb6916095ca1df60bb79Ce92ce3ea74c37c5d359?value=2.014e18";
         let (_, seen) = EthereumTransactionRequest::parse(input).unwrap();
+        // Ensure the address is case-sensitive
         pretty_assertions::assert_eq!(
-            "0xfb6916095ca1df60bb79ce92ce3ea74c37c5d359",
+            "0xfb6916095ca1df60bb79Ce92ce3ea74c37c5d359",
             seen.target_address.to_string()
         );
         let number = seen.parameters.value().unwrap().unwrap();
         assert_eq!(2, number.integer().unwrap());
         assert_eq!(2.014e18 as i128, number.as_i128().unwrap());
+    }
+
+    #[test]
+    /// ERC-55 checksum test vectors
+    fn test_vectors_erc_55() {
+        // From https://eips.ethereum.org/EIPS/eip-55#test-cases
+        let addresses = [
+            // All caps
+            "52908400098527886E0F7030069857D2E4169EE7",
+            "8617E340B3D01FA5F11F306F4090FD50E238070D",
+            // All Lower
+            "de709f2102306220921060314715629080e2fb77",
+            "27b1fdb04752bbc536007a920d24acb045561c26",
+            // Normal
+            "5aAeb6053F3E94C9b9A09f33669435E7Ef1BeAed",
+            "fB6916095ca1df60bB79Ce92cE3Ea74c37c5d359",
+            "dbF03B407c01E7cD3CBea99509d93f8DDDC8C6FB",
+            "D1220A0cf47c7B9Be7A2E6BA89F429762e7b9aDb",
+        ];
+
+        for addy in addresses {
+            let (i, hexdigits) = HexDigits::parse_min(addy, 40).unwrap();
+            assert!(i.is_empty(), "Should consume all input");
+            let validation_result = hexdigits.validate_erc55();
+            assert!(
+                validation_result.is_ok(),
+                "ERC-55 validation failed: {}",
+                validation_result.err().unwrap()
+            );
+        }
+
+        // These should fail, as they are the "Normal" cases above, with borked casing
+        let borked_cases = [
+            // Select chars with changed case
+            "5aAeb6053F3E94C9b9A09f33669435E7Ef1BeAEd",
+            "fb6916095ca1df60bB79Ce92cE3Ea74c37c5d359",
+            "dbF03B407C01E7cD3CBea99509d93f8DDDC8C6FB",
+            "D1220A0cf47c7B9BE7A2E6Ba89F429762e7b9aDb",
+            // All lower
+            "d1220a0cf47c7b9be7a2e6ba89f429762e7b9adb",
+            // All upper
+            "D1220A0CF47C7B9BE7A2E6BA89F429762E7B9ADB",
+        ];
+
+        for addy in borked_cases {
+            let (i, hexdigits) = HexDigits::parse_min(addy, 40).unwrap();
+            assert!(i.is_empty(), "Should consume all input");
+            let validation_result = hexdigits.validate_erc55();
+            assert!(
+                validation_result.is_err(),
+                "ERC-55 validation should have failed",
+            );
+        }
     }
 
     #[test]

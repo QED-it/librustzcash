@@ -21,15 +21,18 @@ pub enum ParseError<'a> {
 
     /// The number of digits did not match or exceed the expected minimum.
     #[snafu(display(
-        "Expected at least {min} digits, saw {} before {}",
-        digits.len(),
+        "Expected at least {min} digits, saw {digits_len} before {}",
         input.split_at(10).0
     ))]
     DigitsMinimum {
         min: usize,
-        digits: Vec<u8>,
+        digits_len: usize,
         input: &'a str,
     },
+
+    /// The character is not a hexadecimal digit.
+    #[snafu(display("The character '{character}' was expected to be hexadecimal, but isn't."))]
+    NotAHexDigit { character: char },
 
     /// The ENS name was expected and missing.
     #[snafu(display("Missing ENS name"))]
@@ -88,12 +91,29 @@ impl<'a> From<ParseError<'a>> for nom::Err<ParseError<'a>> {
     }
 }
 
+/// All the reasons an ERC-55 check-summed address might fail validation.
+#[derive(Debug, PartialEq)]
+#[non_exhaustive]
+pub enum Erc55ValidationFailureReason {
+    /// The input failed validation, but is all lowercase, and may not have been check-summed.
+    AllLowercase,
+    /// The input failed validation, but is all upper, and may not have been check-summed.
+    AllUppercase,
+    /// The input failed validation.
+    ChecksumDoesNotMatch { expected: String, saw: String },
+}
+
 /// Errors discovered after parsing, usually when attempting to convert parsed
 /// types into numeric types.
 #[derive(Debug, Snafu, PartialEq)]
 #[non_exhaustive]
 #[snafu(visibility(pub(crate)))]
 pub enum ValidationError {
+    #[snafu(display(
+        "Incorrect number of digits for an ethereum address. Expected 40, saw {len}."
+    ))]
+    IncorrectEthAddressLen { len: usize },
+
     #[snafu(display("Exponent is too small, expected at least {expected}, saw {seen}"))]
     SmallExponent { expected: usize, seen: u64 },
 
@@ -121,5 +141,11 @@ pub enum ValidationError {
     MultipleParameterValues {
         key: &'static str,
         values: Vec<(&'static str, Value)>,
+    },
+
+    /// An Ethereum address failed ERC-55 checksum validation.
+    #[snafu(display("ERC-55 checksum validation failure: {reason:?}"))]
+    Erc55Validation {
+        reason: Erc55ValidationFailureReason,
     },
 }
