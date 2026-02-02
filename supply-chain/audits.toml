@@ -2225,7 +2225,7 @@ end = "2026-06-02"
 criteria = "safe-to-deploy"
 user-id = 6289 # Jack Grigg (str4d)
 start = "2020-06-25"
-end = "2025-10-22"
+end = "2027-02-02"
 
 [[trusted.zcash_client_sqlite]]
 criteria = "safe-to-deploy"

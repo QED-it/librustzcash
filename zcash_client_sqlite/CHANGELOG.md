@@ -20,6 +20,12 @@ workspace.
 ### Changed
 - Migrated to `orchard 0.12`, `sapling-crypto 0.6`.
 
+## [0.18.11, 0.19.2] - 2026-01-30
+
+### Fixed
+- Migration no longer fails for wallets last written with certain older versions
+  of the crate.
+
 ## [0.18.10, 0.19.1] - 2025-11-25
 
 ### Fixed
