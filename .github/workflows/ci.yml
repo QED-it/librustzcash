@@ -40,6 +40,9 @@ jobs:
             extra_flags: orchard transparent-inputs transparent-key-encoding
           - state: all-features
             all-features: true
+
+          # For NU7, we are running with the zip-233 feature:
+          # RUSTFLAGS='--cfg zcash_unstable="nu7"' cargo test --features zip-233
           - state: NU7
             all-features: true
             extra_flags: zip-233
@@ -108,6 +111,9 @@ jobs:
             extra_flags: orchard transparent-inputs transparent-key-encoding
           - state: all-features
             all-features: true
+
+          # For NU7, we are running with the zip-233 feature:
+          # RUSTFLAGS='--cfg zcash_unstable="nu7"' cargo test --features zip-233
           - state: NU7
             all-features: true
             extra_flags: zip-233
@@ -182,6 +188,9 @@ jobs:
             extra_flags: orchard
           - state: all-features
             all-features: true
+
+          # For NU7, we are running with the zip-233 feature:
+          # RUSTFLAGS='--cfg zcash_unstable="nu7"' cargo test --features zip-233
           - state: NU7
             all-features: true
             extra_flags: zip-233
