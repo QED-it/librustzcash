@@ -1067,9 +1067,6 @@ pub(crate) fn excluding_immature_coinbase_outputs(tx: &str) -> String {
         r#"
         NOT (
             -- the output is a coinbase output
-            -- -- TODO(schell): After https://github.com/zcash/librustzcash/pull/2036 merges we may be able
-            -- -- to simplify this query to:
-            -- -- {tx}.tx_index == 0
             IFNULL({tx}.tx_index, 1) == 0
             -- the coinbase output is immature (< 100 confirmations)
             AND :target_height - {tx}.mined_height < {COINBASE_MATURITY_BLOCKS}

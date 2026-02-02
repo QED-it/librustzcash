@@ -4968,15 +4968,15 @@ pub fn receive_two_notes_with_same_value<T: ShieldedPoolTester>(
 }
 
 #[cfg(feature = "pczt")]
-fn build_coinbase_tx(
+fn build_transparent_coinbase_tx(
     network: &LocalNetwork,
-    target_height: BlockHeight,
+    target_height: TargetHeight,
     value: Zatoshis,
     recipient: TransparentAddress,
     miner_data: Option<PushValue>,
 ) -> zcash_primitives::transaction::builder::BuildResult {
     let build_config = BuildConfig::Coinbase { miner_data };
-    let mut builder = Builder::new(*network, target_height, build_config);
+    let mut builder = Builder::new(*network, BlockHeight::from(target_height), build_config);
 
     // Add transparent output to recipient
     builder.add_transparent_output(&recipient, value).unwrap();
@@ -5016,8 +5016,13 @@ pub fn immature_coinbase_outputs_are_excluded_from_note_selection<T: ShieldedPoo
     let coinbase_height = st.sapling_activation_height();
 
     // Construct the coinbase transaction and mine the block
-    let coinbase_build_result =
-        build_coinbase_tx(st.network(), coinbase_height, coinbase_value, t_addr, None);
+    let coinbase_build_result = build_transparent_coinbase_tx(
+        st.network(),
+        TargetHeight::from(coinbase_height),
+        coinbase_value,
+        t_addr,
+        None,
+    );
     let coinbase_tx = coinbase_build_result.transaction();
     let (h, _) = st.generate_next_block_from_tx(0, coinbase_tx);
     st.scan_cached_blocks(h, 1);
