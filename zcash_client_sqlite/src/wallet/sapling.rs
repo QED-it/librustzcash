@@ -8,18 +8,17 @@ use rusqlite::{Connection, Row, named_params, types::Value};
 
 use sapling::{self, Diversifier, Nullifier, Rseed};
 use zcash_client_backend::{
-    DecryptedOutput, TransferType,
     data_api::{
         Account, NullifierQuery, TargetValue,
+        ll::ReceivedSaplingOutput,
         wallet::{ConfirmationsPolicy, TargetHeight},
     },
-    wallet::{ReceivedNote, WalletSaplingOutput},
+    wallet::ReceivedNote,
 };
 use zcash_keys::keys::{UnifiedAddressRequest, UnifiedFullViewingKey};
 use zcash_protocol::{
     ShieldedProtocol, TxId,
     consensus::{self, BlockHeight},
-    memo::MemoBytes,
 };
 use zip32::Scope;
 
@@ -28,82 +27,6 @@ use crate::{AccountRef, AccountUuid, AddressRef, ReceivedNoteId, TxRef, error::S
 use super::{
     KeyScope, common::UnspentNoteMeta, get_account, get_account_ref, memo_repr, upsert_address,
 };
-
-/// This trait provides a generalization over shielded output representations.
-pub(crate) trait ReceivedSaplingOutput {
-    type AccountId;
-
-    fn index(&self) -> usize;
-    fn account_id(&self) -> Self::AccountId;
-    fn note(&self) -> &sapling::Note;
-    fn memo(&self) -> Option<&MemoBytes>;
-    fn is_change(&self) -> bool;
-    fn nullifier(&self) -> Option<&sapling::Nullifier>;
-    fn note_commitment_tree_position(&self) -> Option<Position>;
-    fn recipient_key_scope(&self) -> Option<Scope>;
-}
-
-impl<AccountId: Copy> ReceivedSaplingOutput for WalletSaplingOutput<AccountId> {
-    type AccountId = AccountId;
-
-    fn index(&self) -> usize {
-        self.index()
-    }
-    fn account_id(&self) -> Self::AccountId {
-        *WalletSaplingOutput::account_id(self)
-    }
-    fn note(&self) -> &sapling::Note {
-        WalletSaplingOutput::note(self)
-    }
-    fn memo(&self) -> Option<&MemoBytes> {
-        None
-    }
-    fn is_change(&self) -> bool {
-        WalletSaplingOutput::is_change(self)
-    }
-    fn nullifier(&self) -> Option<&sapling::Nullifier> {
-        self.nf()
-    }
-    fn note_commitment_tree_position(&self) -> Option<Position> {
-        Some(WalletSaplingOutput::note_commitment_tree_position(self))
-    }
-    fn recipient_key_scope(&self) -> Option<Scope> {
-        self.recipient_key_scope()
-    }
-}
-
-impl<AccountId: Copy> ReceivedSaplingOutput for DecryptedOutput<sapling::Note, AccountId> {
-    type AccountId = AccountId;
-
-    fn index(&self) -> usize {
-        self.index()
-    }
-    fn account_id(&self) -> Self::AccountId {
-        *self.account()
-    }
-    fn note(&self) -> &sapling::Note {
-        self.note()
-    }
-    fn memo(&self) -> Option<&MemoBytes> {
-        Some(self.memo())
-    }
-    fn is_change(&self) -> bool {
-        self.transfer_type() == TransferType::WalletInternal
-    }
-    fn nullifier(&self) -> Option<&sapling::Nullifier> {
-        None
-    }
-    fn note_commitment_tree_position(&self) -> Option<Position> {
-        None
-    }
-    fn recipient_key_scope(&self) -> Option<Scope> {
-        if self.transfer_type() == TransferType::WalletInternal {
-            Some(Scope::Internal)
-        } else {
-            Some(Scope::External)
-        }
-    }
-}
 
 pub(crate) fn to_received_note<P: consensus::Parameters>(
     params: &P,
@@ -316,16 +239,45 @@ pub(crate) fn mark_sapling_note_spent(
     tx_ref: TxRef,
     nf: &sapling::Nullifier,
 ) -> Result<bool, SqliteClientError> {
-    let mut stmt_mark_sapling_note_spent = conn.prepare_cached(
+    let sql_params = named_params![
+       ":nf": &nf.0[..],
+       ":transaction_id": tx_ref.0
+    ];
+    let has_collision = conn.query_row(
+        "WITH possible_conflicts AS (
+            SELECT s.transaction_id
+            FROM sapling_received_notes n
+            JOIN sapling_received_note_spends s ON s.sapling_received_note_id = n.id
+            JOIN transactions t ON t.id_tx = s.transaction_id
+            WHERE n.nf = :nf
+            AND t.id_tx != :transaction_id
+            AND t.mined_height IS NOT NULL
+        ),
+        mined_tx AS (
+            SELECT t.id_tx AS transaction_id
+            FROM transactions t
+            WHERE t.id_tx = :transaction_id
+            AND t.mined_height IS NOT NULL
+        )
+        SELECT EXISTS(SELECT 1 FROM possible_conflicts) AND EXISTS(SELECT 1 FROM mined_tx)",
+        sql_params,
+        |row| row.get::<_, bool>(0),
+    )?;
+
+    if has_collision {
+        return Err(SqliteClientError::CorruptedData(format!(
+            "A different mined transaction revealing Sapling nullifier {} already exists",
+            hex::encode(&nf.0[..])
+        )));
+    }
+
+    let mut stmt_mark_sapling_note_spent = conn.prepare(
         "INSERT INTO sapling_received_note_spends (sapling_received_note_id, transaction_id)
          SELECT id, :transaction_id FROM sapling_received_notes WHERE nf = :nf
          ON CONFLICT (sapling_received_note_id, transaction_id) DO NOTHING",
     )?;
 
-    match stmt_mark_sapling_note_spent.execute(named_params![
-       ":nf": &nf.0[..],
-       ":transaction_id": tx_ref.0
-    ])? {
+    match stmt_mark_sapling_note_spent.execute(sql_params)? {
         0 => Ok(false),
         1 => Ok(true),
         _ => unreachable!("nf column is marked as UNIQUE"),

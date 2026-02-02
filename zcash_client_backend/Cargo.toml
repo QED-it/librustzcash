@@ -40,7 +40,7 @@ pczt = { workspace = true, optional = true }
 # Dependencies exposed in a public API:
 # (Breaking upgrades to these require a breaking upgrade to this crate.)
 # - Data Access API
-time.workspace = true
+time = { workspace = true, features = ["std"] }
 nonempty.workspace = true
 
 # - CSPRNG
