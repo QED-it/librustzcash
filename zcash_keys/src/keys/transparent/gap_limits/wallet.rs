@@ -52,31 +52,29 @@ pub fn generate_address_list(
     range_to_store: Range<NonHardenedChildIndex>,
     require_key: bool,
 ) -> Result<Vec<(Address, TransparentAddress, NonHardenedChildIndex)>, AddressGenerationError> {
-    let mut address_list = Vec::<(Address, TransparentAddress, NonHardenedChildIndex)>::new();
-
-    if !account_uivk.has_transparent() {
-        if require_key {
-            return Err(AddressGenerationError::KeyNotAvailable(Typecode::P2pkh));
-        } else {
-            // No addresses to generate
-            return Ok(address_list);
-        }
-    }
+    let account_pubkey = if let Some(k) = account_ufvk.and_then(|ufvk| ufvk.transparent()) {
+        k
+    } else if matches!(
+        key_scope,
+        TransparentKeyScope::INTERNAL | TransparentKeyScope::EPHEMERAL
+    ) && require_key
+    {
+        return Err(AddressGenerationError::KeyNotAvailable(Typecode::P2pkh));
+    } else {
+        // No addresses to generate
+        return Ok(vec![]);
+    };
 
     let gen_addrs = |key_scope: TransparentKeyScope, index: NonHardenedChildIndex| match key_scope {
         TransparentKeyScope::EXTERNAL => generate_external_address(account_uivk, request, index),
         TransparentKeyScope::INTERNAL => {
-            let internal_address = account_ufvk
-                .and_then(|k| k.transparent())
-                .expect("presence of transparent key was checked above.")
+            let internal_address = account_pubkey
                 .derive_internal_ivk()?
                 .derive_address(index)?;
             Ok((Address::from(internal_address), internal_address))
         }
         TransparentKeyScope::EPHEMERAL => {
-            let ephemeral_address = account_ufvk
-                .and_then(|k| k.transparent())
-                .expect("presence of transparent key was checked above.")
+            let ephemeral_address = account_pubkey
                 .derive_ephemeral_ivk()?
                 .derive_ephemeral_address(index)?;
             Ok((Address::from(ephemeral_address), ephemeral_address))
@@ -86,12 +84,13 @@ pub fn generate_address_list(
         )),
     };
 
-    for transparent_child_index in NonHardenedChildRange::from(range_to_store) {
-        let (address, transparent_address) = gen_addrs(key_scope, transparent_child_index)?;
-        address_list.push((address, transparent_address, transparent_child_index));
-    }
-
-    Ok(address_list)
+    NonHardenedChildRange::from(range_to_store)
+        .into_iter()
+        .map(|transparent_child_index| {
+            let (address, transparent_address) = gen_addrs(key_scope, transparent_child_index)?;
+            Ok((address, transparent_address, transparent_child_index))
+        })
+        .collect::<Result<Vec<_>, _>>()
 }
 
 pub enum GapAddressesError<SE> {

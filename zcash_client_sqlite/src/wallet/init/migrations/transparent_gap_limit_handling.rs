@@ -145,7 +145,7 @@ pub(super) fn insert_initial_transparent_addrs<P: consensus::Parameters>(
         );
 
         generate_address_range_internal(
-            &conn,
+            conn,
             params,
             account_id,
             &uivk,
@@ -757,7 +757,7 @@ impl<P: consensus::Parameters, C: Clock, R: RngCore> RusqliteMigration for Migra
 
                 if let Some(gap_start) = find_gap_start(conn, account_id, key_scope, gap_limit)? {
                     generate_address_range_internal(
-                        &conn,
+                        conn,
                         &self.params,
                         account_id,
                         &uivk,
