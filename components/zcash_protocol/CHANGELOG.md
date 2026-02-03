@@ -12,6 +12,7 @@ workspace.
 
 ### Added
 - `zcash_protocol::consensus::TxIndex`
+- `zcash_protocol::consensus::COINBASE_MATURITY_BLOCKS`
 
 ## [0.7.2] - 2025-12-10
 
