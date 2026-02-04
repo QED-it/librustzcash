@@ -5,7 +5,9 @@ use schemerz_rusqlite::RusqliteMigration;
 use std::collections::HashSet;
 use uuid::Uuid;
 
-use zcash_primitives::transaction::{Transaction, builder::DEFAULT_TX_EXPIRY_DELTA};
+#[cfg(feature = "transparent-inputs")]
+use zcash_primitives::transaction::Transaction;
+use zcash_primitives::transaction::builder::DEFAULT_TX_EXPIRY_DELTA;
 use zcash_protocol::consensus;
 
 use crate::wallet::init::WalletMigrationError;

@@ -37,10 +37,12 @@ use nonempty::NonEmpty;
 use rand::RngCore;
 use secrecy::{ExposeSecret, SecretVec};
 use shardtree::{ShardTree, error::ShardTreeError, store::ShardStore};
+#[cfg(feature = "transparent-inputs")]
+use std::collections::HashSet;
 use std::{
     borrow::{Borrow, BorrowMut},
     cmp::{max, min},
-    collections::{HashMap, HashSet},
+    collections::HashMap,
     convert::AsRef,
     fmt,
     num::NonZeroU32,
