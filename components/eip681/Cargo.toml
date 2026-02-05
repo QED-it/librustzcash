@@ -17,6 +17,9 @@ categories.workspace = true
 # - Error handling
 snafu = "0.8.6"
 
+# - Large integers
+primitive-types = { version = "0.12", default-features = false }
+
 # - Parsing and Encoding
 base64.workspace = true
 ens-normalize-rs = "0.1.1"

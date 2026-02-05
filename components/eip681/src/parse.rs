@@ -3,6 +3,7 @@
 use std::{borrow::Cow, collections::BTreeMap};
 
 use nom::{AsChar, Parser};
+use primitive_types::U256;
 use sha3::{Digest, Keccak256};
 use snafu::{OptionExt, ResultExt};
 
@@ -57,6 +58,22 @@ impl Digits {
                 .checked_mul(10)
                 .context(OverflowSnafu)?
                 .checked_add(*digit as u64)
+                .context(OverflowSnafu)?;
+        }
+        Ok(total)
+    }
+
+    /// Returns the [`U256`] representation.
+    ///
+    /// ## Errors
+    /// Errors if internal arithmetic operations overflow.
+    pub fn as_uint256(&self) -> Result<U256, ValidationError> {
+        let mut total = U256::zero();
+        for digit in &self.places {
+            total = total
+                .checked_mul(U256::from(10u64))
+                .context(OverflowSnafu)?
+                .checked_add(U256::from(*digit))
                 .context(OverflowSnafu)?;
         }
         Ok(total)
@@ -491,6 +508,76 @@ impl Number {
             .checked_add(multiplied_decimal)
             .context(OverflowSnafu)?;
         signum.checked_mul(value).context(OverflowSnafu)
+    }
+
+    /// Convert this [`Number`] into a [`U256`], if possible.
+    ///
+    /// ## Errors
+    /// - Returns [`NegativeValueForUnsignedType`](ValidationError::NegativeValueForUnsignedType)
+    ///   if the number has a negative sign
+    /// - Returns [`Overflow`](ValidationError::Overflow) if internal arithmetic operations overflow
+    /// - Returns [`SmallExponent`](ValidationError::SmallExponent) if the exponent doesn't cover
+    ///   all non-zero decimal places (i.e., would require truncating non-zero decimal digits)
+    pub fn as_uint256(&self) -> Result<U256, ValidationError> {
+        // Reject negative numbers - U256 is unsigned
+        snafu::ensure!(
+            self.signum.is_none_or(|b| b),
+            NegativeValueForUnsignedTypeSnafu
+        );
+
+        let integer = self.integer.as_uint256()?;
+        let decimal_numerator = self
+            .decimal
+            .as_ref()
+            .map(|d| d.as_uint256())
+            .transpose()?
+            .unwrap_or(U256::zero());
+        let decimal_places: u32 = self
+            .decimal
+            .as_ref()
+            .map(|d| d.places.len())
+            .unwrap_or(0)
+            .try_into()
+            .context(IntegerSnafu)?;
+        let exp: u32 = self
+            .exponent
+            .as_ref()
+            .and_then(|(_, maybe_exp)| maybe_exp.as_ref().map(|digits| digits.as_u64()))
+            .transpose()?
+            .unwrap_or(0)
+            .try_into()
+            .context(IntegerSnafu)?;
+
+        let multiplier = U256::from(10u64)
+            .checked_pow(U256::from(exp))
+            .context(OverflowSnafu)?;
+
+        // The exponent must be >= the number of decimal places to yield an integer result.
+        let decimal_exp = exp
+            .checked_sub(decimal_places)
+            .with_context(|| SmallExponentSnafu {
+                expected: decimal_places as usize,
+                seen: exp,
+            });
+
+        // Formula: (integer * 10^exp) + (decimal_numerator * 10^(exp - decimal_places))
+        let multiplied_integer = integer.checked_mul(multiplier).context(OverflowSnafu)?;
+
+        let decimal_multiplier = match decimal_exp {
+            Ok(d) => U256::from(10u64)
+                .checked_pow(U256::from(d))
+                .context(OverflowSnafu)?,
+            Err(_) if decimal_numerator.is_zero() => U256::zero(),
+            Err(e) => return Err(e),
+        };
+
+        let multiplied_decimal = decimal_numerator
+            .checked_mul(decimal_multiplier)
+            .context(OverflowSnafu)?;
+
+        multiplied_integer
+            .checked_add(multiplied_decimal)
+            .context(OverflowSnafu)
     }
 }
 
@@ -1160,6 +1247,29 @@ mod test {
         assert_eq!((666, 1000), digits.as_decimal_ratio().unwrap());
     }
 
+    #[test]
+    fn digits_as_uint256_sanity() {
+        let digits = Digits {
+            places: vec![1, 2, 3],
+        };
+        assert_eq!(U256::from(123u64), digits.as_uint256().unwrap());
+    }
+
+    #[test]
+    fn digits_as_uint256_large_value() {
+        // 30 digits - larger than u64::MAX but fits in U256
+        // 123456789012345678901234567890
+        let digits = Digits {
+            places: vec![
+                1, 2, 3, 4, 5, 6, 7, 8, 9, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 0, 1, 2, 3, 4, 5, 6, 7, 8,
+                9, 0,
+            ],
+        };
+        let result = digits.as_uint256().unwrap();
+        // Verify it's larger than u64::MAX
+        assert!(result > U256::from(u64::MAX));
+    }
+
     fn arb_digits_in(size_range: RangeInclusive<usize>) -> impl Strategy<Value = Digits> {
         prop::collection::vec(0..10u8, size_range).prop_map(|places| Digits { places })
     }
@@ -1229,6 +1339,54 @@ mod test {
         assert_eq!(0, n.as_i128().unwrap());
     }
 
+    #[test]
+    fn number_as_uint256_sanity() {
+        let (_, n) = Number::parse("666.0").unwrap();
+        assert_eq!(U256::from(666u64), n.as_uint256().unwrap());
+    }
+
+    #[test]
+    fn number_as_uint256_large_value() {
+        // 2.014e18 - typical ERC-20 amount with 18 decimals
+        let (_, n) = Number::parse("2.014e18").unwrap();
+        assert_eq!(
+            U256::from(2_014_000_000_000_000_000u64),
+            n.as_uint256().unwrap()
+        );
+    }
+
+    #[test]
+    fn number_as_uint256_exceeds_i128() {
+        // Value larger than i128::MAX (~1.7e38), should work with U256
+        let (_, n) = Number::parse("1e39").unwrap();
+        let result = n.as_uint256().unwrap();
+        assert!(result > U256::from(i128::MAX as u128));
+    }
+
+    #[test]
+    fn number_as_uint256_negative_fails() {
+        let (_, n) = Number::parse("-100").unwrap();
+        assert_eq!(
+            Err(ValidationError::NegativeValueForUnsignedType),
+            n.as_uint256()
+        );
+    }
+
+    #[test]
+    fn number_as_uint256_positive_sign_works() {
+        let (_, n) = Number::parse("+100").unwrap();
+        assert_eq!(U256::from(100u64), n.as_uint256().unwrap());
+    }
+
+    #[test]
+    fn number_as_uint256_very_large_integer() {
+        // A number with 30 digits in the integer part (exceeds u64::MAX)
+        let (_, n) = Number::parse("123456789012345678901234567890").unwrap();
+        let result = n.as_uint256().unwrap();
+        // Verify it's larger than u64::MAX
+        assert!(result > U256::from(u64::MAX));
+    }
+
     fn arb_valid_number() -> impl Strategy<Value = Number> {
         (
             prop::option::of(any::<bool>()),
@@ -1276,6 +1434,19 @@ mod test {
         #[test]
         fn arb_valid_number_sanity(number in arb_valid_number()) {
             assert!(number.as_i128().is_ok());
+        }
+    }
+
+    proptest! {
+        #[test]
+        fn arb_valid_non_negative_number_as_uint256(number in arb_valid_number()) {
+            // Skip negative numbers
+            if number.signum != Some(false) {
+                let n_uint256 = number.as_uint256().unwrap();
+                // This is safe because `arb_valid_number` only creates digits with 4 places
+                let n_u128 = number.as_i128().unwrap() as u128;
+                assert_eq!(U256::from(n_u128), n_uint256);
+            }
         }
     }
 
