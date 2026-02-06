@@ -17,7 +17,7 @@ use zcash_protocol::{
 };
 
 use crate::{
-    TransferType,
+    DecryptedOutput, TransferType,
     data_api::{
         DecryptedTransaction, SAPLING_SHARD_HEIGHT, ScannedBlock, TransactionStatus,
         WalletCommitmentTrees, chain::ChainState,
@@ -29,7 +29,7 @@ use super::{LowLevelWalletRead, LowLevelWalletWrite, TxMeta};
 
 #[cfg(feature = "transparent-inputs")]
 use {
-    crate::{data_api::ll::ReceivedSaplingOutput as _, wallet::WalletTransparentOutput},
+    crate::wallet::WalletTransparentOutput,
     std::collections::HashSet,
     transparent::{bundle::OutPoint, keys::TransparentKeyScope},
     zcash_keys::keys::{ReceiverRequirement, UnifiedAddressRequest},
@@ -42,9 +42,6 @@ use {
     shardtree::store::{Checkpoint, ShardStore as _},
     std::collections::BTreeMap,
 };
-
-#[cfg(all(feature = "orchard", feature = "transparent-inputs"))]
-use crate::data_api::ll::ReceivedOrchardOutput as _;
 
 /// The maximum number of blocks the wallet is allowed to rewind. This is
 /// consistent with the bound in zcashd, and allows block data deeper than
@@ -648,97 +645,6 @@ where
         wallet_db.set_transaction_status(d_tx.tx().txid(), TransactionStatus::Mined(height))?;
     }
 
-    // A flag used to determine whether it is necessary to query for transactions that
-    // provided transparent inputs to this transaction, in order to be able to correctly
-    // recover transparent transaction history.
-    #[cfg(feature = "transparent-inputs")]
-    let mut tx_has_wallet_outputs = false;
-
-    // The set of account/scope pairs for which to update the gap limit.
-    #[cfg(feature = "transparent-inputs")]
-    let mut gap_update_set = HashSet::new();
-
-    for output in d_tx.sapling_outputs() {
-        #[cfg(feature = "transparent-inputs")]
-        {
-            tx_has_wallet_outputs = true;
-        }
-        match output.transfer_type() {
-            TransferType::Outgoing => {
-                let recipient = {
-                    let receiver = Receiver::Sapling(output.note().recipient());
-                    let recipient_address = wallet_db
-                        .select_receiving_address(*output.account(), &receiver)?
-                        .unwrap_or_else(|| receiver.to_zcash_address(params.network_type()));
-
-                    Recipient::External {
-                        recipient_address,
-                        output_pool: PoolType::SAPLING,
-                    }
-                };
-
-                wallet_db.put_sent_output(
-                    *output.account(),
-                    tx_ref,
-                    output.index(),
-                    &recipient,
-                    output.note_value(),
-                    Some(output.memo()),
-                )?;
-            }
-            TransferType::WalletInternal => {
-                wallet_db.put_received_sapling_note(output, tx_ref, d_tx.mined_height(), None)?;
-
-                let recipient = Recipient::InternalAccount {
-                    receiving_account: *output.account(),
-                    external_address: None,
-                    note: Box::new(Note::Sapling(output.note().clone())),
-                };
-
-                wallet_db.put_sent_output(
-                    *output.account(),
-                    tx_ref,
-                    output.index(),
-                    &recipient,
-                    output.note_value(),
-                    Some(output.memo()),
-                )?;
-            }
-            TransferType::Incoming => {
-                wallet_db.put_received_sapling_note(output, tx_ref, d_tx.mined_height(), None)?;
-
-                #[cfg(feature = "transparent-inputs")]
-                gap_update_set.insert((output.account_id(), TransparentKeyScope::EXTERNAL));
-
-                if let Some(account_id) = funding_account {
-                    let recipient = Recipient::InternalAccount {
-                        receiving_account: *output.account(),
-                        external_address: {
-                            let receiver = Receiver::Sapling(output.note().recipient());
-                            Some(
-                                wallet_db
-                                    .select_receiving_address(*output.account(), &receiver)?
-                                    .unwrap_or_else(|| {
-                                        receiver.to_zcash_address(params.network_type())
-                                    }),
-                            )
-                        },
-                        note: Box::new(Note::Sapling(output.note().clone())),
-                    };
-
-                    wallet_db.put_sent_output(
-                        account_id,
-                        tx_ref,
-                        output.index(),
-                        &recipient,
-                        output.note_value(),
-                        Some(output.memo()),
-                    )?;
-                }
-            }
-        }
-    }
-
     // Mark Sapling notes as spent when we observe their nullifiers.
     for spend in d_tx
         .tx()
@@ -747,89 +653,6 @@ where
         .flat_map(|b| b.shielded_spends().iter())
     {
         wallet_db.mark_sapling_note_spent(spend.nullifier(), tx_ref)?;
-    }
-
-    #[cfg(feature = "orchard")]
-    for output in d_tx.orchard_outputs() {
-        #[cfg(feature = "transparent-inputs")]
-        {
-            tx_has_wallet_outputs = true;
-        }
-        match output.transfer_type() {
-            TransferType::Outgoing => {
-                let recipient = {
-                    let receiver = Receiver::Orchard(output.note().recipient());
-                    let recipient_address = wallet_db
-                        .select_receiving_address(*output.account(), &receiver)?
-                        .unwrap_or_else(|| receiver.to_zcash_address(params.network_type()));
-
-                    Recipient::External {
-                        recipient_address,
-                        output_pool: PoolType::ORCHARD,
-                    }
-                };
-
-                wallet_db.put_sent_output(
-                    *output.account(),
-                    tx_ref,
-                    output.index(),
-                    &recipient,
-                    output.note_value(),
-                    Some(output.memo()),
-                )?;
-            }
-            TransferType::WalletInternal => {
-                wallet_db.put_received_orchard_note(output, tx_ref, d_tx.mined_height(), None)?;
-
-                let recipient = Recipient::InternalAccount {
-                    receiving_account: *output.account(),
-                    external_address: None,
-                    note: Box::new(Note::Orchard(*output.note())),
-                };
-
-                wallet_db.put_sent_output(
-                    *output.account(),
-                    tx_ref,
-                    output.index(),
-                    &recipient,
-                    output.note_value(),
-                    Some(output.memo()),
-                )?;
-            }
-            TransferType::Incoming => {
-                wallet_db.put_received_orchard_note(output, tx_ref, d_tx.mined_height(), None)?;
-
-                #[cfg(feature = "transparent-inputs")]
-                gap_update_set.insert((output.account_id(), TransparentKeyScope::EXTERNAL));
-
-                if let Some(account_id) = funding_account {
-                    // Even if the recipient address is external, record the send as internal.
-                    let recipient = Recipient::InternalAccount {
-                        receiving_account: *output.account(),
-                        external_address: {
-                            let receiver = Receiver::Orchard(output.note().recipient());
-                            Some(
-                                wallet_db
-                                    .select_receiving_address(*output.account(), &receiver)?
-                                    .unwrap_or_else(|| {
-                                        receiver.to_zcash_address(params.network_type())
-                                    }),
-                            )
-                        },
-                        note: Box::new(Note::Orchard(*output.note())),
-                    };
-
-                    wallet_db.put_sent_output(
-                        account_id,
-                        tx_ref,
-                        output.index(),
-                        &recipient,
-                        output.note_value(),
-                        Some(output.memo()),
-                    )?;
-                }
-            }
-        }
     }
 
     // Mark Orchard notes as spent when we observe their nullifiers.
@@ -854,49 +677,84 @@ where
         wallet_db.mark_transparent_utxo_spent(txin.prevout(), tx_ref)?;
     }
 
+    // A flag used to determine whether it is necessary to query for transactions that
+    // provided transparent inputs to this transaction, in order to be able to correctly
+    // recover transparent transaction history.
     #[cfg(feature = "transparent-inputs")]
-    for (received_t_output, key_scope) in &wallet_transparent_outputs.received {
-        let (account_id, _) =
-            wallet_db.put_transparent_output(received_t_output, observed_height, false)?;
+    let mut tx_has_wallet_outputs = false;
+    #[cfg(feature = "transparent-inputs")]
+    {
+        tx_has_wallet_outputs |= !d_tx.sapling_outputs().is_empty();
 
-        if let Some(t_key_scope) = key_scope {
-            gap_update_set.insert((account_id, *t_key_scope));
+        #[cfg(feature = "orchard")]
+        {
+            tx_has_wallet_outputs |= !d_tx.orchard_outputs().is_empty();
         }
 
         // Since the wallet created the transparent output, we need to ensure
         // that any transparent inputs belonging to the wallet will be
         // discovered.
-        tx_has_wallet_outputs = true;
-
-        // When we receive transparent funds (particularly as ephemeral outputs
-        // in transaction pairs sending to a ZIP 320 address) it becomes
-        // possible that the spend of these outputs is not then later detected
-        // if the transaction that spends them is purely transparent. This is
-        // especially a problem in wallet recovery.
-        wallet_db.queue_transparent_spend_detection(
-            *received_t_output.recipient_address(),
-            tx_ref,
-            received_t_output.outpoint().n(),
-        )?;
-    }
-
-    for sent_t_output in &wallet_transparent_outputs.sent {
-        wallet_db.put_sent_output(
-            sent_t_output.from_account_uuid,
-            tx_ref,
-            sent_t_output.output_index,
-            &sent_t_output.recipient,
-            sent_t_output.value,
-            None,
-        )?;
+        tx_has_wallet_outputs |= !wallet_transparent_outputs.received.is_empty();
 
         // Even though we know the funding account, we don't know that we have
         // information for all of the transparent inputs to the transaction.
-        #[cfg(feature = "transparent-inputs")]
-        {
-            tx_has_wallet_outputs = true;
-        }
+        tx_has_wallet_outputs |= !wallet_transparent_outputs.sent.is_empty();
     }
+
+    // The set of account/scope pairs for which to update the gap limit.
+    #[cfg(feature = "transparent-inputs")]
+    let mut gap_update_set = HashSet::new();
+
+    put_shielded_outputs(
+        wallet_db,
+        params,
+        tx_ref,
+        funding_account,
+        d_tx.sapling_outputs(),
+        PoolType::SAPLING,
+        Note::Sapling,
+        |note| Receiver::Sapling(note.recipient()),
+        |output| output.note_value(),
+        |wallet_db, output, tx_ref| {
+            wallet_db.put_received_sapling_note(output, tx_ref, d_tx.mined_height(), None)
+        },
+        |_account_id| {
+            #[cfg(feature = "transparent-inputs")]
+            gap_update_set.insert((_account_id, TransparentKeyScope::EXTERNAL));
+        },
+    )?;
+
+    #[cfg(feature = "orchard")]
+    put_shielded_outputs(
+        wallet_db,
+        params,
+        tx_ref,
+        funding_account,
+        d_tx.orchard_outputs(),
+        PoolType::ORCHARD,
+        Note::Orchard,
+        |note| Receiver::Orchard(note.recipient()),
+        |output| output.note_value(),
+        |wallet_db, output, tx_ref| {
+            wallet_db.put_received_orchard_note(output, tx_ref, d_tx.mined_height(), None)
+        },
+        |_account_id| {
+            #[cfg(feature = "transparent-inputs")]
+            gap_update_set.insert((_account_id, TransparentKeyScope::EXTERNAL));
+        },
+    )?;
+
+    put_transparent_outputs(
+        wallet_db,
+        tx_ref,
+        &wallet_transparent_outputs,
+        #[cfg(feature = "transparent-inputs")]
+        |wallet_db, output| wallet_db.put_transparent_output(output, observed_height, false),
+        #[cfg(feature = "transparent-inputs")]
+        |account_id, t_key_scope| {
+            gap_update_set.insert((account_id, t_key_scope));
+        },
+    )?;
 
     // Regenerate the gap limit addresses.
     #[cfg(feature = "transparent-inputs")]
@@ -1045,4 +903,162 @@ where
     } else {
         Ok(WalletTransparentOutputs::empty())
     }
+}
+
+#[allow(clippy::too_many_arguments)]
+fn put_shielded_outputs<DbT, P, N>(
+    wallet_db: &mut DbT,
+    params: &P,
+    tx_ref: <DbT as LowLevelWalletRead>::TxRef,
+    funding_account: Option<DbT::AccountId>,
+    outputs: &[DecryptedOutput<N, <DbT as LowLevelWalletRead>::AccountId>],
+    output_pool: PoolType,
+    note: impl Fn(N) -> Note,
+    receiver: impl Fn(&N) -> Receiver,
+    value: impl Fn(&DecryptedOutput<N, <DbT as LowLevelWalletRead>::AccountId>) -> Zatoshis,
+    put_received_note: impl Fn(
+        &mut DbT,
+        &DecryptedOutput<N, <DbT as LowLevelWalletRead>::AccountId>,
+        <DbT as LowLevelWalletRead>::TxRef,
+    ) -> Result<(), <DbT as LowLevelWalletRead>::Error>,
+    mut on_external_account: impl FnMut(<DbT as LowLevelWalletRead>::AccountId),
+) -> Result<(), <DbT as LowLevelWalletRead>::Error>
+where
+    DbT: LowLevelWalletWrite,
+    P: consensus::Parameters,
+    N: Clone,
+{
+    for output in outputs {
+        match output.transfer_type() {
+            TransferType::Outgoing => {
+                let recipient = {
+                    let receiver = receiver(output.note());
+                    let recipient_address = wallet_db
+                        .select_receiving_address(*output.account(), &receiver)?
+                        .unwrap_or_else(|| receiver.to_zcash_address(params.network_type()));
+
+                    Recipient::External {
+                        recipient_address,
+                        output_pool,
+                    }
+                };
+
+                wallet_db.put_sent_output(
+                    *output.account(),
+                    tx_ref,
+                    output.index(),
+                    &recipient,
+                    value(output),
+                    Some(output.memo()),
+                )?;
+            }
+            TransferType::WalletInternal => {
+                put_received_note(wallet_db, output, tx_ref)?;
+
+                let recipient = Recipient::InternalAccount {
+                    receiving_account: *output.account(),
+                    external_address: None,
+                    note: Box::new(note(output.note().clone())),
+                };
+
+                wallet_db.put_sent_output(
+                    *output.account(),
+                    tx_ref,
+                    output.index(),
+                    &recipient,
+                    value(output),
+                    Some(output.memo()),
+                )?;
+            }
+            TransferType::Incoming => {
+                put_received_note(wallet_db, output, tx_ref)?;
+                on_external_account(*output.account());
+
+                if let Some(account_id) = funding_account {
+                    // Even if the recipient address is external, record the send as internal.
+                    let recipient = Recipient::InternalAccount {
+                        receiving_account: *output.account(),
+                        external_address: {
+                            let receiver = receiver(output.note());
+                            Some(
+                                wallet_db
+                                    .select_receiving_address(*output.account(), &receiver)?
+                                    .unwrap_or_else(|| {
+                                        receiver.to_zcash_address(params.network_type())
+                                    }),
+                            )
+                        },
+                        note: Box::new(note(output.note().clone())),
+                    };
+
+                    wallet_db.put_sent_output(
+                        account_id,
+                        tx_ref,
+                        output.index(),
+                        &recipient,
+                        value(output),
+                        Some(output.memo()),
+                    )?;
+                }
+            }
+        }
+    }
+
+    Ok(())
+}
+
+fn put_transparent_outputs<DbT>(
+    wallet_db: &mut DbT,
+    tx_ref: <DbT as LowLevelWalletRead>::TxRef,
+    outputs: &WalletTransparentOutputs<<DbT as LowLevelWalletRead>::AccountId>,
+    #[cfg(feature = "transparent-inputs")] put_received_output: impl Fn(
+        &mut DbT,
+        &WalletTransparentOutput,
+    ) -> Result<
+        (
+            <DbT as LowLevelWalletRead>::AccountId,
+            std::option::Option<TransparentKeyScope>,
+        ),
+        <DbT as LowLevelWalletRead>::Error,
+    >,
+    #[cfg(feature = "transparent-inputs")] mut on_received: impl FnMut(
+        <DbT as LowLevelWalletRead>::AccountId,
+        TransparentKeyScope,
+    ),
+) -> Result<(), <DbT as LowLevelWalletRead>::Error>
+where
+    DbT: LowLevelWalletWrite,
+{
+    #[cfg(feature = "transparent-inputs")]
+    for (received_t_output, key_scope) in &outputs.received {
+        let (account_id, _) = put_received_output(wallet_db, received_t_output)?;
+
+        if let Some(t_key_scope) = key_scope {
+            on_received(account_id, *t_key_scope);
+        }
+
+        // When we receive transparent funds (particularly as ephemeral outputs
+        // in transaction pairs sending to a ZIP 320 address) it becomes
+        // possible that the spend of these outputs is not then later detected
+        // if the transaction that spends them is purely transparent. This is
+        // especially a problem in wallet recovery.
+        wallet_db.queue_transparent_spend_detection(
+            *received_t_output.recipient_address(),
+            tx_ref,
+            received_t_output.outpoint().n(),
+        )?;
+    }
+
+    for sent_t_output in &outputs.sent {
+        wallet_db.put_sent_output(
+            sent_t_output.from_account_uuid,
+            tx_ref,
+            sent_t_output.output_index,
+            &sent_t_output.recipient,
+            sent_t_output.value,
+            None,
+        )?;
+    }
+
+    Ok(())
 }
