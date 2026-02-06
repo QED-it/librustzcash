@@ -744,37 +744,17 @@ where
         },
     )?;
 
-    #[cfg(feature = "transparent-inputs")]
-    for (received_t_output, key_scope) in &wallet_transparent_outputs.received {
-        let (account_id, _) =
-            wallet_db.put_transparent_output(received_t_output, observed_height, false)?;
-
-        if let Some(t_key_scope) = key_scope {
-            gap_update_set.insert((account_id, *t_key_scope));
-        }
-
-        // When we receive transparent funds (particularly as ephemeral outputs
-        // in transaction pairs sending to a ZIP 320 address) it becomes
-        // possible that the spend of these outputs is not then later detected
-        // if the transaction that spends them is purely transparent. This is
-        // especially a problem in wallet recovery.
-        wallet_db.queue_transparent_spend_detection(
-            *received_t_output.recipient_address(),
-            tx_ref,
-            received_t_output.outpoint().n(),
-        )?;
-    }
-
-    for sent_t_output in &wallet_transparent_outputs.sent {
-        wallet_db.put_sent_output(
-            sent_t_output.from_account_uuid,
-            tx_ref,
-            sent_t_output.output_index,
-            &sent_t_output.recipient,
-            sent_t_output.value,
-            None,
-        )?;
-    }
+    put_transparent_outputs(
+        wallet_db,
+        tx_ref,
+        &wallet_transparent_outputs,
+        #[cfg(feature = "transparent-inputs")]
+        |wallet_db, output| wallet_db.put_transparent_output(output, observed_height, false),
+        #[cfg(feature = "transparent-inputs")]
+        |account_id, t_key_scope| {
+            gap_update_set.insert((account_id, t_key_scope));
+        },
+    )?;
 
     // Regenerate the gap limit addresses.
     #[cfg(feature = "transparent-inputs")]
@@ -1022,6 +1002,62 @@ where
                 }
             }
         }
+    }
+
+    Ok(())
+}
+
+fn put_transparent_outputs<DbT>(
+    wallet_db: &mut DbT,
+    tx_ref: <DbT as LowLevelWalletRead>::TxRef,
+    outputs: &WalletTransparentOutputs<<DbT as LowLevelWalletRead>::AccountId>,
+    #[cfg(feature = "transparent-inputs")] put_received_output: impl Fn(
+        &mut DbT,
+        &WalletTransparentOutput,
+    ) -> Result<
+        (
+            <DbT as LowLevelWalletRead>::AccountId,
+            std::option::Option<TransparentKeyScope>,
+        ),
+        <DbT as LowLevelWalletRead>::Error,
+    >,
+    #[cfg(feature = "transparent-inputs")] mut on_received: impl FnMut(
+        <DbT as LowLevelWalletRead>::AccountId,
+        TransparentKeyScope,
+    ),
+) -> Result<(), <DbT as LowLevelWalletRead>::Error>
+where
+    DbT: LowLevelWalletWrite,
+{
+    #[cfg(feature = "transparent-inputs")]
+    for (received_t_output, key_scope) in &outputs.received {
+        let (account_id, _) = put_received_output(wallet_db, received_t_output)?;
+
+        if let Some(t_key_scope) = key_scope {
+            on_received(account_id, *t_key_scope);
+        }
+
+        // When we receive transparent funds (particularly as ephemeral outputs
+        // in transaction pairs sending to a ZIP 320 address) it becomes
+        // possible that the spend of these outputs is not then later detected
+        // if the transaction that spends them is purely transparent. This is
+        // especially a problem in wallet recovery.
+        wallet_db.queue_transparent_spend_detection(
+            *received_t_output.recipient_address(),
+            tx_ref,
+            received_t_output.outpoint().n(),
+        )?;
+    }
+
+    for sent_t_output in &outputs.sent {
+        wallet_db.put_sent_output(
+            sent_t_output.from_account_uuid,
+            tx_ref,
+            sent_t_output.output_index,
+            &sent_t_output.recipient,
+            sent_t_output.value,
+            None,
+        )?;
     }
 
     Ok(())
