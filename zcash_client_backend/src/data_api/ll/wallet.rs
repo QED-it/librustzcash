@@ -653,16 +653,30 @@ where
     // recover transparent transaction history.
     #[cfg(feature = "transparent-inputs")]
     let mut tx_has_wallet_outputs = false;
+    #[cfg(feature = "transparent-inputs")]
+    {
+        tx_has_wallet_outputs |= !d_tx.sapling_outputs().is_empty();
+
+        #[cfg(feature = "orchard")]
+        {
+            tx_has_wallet_outputs |= !d_tx.orchard_outputs().is_empty();
+        }
+
+        // Since the wallet created the transparent output, we need to ensure
+        // that any transparent inputs belonging to the wallet will be
+        // discovered.
+        tx_has_wallet_outputs |= !wallet_transparent_outputs.received.is_empty();
+
+        // Even though we know the funding account, we don't know that we have
+        // information for all of the transparent inputs to the transaction.
+        tx_has_wallet_outputs |= !wallet_transparent_outputs.sent.is_empty();
+    }
 
     // The set of account/scope pairs for which to update the gap limit.
     #[cfg(feature = "transparent-inputs")]
     let mut gap_update_set = HashSet::new();
 
     for output in d_tx.sapling_outputs() {
-        #[cfg(feature = "transparent-inputs")]
-        {
-            tx_has_wallet_outputs = true;
-        }
         match output.transfer_type() {
             TransferType::Outgoing => {
                 let recipient = {
@@ -751,10 +765,6 @@ where
 
     #[cfg(feature = "orchard")]
     for output in d_tx.orchard_outputs() {
-        #[cfg(feature = "transparent-inputs")]
-        {
-            tx_has_wallet_outputs = true;
-        }
         match output.transfer_type() {
             TransferType::Outgoing => {
                 let recipient = {
@@ -863,11 +873,6 @@ where
             gap_update_set.insert((account_id, *t_key_scope));
         }
 
-        // Since the wallet created the transparent output, we need to ensure
-        // that any transparent inputs belonging to the wallet will be
-        // discovered.
-        tx_has_wallet_outputs = true;
-
         // When we receive transparent funds (particularly as ephemeral outputs
         // in transaction pairs sending to a ZIP 320 address) it becomes
         // possible that the spend of these outputs is not then later detected
@@ -889,13 +894,6 @@ where
             sent_t_output.value,
             None,
         )?;
-
-        // Even though we know the funding account, we don't know that we have
-        // information for all of the transparent inputs to the transaction.
-        #[cfg(feature = "transparent-inputs")]
-        {
-            tx_has_wallet_outputs = true;
-        }
     }
 
     // Regenerate the gap limit addresses.
