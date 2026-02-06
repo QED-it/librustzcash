@@ -645,6 +645,38 @@ where
         wallet_db.set_transaction_status(d_tx.tx().txid(), TransactionStatus::Mined(height))?;
     }
 
+    // Mark Sapling notes as spent when we observe their nullifiers.
+    for spend in d_tx
+        .tx()
+        .sapling_bundle()
+        .iter()
+        .flat_map(|b| b.shielded_spends().iter())
+    {
+        wallet_db.mark_sapling_note_spent(spend.nullifier(), tx_ref)?;
+    }
+
+    // Mark Orchard notes as spent when we observe their nullifiers.
+    #[cfg(feature = "orchard")]
+    for action in d_tx
+        .tx()
+        .orchard_bundle()
+        .iter()
+        .flat_map(|b| b.actions().iter())
+    {
+        wallet_db.mark_orchard_note_spent(action.nullifier(), tx_ref)?;
+    }
+
+    // If any of the utxos spent in the transaction are ours, mark them as spent.
+    #[cfg(feature = "transparent-inputs")]
+    for txin in d_tx
+        .tx()
+        .transparent_bundle()
+        .iter()
+        .flat_map(|b| b.vin.iter())
+    {
+        wallet_db.mark_transparent_utxo_spent(txin.prevout(), tx_ref)?;
+    }
+
     // A flag used to determine whether it is necessary to query for transactions that
     // provided transparent inputs to this transaction, in order to be able to correctly
     // recover transparent transaction history.
@@ -692,16 +724,6 @@ where
         },
     )?;
 
-    // Mark Sapling notes as spent when we observe their nullifiers.
-    for spend in d_tx
-        .tx()
-        .sapling_bundle()
-        .iter()
-        .flat_map(|b| b.shielded_spends().iter())
-    {
-        wallet_db.mark_sapling_note_spent(spend.nullifier(), tx_ref)?;
-    }
-
     #[cfg(feature = "orchard")]
     put_shielded_outputs(
         wallet_db,
@@ -721,28 +743,6 @@ where
             gap_update_set.insert((_account_id, TransparentKeyScope::EXTERNAL));
         },
     )?;
-
-    // Mark Orchard notes as spent when we observe their nullifiers.
-    #[cfg(feature = "orchard")]
-    for action in d_tx
-        .tx()
-        .orchard_bundle()
-        .iter()
-        .flat_map(|b| b.actions().iter())
-    {
-        wallet_db.mark_orchard_note_spent(action.nullifier(), tx_ref)?;
-    }
-
-    // If any of the utxos spent in the transaction are ours, mark them as spent.
-    #[cfg(feature = "transparent-inputs")]
-    for txin in d_tx
-        .tx()
-        .transparent_bundle()
-        .iter()
-        .flat_map(|b| b.vin.iter())
-    {
-        wallet_db.mark_transparent_utxo_spent(txin.prevout(), tx_ref)?;
-    }
 
     #[cfg(feature = "transparent-inputs")]
     for (received_t_output, key_scope) in &wallet_transparent_outputs.received {
