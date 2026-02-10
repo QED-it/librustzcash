@@ -1,3 +1,9 @@
+//! Wallet storage abstractions for transparent address gap limit management.
+//!
+//! This module defines the [`GapLimitsWalletAccess`] trait, which provides the storage
+//! operations needed by the gap limit address generation logic in
+//! [`super::gap_limits::wallet`].
+
 use crate::address::Address;
 use core::hash::Hash;
 use std::vec::Vec;
@@ -6,12 +12,18 @@ use transparent::{
     keys::{NonHardenedChildIndex, TransparentKeyScope},
 };
 
+/// A trait providing wallet storage operations required for transparent address gap limit
+/// management.
+///
+/// Implementations of this trait allow the gap limit logic in
+/// [`gap_limits::wallet`](super::gap_limits::wallet) to query and update the wallet's
+/// transparent address state without being coupled to a specific storage backend.
 #[cfg(feature = "transparent-inputs")]
 pub trait GapLimitsWalletAccess {
-    /// The type of query error
+    /// The type of errors produced by the wallet storage backend.
     type Error;
 
-    /// A wallet-internal account identifier
+    /// A wallet-internal account identifier.
     type AccountRef: Copy + Eq + Hash;
 
     /// Returns the transparent address index at the start of the first gap of at least `gap_limit`
@@ -26,6 +38,10 @@ pub trait GapLimitsWalletAccess {
         gap_limit: u32,
     ) -> Result<Option<NonHardenedChildIndex>, Self::Error>;
 
+    /// Persists a range of derived transparent addresses to the wallet storage.
+    ///
+    /// Each entry in the list contains the wallet-level address, the raw transparent address,
+    /// and the child index from which the address was derived.
     fn store_address_range(
         &mut self,
         account_id: Self::AccountRef,

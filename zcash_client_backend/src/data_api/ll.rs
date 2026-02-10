@@ -124,10 +124,15 @@ pub trait LowLevelWalletRead {
     /// will be interpreted as belonging to that account.
     type AccountId: Copy + Eq + Hash;
 
-    /// A wallet-internal account identifier
+    /// A wallet-internal account identifier, used for efficient lookups within the data store.
+    ///
+    /// Unlike [`AccountId`](Self::AccountId), this type is not intended for use in external
+    /// contexts; it is an ephemeral handle that may change across database migrations or
+    /// backend implementations.
     type AccountRef: Copy + Eq + Hash;
 
-    /// Type of the account with associated capabilities
+    /// The type of account records returned by the wallet backend, providing access to
+    /// the account's viewing keys and capabilities.
     type Account: Account;
 
     /// A wallet-internal transaction identifier.
@@ -263,14 +268,17 @@ pub trait LowLevelWalletRead {
         nf: &::orchard::note::Nullifier,
     ) -> Result<Option<Self::TxRef>, Self::Error>;
 
-    /// Get the ephemeral value for working with accounts in the wallet data store
+    /// Returns the wallet-internal account reference for the given external account identifier.
+    ///
+    /// This is used to translate between the stable external [`AccountId`](Self::AccountId)
+    /// and the ephemeral internal [`AccountRef`](Self::AccountRef) used for efficient lookups.
     #[cfg(feature = "transparent-inputs")]
     fn get_account_ref(
         &self,
         account_uuid: Self::AccountId,
     ) -> Result<Self::AccountRef, Self::Error>;
 
-    /// Get the account for an internal account reference
+    /// Returns the full account record for the given wallet-internal account reference.
     #[cfg(feature = "transparent-inputs")]
     fn get_account_internal(
         &self,

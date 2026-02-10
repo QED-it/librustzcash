@@ -1,3 +1,9 @@
+//! Wallet-specific operations for transparent address gap limit management.
+//!
+//! This module provides functions for generating transparent addresses according to BIP-44
+//! gap limit rules, abstracting over the wallet storage backend via the
+//! [`GapLimitsWalletAccess`] trait.
+
 use super::GapLimits;
 use crate::address::Address;
 use crate::keys::{
@@ -44,6 +50,14 @@ fn generate_external_address(
     ))
 }
 
+/// Generates a list of addresses for the given range of transparent child indices.
+///
+/// For external-scoped addresses, a unified address is generated using the provided
+/// [`UnifiedAddressRequest`]; for internal and ephemeral scopes, the raw transparent address is
+/// returned.
+///
+/// Returns an empty list if the account lacks a transparent key and `require_key` is `false`.
+/// Returns an error if the key is required but unavailable, or if the key scope is unsupported.
 pub fn generate_address_list(
     account_uivk: &UnifiedIncomingViewingKey,
     account_ufvk: Option<&UnifiedFullViewingKey>,
@@ -93,12 +107,22 @@ pub fn generate_address_list(
         .collect::<Result<Vec<_>, _>>()
 }
 
+/// Errors that can occur when generating transparent gap addresses.
 pub enum GapAddressesError<SE> {
+    /// An error occurred in the underlying wallet storage backend.
     Storage(SE),
+    /// An error occurred while deriving a transparent address.
     AddressGeneration(AddressGenerationError),
+    /// The specified account was not found in the wallet database.
     AccountUnknown,
 }
 
+/// Generates transparent addresses to fill the gap for a given account and key scope.
+///
+/// This function queries the wallet backend (via [`GapLimitsWalletAccess`]) to find the start
+/// of the first gap of unused addresses, then generates enough addresses to maintain the
+/// configured gap limit. If no gap exists (i.e., the address space is exhausted), this is a
+/// no-op.
 #[allow(clippy::too_many_arguments)]
 pub fn generate_gap_addresses<DbT, SE>(
     wallet_db: &mut DbT,
