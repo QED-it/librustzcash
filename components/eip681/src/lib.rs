@@ -29,6 +29,7 @@
 //! See
 //! [ABNF core rules](https://en.wikipedia.org/wiki/Augmented_Backus%E2%80%93Naur_form#Core_rules)
 //! for general information about the `ABNF` format.
+pub use primitive_types::U256;
 
 pub mod error;
 mod parse;

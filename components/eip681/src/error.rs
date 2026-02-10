@@ -125,6 +125,9 @@ pub enum ValidationError {
     ))]
     Overflow,
 
+    #[snafu(display("Cannot convert negative number to unsigned type"))]
+    NegativeValueForUnsignedType,
+
     #[snafu(display("Could not decode url-encoded string: {source}"))]
     UrlEncoding { source: std::str::Utf8Error },
 
