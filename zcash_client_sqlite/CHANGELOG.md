@@ -22,7 +22,7 @@ workspace.
 - `impl zcash_client_backend::data_api::ll::LowLevelWalletWrite for WalletDb`
 - `impl Hash for zcash_client_sqlite::{ReceivedNoteId, UtxoId, TxRef}`
 - `impl {PartialOrd, Ord} for zcash_client_sqlite::UtxoId`
-- `impl zcash_keys::keys::transparent::wallet::GapLimitsWalletAccess for WalletDb`
+- `impl zcash_keys::keys::transparent::gap_limits::AddressStore for WalletDb`
   (behind the `transparent-inputs` feature flag)
 - `zcash_client_sqlite::AccountRef` is now public.
 

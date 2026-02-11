@@ -27,7 +27,7 @@ use {
     crate::wallet::transparent::SchedulingError,
     ::transparent::{address::TransparentAddress, keys::TransparentKeyScope},
     zcash_keys::{
-        encoding::TransparentCodecError, keys::transparent::gap_limits::wallet::GapAddressesError,
+        encoding::TransparentCodecError, keys::transparent::gap_limits::GapAddressesError,
     },
 };
 

@@ -10,8 +10,8 @@ use secp256k1::{PublicKey, Secp256k1, SecretKey, Signing};
 use secrecy::{ExposeSecret, SecretString, SecretVec, Zeroize, zeroize::ZeroizeOnDrop};
 use zcash_protocol::consensus::NetworkConstants;
 
+#[cfg(feature = "transparent-inputs")]
 pub mod gap_limits;
-pub mod wallet;
 
 /// Errors that can occur in the parsing of Bitcoin-style base58-encoded secret key material
 #[derive(Debug)]

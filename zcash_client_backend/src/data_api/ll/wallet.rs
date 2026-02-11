@@ -34,9 +34,8 @@ use {
     transparent::{bundle::OutPoint, keys::TransparentKeyScope},
     zcash_keys::keys::{
         ReceiverRequirement, UnifiedAddressRequest,
-        transparent::{
-            gap_limits::{self, GapLimits, wallet::GapAddressesError},
-            wallet::GapLimitsWalletAccess,
+        transparent::gap_limits::{
+            AddressStore, GapAddressesError, GapLimits, generate_gap_addresses,
         },
     },
 };
@@ -121,8 +120,7 @@ where
 /// Generates transparent gap addresses for a given account and key scope.
 ///
 /// This is a convenience function that resolves the account's viewing keys from the wallet
-/// database and delegates to
-/// [`gap_limits::wallet::generate_gap_addresses`](zcash_keys::keys::transparent::gap_limits::wallet::generate_gap_addresses).
+/// database and delegates to [`generate_gap_addresses`].
 #[cfg(feature = "transparent-inputs")]
 pub fn generate_transparent_gap_addresses<DbT, SE>(
     wallet_db: &mut DbT,
@@ -133,7 +131,7 @@ pub fn generate_transparent_gap_addresses<DbT, SE>(
 ) -> Result<(), GapAddressesError<SE>>
 where
     DbT: LowLevelWalletWrite<Error = SE>
-        + GapLimitsWalletAccess<Error = SE, AccountRef = <DbT as LowLevelWalletRead>::AccountRef>,
+        + AddressStore<Error = SE, AccountRef = <DbT as LowLevelWalletRead>::AccountRef>,
     DbT::TxRef: Eq + Hash,
 {
     let account_ref = wallet_db
@@ -145,7 +143,7 @@ where
         .map_err(GapAddressesError::Storage)?
         .ok_or(GapAddressesError::AccountUnknown)?;
 
-    gap_limits::wallet::generate_gap_addresses(
+    generate_gap_addresses(
         wallet_db,
         &gap_limits,
         account_ref,
@@ -189,7 +187,7 @@ impl<SE, TE> From<GapAddressesError<SE>> for PutBlocksError<SE, TE> {
 /// A trait alias capturing the database capabilities required by [`put_blocks`].
 ///
 /// When the `transparent-inputs` feature is enabled, this additionally requires
-/// [`GapLimitsWalletAccess`] so that transparent gap addresses can be maintained as new
+/// [`AddressStore`] so that transparent gap addresses can be maintained as new
 /// blocks are scanned.
 #[cfg(not(feature = "transparent-inputs"))]
 pub trait PutBlocksDbT<SE, TE, AR>:
@@ -206,13 +204,13 @@ impl<T: LowLevelWalletWrite<Error = SE> + WalletCommitmentTrees<Error = TE>, SE,
 /// A trait alias capturing the database capabilities required by [`put_blocks`].
 ///
 /// When the `transparent-inputs` feature is enabled, this additionally requires
-/// [`GapLimitsWalletAccess`] so that transparent gap addresses can be maintained as new
+/// [`AddressStore`] so that transparent gap addresses can be maintained as new
 /// blocks are scanned.
 #[cfg(feature = "transparent-inputs")]
 pub trait PutBlocksDbT<SE, TE, AR>:
     LowLevelWalletWrite<Error = SE>
     + WalletCommitmentTrees<Error = TE>
-    + GapLimitsWalletAccess<Error = SE, AccountRef = AR>
+    + AddressStore<Error = SE, AccountRef = AR>
 {
 }
 
@@ -220,7 +218,7 @@ pub trait PutBlocksDbT<SE, TE, AR>:
 impl<
     T: LowLevelWalletWrite<Error = SE>
         + WalletCommitmentTrees<Error = TE>
-        + GapLimitsWalletAccess<Error = SE, AccountRef = AR>,
+        + AddressStore<Error = SE, AccountRef = AR>,
     SE,
     TE,
     AR,
@@ -673,7 +671,7 @@ type GapError<DbT> = <DbT as LowLevelWalletRead>::Error;
 /// A trait alias capturing the database capabilities required by [`store_decrypted_tx`].
 ///
 /// When the `transparent-inputs` feature is enabled, this additionally requires
-/// [`GapLimitsWalletAccess`] so that transparent gap addresses can be regenerated after
+/// [`AddressStore`] so that transparent gap addresses can be regenerated after
 /// storing a decrypted transaction.
 #[cfg(not(feature = "transparent-inputs"))]
 pub trait StoreDecryptedTxDbT: LowLevelWalletWrite {}
@@ -687,12 +685,12 @@ type GapError<DbT> = GapAddressesError<<DbT as LowLevelWalletRead>::Error>;
 /// A trait alias capturing the database capabilities required by [`store_decrypted_tx`].
 ///
 /// When the `transparent-inputs` feature is enabled, this additionally requires
-/// [`GapLimitsWalletAccess`] so that transparent gap addresses can be regenerated after
+/// [`AddressStore`] so that transparent gap addresses can be regenerated after
 /// storing a decrypted transaction.
 #[cfg(feature = "transparent-inputs")]
 pub trait StoreDecryptedTxDbT:
     LowLevelWalletWrite
-    + GapLimitsWalletAccess<
+    + AddressStore<
         Error = <Self as LowLevelWalletRead>::Error,
         AccountRef = <Self as LowLevelWalletRead>::AccountRef,
     >
@@ -704,7 +702,7 @@ where
 #[cfg(feature = "transparent-inputs")]
 impl<
     T: LowLevelWalletWrite
-        + GapLimitsWalletAccess<
+        + AddressStore<
             Error = <T as LowLevelWalletRead>::Error,
             AccountRef = <T as LowLevelWalletRead>::AccountRef,
         >,

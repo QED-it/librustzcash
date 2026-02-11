@@ -14,30 +14,30 @@ use rusqlite::types::Value;
 use rusqlite::{Connection, Row, named_params};
 use tracing::debug;
 
-use transparent::keys::TransparentKeyScope;
 use transparent::{
     address::{Script, TransparentAddress},
     bundle::{OutPoint, TxOut},
-    keys::{IncomingViewingKey, NonHardenedChildIndex},
+    keys::{IncomingViewingKey, NonHardenedChildIndex, TransparentKeyScope},
 };
 use zcash_address::unified::{Ivk, Uivk};
-use zcash_client_backend::data_api::WalletUtxo;
-use zcash_client_backend::wallet::{Exposure, GapMetadata, TransparentAddressSource};
 use zcash_client_backend::{
     data_api::{
         Account, AccountBalance, Balance, OutputStatusFilter, TransactionDataRequest,
-        TransactionStatusFilter,
+        TransactionStatusFilter, WalletUtxo,
         wallet::{ConfirmationsPolicy, TargetHeight},
     },
-    wallet::{TransparentAddressMetadata, WalletTransparentOutput},
+    wallet::{
+        Exposure, GapMetadata, TransparentAddressMetadata, TransparentAddressSource,
+        WalletTransparentOutput,
+    },
 };
-use zcash_keys::keys::transparent::gap_limits::{self, GapLimits};
 use zcash_keys::{
     address::Address,
     encoding::AddressCodec,
     keys::{
         AddressGenerationError, UnifiedAddressRequest, UnifiedFullViewingKey,
         UnifiedIncomingViewingKey,
+        transparent::gap_limits::{GapLimits, generate_address_list},
     },
 };
 use zcash_primitives::transaction::{builder::DEFAULT_TX_EXPIRY_DELTA, fees::zip317};
@@ -630,7 +630,7 @@ pub(crate) fn generate_address_range_internal<P: consensus::Parameters>(
     range_to_store: Range<NonHardenedChildIndex>,
     require_key: bool,
 ) -> Result<(), SqliteClientError> {
-    let address_list = gap_limits::wallet::generate_address_list(
+    let address_list = generate_address_list(
         account_uivk,
         account_ufvk,
         key_scope,

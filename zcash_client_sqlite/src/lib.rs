@@ -122,7 +122,7 @@ use {
     },
     zcash_keys::{
         encoding::AddressCodec,
-        keys::transparent::{gap_limits::GapLimits, wallet::GapLimitsWalletAccess},
+        keys::transparent::gap_limits::{AddressStore, GapLimits},
     },
 };
 
@@ -2193,7 +2193,7 @@ impl<P: consensus::Parameters, CL, R> WalletCommitmentTrees
 
 #[cfg(feature = "transparent-inputs")]
 impl<'a, C: Borrow<rusqlite::Transaction<'a>>, P: consensus::Parameters, CL: Clock, R: RngCore>
-    GapLimitsWalletAccess for WalletDb<C, P, CL, R>
+    AddressStore for WalletDb<C, P, CL, R>
 {
     type Error = SqliteClientError;
     type AccountRef = AccountRef;

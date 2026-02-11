@@ -12,16 +12,14 @@ workspace.
 ### Added
 - `zcash_keys::keys::OutgoingViewingKey`
 - `zcash_keys::keys::UnifiedFullViewingKey::select_ovk`
-- `zcash_keys::keys::transparent::gap_limits` module, containing the `GapLimits`
-  type (moved from `zcash_client_backend::wallet::transparent`).
-- `zcash_keys::keys::transparent::gap_limits::GapLimits::limit_for`
-- `zcash_keys::keys::transparent::gap_limits::wallet` module (behind the
+- `zcash_keys::keys::transparent::gap_limits` module (behind the
   `transparent-inputs` feature flag), containing:
+  - `GapLimits` type (moved from `zcash_client_backend::wallet::transparent`).
+  - `GapLimits::limit_for`
+  - `AddressStore` trait
   - `generate_gap_addresses`
   - `generate_address_list`
   - `GapAddressesError`
-- `zcash_keys::keys::transparent::wallet` module, containing:
-  - `GapLimitsWalletAccess` (behind the `transparent-inputs` feature flag)
 
 ### Changed
 - MSRV is now 1.85.1.
