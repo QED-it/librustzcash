@@ -8,17 +8,15 @@ use std::{
 use assert_matches::assert_matches;
 use incrementalmerkletree::{Level, Position, frontier::Frontier};
 use rand::{Rng, RngCore};
-use rand_core::OsRng;
 use secrecy::Secret;
 use shardtree::error::ShardTreeError;
 
-use transparent::{address::TransparentAddress, builder::TransparentSigningSet};
+use transparent::address::TransparentAddress;
 use zcash_keys::{address::Address, keys::UnifiedSpendingKey};
 use zcash_primitives::{
     block::BlockHash,
     transaction::{
         Transaction,
-        builder::{BuildConfig, Builder},
         fees::zip317::{FeeRule as Zip317FeeRule, MARGINAL_FEE, MINIMUM_FEE},
     },
 };
@@ -29,7 +27,6 @@ use zcash_protocol::{
     memo::{Memo, MemoBytes},
     value::Zatoshis,
 };
-use zcash_script::opcode::PushValue;
 use zip32::Scope;
 use zip321::{Payment, TransactionRequest};
 
@@ -84,7 +81,11 @@ use zcash_protocol::PoolType;
 #[cfg(feature = "pczt")]
 use {
     pczt::roles::{prover::Prover, signer::Signer},
+    rand_core::OsRng,
+    transparent::builder::TransparentSigningSet,
+    zcash_primitives::transaction::builder::{BuildConfig, Builder},
     zcash_proofs::prover::LocalTxProver,
+    zcash_script::opcode::PushValue,
 };
 
 pub mod dsl;
