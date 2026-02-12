@@ -27,7 +27,7 @@ use zcash_protocol::{
 };
 use zip32::Scope;
 
-use super::{TransactionStatus, wallet::TargetHeight};
+use super::{Account, TransactionStatus, wallet::TargetHeight};
 use crate::{
     DecryptedOutput, TransferType,
     wallet::{Recipient, WalletSaplingOutput, WalletTx},
@@ -37,7 +37,7 @@ use crate::{
 use {
     super::WalletUtxo,
     transparent::{address::TransparentAddress, keys::TransparentKeyScope},
-    zcash_keys::keys::UnifiedAddressRequest,
+    zcash_keys::keys::{UnifiedAddressRequest, transparent::gap_limits::GapLimits},
 };
 
 #[cfg(feature = "orchard")]
@@ -123,6 +123,17 @@ pub trait LowLevelWalletRead {
     /// authority, such that both received notes and change spendable by that spending authority
     /// will be interpreted as belonging to that account.
     type AccountId: Copy + Eq + Hash;
+
+    /// A wallet-internal account identifier, used for efficient lookups within the data store.
+    ///
+    /// Unlike [`AccountId`](Self::AccountId), this type is not intended for use in external
+    /// contexts; it is an ephemeral handle that may change across database migrations or
+    /// backend implementations.
+    type AccountRef: Copy + Eq + Hash;
+
+    /// The type of account records returned by the wallet backend, providing access to
+    /// the account's viewing keys and capabilities.
+    type Account: Account;
 
     /// A wallet-internal transaction identifier.
     type TxRef: Copy + Eq + Hash;
@@ -256,6 +267,23 @@ pub trait LowLevelWalletRead {
         &self,
         nf: &::orchard::note::Nullifier,
     ) -> Result<Option<Self::TxRef>, Self::Error>;
+
+    /// Returns the wallet-internal account reference for the given external account identifier.
+    ///
+    /// This is used to translate between the stable external [`AccountId`](Self::AccountId)
+    /// and the ephemeral internal [`AccountRef`](Self::AccountRef) used for efficient lookups.
+    #[cfg(feature = "transparent-inputs")]
+    fn get_account_ref(
+        &self,
+        account_uuid: Self::AccountId,
+    ) -> Result<Self::AccountRef, Self::Error>;
+
+    /// Returns the full account record for the given wallet-internal account reference.
+    #[cfg(feature = "transparent-inputs")]
+    fn get_account_internal(
+        &self,
+        account_id: Self::AccountRef,
+    ) -> Result<Option<Self::Account>, Self::Error>;
 }
 
 /// A capability trait that provides low-level wallet write operations. These operations are used
@@ -553,6 +581,14 @@ pub trait LowLevelWalletWrite: LowLevelWalletRead {
         &mut self,
         range: Range<BlockHeight>,
         wallet_note_positions: &[(ShieldedProtocol, Position)],
+    ) -> Result<(), Self::Error>;
+
+    #[cfg(feature = "transparent-inputs")]
+    fn update_gap_limits(
+        &mut self,
+        gap_limits: &GapLimits,
+        txid: TxId,
+        observation_height: BlockHeight,
     ) -> Result<(), Self::Error>;
 }
 
