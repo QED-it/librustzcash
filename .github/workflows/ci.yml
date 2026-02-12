@@ -59,7 +59,7 @@ jobs:
           all-pools: ${{ matrix.all-pools || false }}
           all-features: ${{ matrix.all-features || false }}
           extra-features: ${{ matrix.extra_flags || '' }}
-      - uses: actions/cache@8b402f58fbc84540c8b491a91e594a4576fec3d7 # v5.0.2
+      - uses: actions/cache@cdf6c1fa76f9f475f3d7449005a359c84ca0f306 # v5.0.3
         with:
           path: |
             ~/.cargo/bin/
@@ -133,7 +133,7 @@ jobs:
           all-pools: ${{ matrix.all-pools || false }}
           all-features: ${{ matrix.all-features || false }}
           extra-features: ${{ matrix.extra_flags || '' }}
-      - uses: actions/cache@8b402f58fbc84540c8b491a91e594a4576fec3d7 # v5.0.2
+      - uses: actions/cache@cdf6c1fa76f9f475f3d7449005a359c84ca0f306 # v5.0.3
         with:
           path: |
             ~/.cargo/bin/
@@ -195,7 +195,7 @@ jobs:
           all-pools: false
           all-features: ${{ matrix.all-features || false }}
           extra-features: ${{ matrix.extra_flags || '' }}
-      - uses: actions/cache@8b402f58fbc84540c8b491a91e594a4576fec3d7 # v5.0.2
+      - uses: actions/cache@cdf6c1fa76f9f475f3d7449005a359c84ca0f306 # v5.0.3
         with:
           path: |
             ~/.cargo/bin/
@@ -254,7 +254,7 @@ jobs:
         with:
           all-features: ${{ matrix.all-features || false }}
           extra-features: ${{ matrix.extra_flags || '' }}
-      - uses: actions/cache@8b402f58fbc84540c8b491a91e594a4576fec3d7 # v5.0.2
+      - uses: actions/cache@cdf6c1fa76f9f475f3d7449005a359c84ca0f306 # v5.0.3
         with:
           path: |
             ~/.cargo/bin/
@@ -285,7 +285,7 @@ jobs:
           persist-credentials: false
       - id: prepare
         uses: ./.github/actions/prepare
-      - uses: actions/cache@8b402f58fbc84540c8b491a91e594a4576fec3d7 # v5.0.2
+      - uses: actions/cache@cdf6c1fa76f9f475f3d7449005a359c84ca0f306 # v5.0.3
         with:
           path: |
             ~/.cargo/bin/
@@ -492,7 +492,7 @@ jobs:
           persist-credentials: false
       - id: prepare
         uses: ./.github/actions/prepare
-      - uses: actions/cache@8b402f58fbc84540c8b491a91e594a4576fec3d7 # v5.0.2
+      - uses: actions/cache@cdf6c1fa76f9f475f3d7449005a359c84ca0f306 # v5.0.3
         with:
           path: |
             ~/.cargo/bin/
