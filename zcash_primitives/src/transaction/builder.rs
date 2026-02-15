@@ -1026,9 +1026,16 @@ impl<P: consensus::Parameters, U: sapling::builder::ProverProgress> Builder<'_, 
         let (tze_bundle, tze_signers) = self.tze_builder.build();
 
         #[cfg(zcash_unstable = "nu7")]
-        let issue_bundle_awaiting_sighash = self
-            .issuance_builder
-            .map(|b| b.update_rho(first_nullifier(&unproven_orchard_bundle), &mut rng));
+        let issue_bundle_awaiting_sighash = match self.issuance_builder {
+            Some(b) => {
+                let nullifier =
+                    first_nullifier(&unproven_orchard_bundle).ok_or(Error::<FE>::OrchardBuild(
+                        orchard::builder::BuildError::BundleTypeNotSatisfiable,
+                    ))?;
+                Some(b.update_rho(nullifier, &mut rng))
+            }
+            None => None,
+        };
 
         let unauthed_tx: TransactionData<Unauthorized> = TransactionData {
             version,
@@ -1260,16 +1267,16 @@ where
         .map_err(Error::OrchardBuild)
 }
 
-/// This function returns the first nullifier from the first transfer action in the Orchard bundle.
-/// It can only be called on ZSA bundle, will panic in case of invalid input e.g. Vanilla or empty bundle.
+/// Returns the first nullifier from the first transfer action in the Orchard bundle.
+/// Returns `None` if the bundle is not an OrchardZSA bundle with at least one action.
 #[cfg(zcash_unstable = "nu7")]
 #[cfg(feature = "circuits")]
-fn first_nullifier<A: Authorization>(orchard_bundle: &Option<OrchardBundle<A>>) -> &Nullifier {
+fn first_nullifier<A: Authorization>(
+    orchard_bundle: &Option<OrchardBundle<A>>,
+) -> Option<&Nullifier> {
     match orchard_bundle {
-        Some(OrchardBundle::OrchardZSA(b)) => b.actions().first().nullifier(),
-        _ => panic!(
-            "first_nullifier: called on non-ZSA bundle or empty bundle; expected OrchardZSA with at least one action"
-        ),
+        Some(OrchardBundle::OrchardZSA(b)) => Some(b.actions().first().nullifier()),
+        _ => None,
     }
 }
 

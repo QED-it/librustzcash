@@ -932,7 +932,12 @@ impl Transaction {
         let vout = Vector::read(&mut reader, TxOut::read)?;
         for _ in 0..vin.len() {
             let sighash_info = Vector::read(&mut reader, |r| r.read_u8())?;
-            assert!(sighash_info == TRANSPARENT_SIGHASH_INFO_V0.to_vec());
+            if sighash_info != TRANSPARENT_SIGHASH_INFO_V0.to_vec() {
+                return Err(io::Error::new(
+                    io::ErrorKind::InvalidData,
+                    "unexpected transparent sighash info",
+                ));
+            }
         }
         Ok(if vin.is_empty() && vout.is_empty() {
             None
@@ -983,6 +988,13 @@ impl Transaction {
     #[cfg(zcash_unstable = "nu7")]
     fn read_v6<R: Read>(mut reader: R, version: TxVersion) -> io::Result<Self> {
         let header_fragment = Self::read_v6_header_fragment(&mut reader)?;
+
+        if header_fragment.expiry_height != BlockHeight::from(0u32) {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                "v6 transactions must have expiry_height = 0",
+            ));
+        }
 
         let transparent_bundle = Self::read_transparent_v6(&mut reader)?;
         let sapling_bundle = sapling_serialization::read_v6_bundle(&mut reader)?;
@@ -1412,7 +1424,7 @@ pub mod testing {
             version in arb_tx_version(consensus_branch_id)
         )(
             lock_time in any::<u32>(),
-            expiry_height in any::<u32>(),
+            expiry_height in if version == TxVersion::V6 { Just(0u32).boxed() } else { any::<u32>().boxed() },
             transparent_bundle in transparent_testing::arb_bundle(),
             sapling_bundle in sapling_testing::arb_bundle_for_version(version),
             orchard_bundle in orchard_testing::arb_bundle_for_version(version),
@@ -1443,7 +1455,7 @@ pub mod testing {
             version in arb_tx_version(consensus_branch_id)
         )(
             lock_time in any::<u32>(),
-            expiry_height in any::<u32>(),
+            expiry_height in if version == TxVersion::V6 { Just(0u32).boxed() } else { any::<u32>().boxed() },
             zip233_amount in 0..=MAX_MONEY,
             transparent_bundle in transparent_testing::arb_bundle(),
             sapling_bundle in sapling_testing::arb_bundle_for_version(version),
@@ -1476,7 +1488,7 @@ pub mod testing {
             version in arb_tx_version(consensus_branch_id),
         )(
             lock_time in any::<u32>(),
-            expiry_height in any::<u32>(),
+            expiry_height in if version == TxVersion::V6 || version == TxVersion::ZFuture { Just(0u32).boxed() } else { any::<u32>().boxed() },
             transparent_bundle in transparent_testing::arb_bundle(),
             sapling_bundle in sapling_testing::arb_bundle_for_version(version),
             orchard_bundle in orchard_testing::arb_bundle_for_version(version),
@@ -1509,7 +1521,7 @@ pub mod testing {
             version in arb_tx_version(consensus_branch_id),
         )(
             lock_time in any::<u32>(),
-            expiry_height in any::<u32>(),
+            expiry_height in if version == TxVersion::V6 || version == TxVersion::ZFuture { Just(0u32).boxed() } else { any::<u32>().boxed() },
             zip233_amount in 0..=MAX_MONEY,
             transparent_bundle in transparent::arb_bundle(),
             sapling_bundle in sapling::arb_bundle_for_version(version),
