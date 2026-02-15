@@ -2,11 +2,11 @@ use std::{
     cmp::Eq,
     convert::Infallible,
     hash::Hash,
-    num::{NonZeroU32, NonZeroU64, NonZeroU8, NonZeroUsize},
+    num::{NonZeroU8, NonZeroU32, NonZeroU64, NonZeroUsize},
 };
 
 use assert_matches::assert_matches;
-use incrementalmerkletree::{frontier::Frontier, Level, Position};
+use incrementalmerkletree::{Level, Position, frontier::Frontier};
 use rand::{Rng, RngCore};
 use secrecy::Secret;
 use shardtree::error::ShardTreeError;
@@ -16,42 +16,40 @@ use zcash_keys::{address::Address, keys::UnifiedSpendingKey};
 use zcash_primitives::{
     block::BlockHash,
     transaction::{
-        fees::zip317::{FeeRule as Zip317FeeRule, MARGINAL_FEE, MINIMUM_FEE},
         Transaction,
+        fees::zip317::{FeeRule as Zip317FeeRule, MARGINAL_FEE, MINIMUM_FEE},
     },
 };
 use zcash_protocol::{
+    ShieldedProtocol,
     consensus::{self, BlockHeight, NetworkUpgrade, Parameters},
     local_consensus::LocalNetwork,
     memo::{Memo, MemoBytes},
     value::Zatoshis,
-    ShieldedProtocol,
 };
 use zip32::Scope;
 use zip321::{Payment, TransactionRequest};
 
 use crate::{
     data_api::{
-        self,
+        self, Account as _, AccountBirthday, BoundedU8, DecryptedTransaction, InputSource,
+        MaxSpendMode, NoteFilter, Ratio, TargetValue, WalletCommitmentTrees, WalletRead,
+        WalletSummary, WalletTest, WalletWrite,
         chain::{self, ChainState, CommitmentTreeRoot, ScanSummary},
         error::Error,
         testing::{
-            single_output_change_strategy, AddressType, CachedBlock, FakeCompactOutput,
-            InitialChainState, TestBuilder,
+            AddressType, CachedBlock, FakeCompactOutput, InitialChainState, TestBuilder,
+            single_output_change_strategy,
         },
         wallet::{
-            decrypt_and_store_transaction, input_selection::GreedyInputSelector,
-            ConfirmationsPolicy, TargetHeight, TransferErrT,
+            ConfirmationsPolicy, TargetHeight, TransferErrT, decrypt_and_store_transaction,
+            input_selection::GreedyInputSelector,
         },
-        Account as _, AccountBirthday, BoundedU8, DecryptedTransaction, InputSource, MaxSpendMode,
-        NoteFilter, Ratio, TargetValue, WalletCommitmentTrees, WalletRead, WalletSummary,
-        WalletTest, WalletWrite,
     },
     decrypt_transaction,
     fees::{
-        self,
+        self, DustOutputPolicy, SplitPolicy, StandardFeeRule,
         standard::{self, SingleOutputChangeStrategy},
-        DustOutputPolicy, SplitPolicy, StandardFeeRule,
     },
     scanning::ScanError,
     wallet::{Note, NoteId, OvkPolicy, ReceivedNote},
@@ -79,14 +77,14 @@ use {
         fees::zip317,
     },
     zcash_proofs::prover::LocalTxProver,
-    zcash_protocol::{value::ZatBalance, TxId},
+    zcash_protocol::{TxId, value::ZatBalance},
 };
 
 #[cfg(feature = "orchard")]
 use zcash_protocol::PoolType;
 
 #[cfg(feature = "pczt")]
-use orchard::orchard_flavor::OrchardVanilla;
+use orchard::flavor::OrchardVanilla;
 #[cfg(feature = "pczt")]
 use pczt::roles::{prover::Prover, signer::Signer};
 
@@ -1115,7 +1113,7 @@ pub fn spend_everything_multi_step_single_note_proposed_transfer<T: ShieldedPool
     DSF: DataStoreFactory,
     <DSF as DataStoreFactory>::AccountId: std::fmt::Debug,
 {
-    use crate::data_api::{testing::transparent::GapLimits, MaxSpendMode, OutputOfSentTx};
+    use crate::data_api::{MaxSpendMode, OutputOfSentTx, testing::transparent::GapLimits};
 
     let gap_limits = GapLimits::new(10, 5, 3);
     let mut st = TestBuilder::new()
@@ -1296,7 +1294,7 @@ pub fn spend_everything_multi_step_many_notes_proposed_transfer<T: ShieldedPoolT
     DSF: DataStoreFactory,
     <DSF as DataStoreFactory>::AccountId: std::fmt::Debug,
 {
-    use crate::data_api::{testing::transparent::GapLimits, OutputOfSentTx};
+    use crate::data_api::{OutputOfSentTx, testing::transparent::GapLimits};
 
     let gap_limits = GapLimits::new(10, 5, 3);
     let mut st = TestBuilder::new()
@@ -1476,7 +1474,7 @@ pub fn spend_everything_multi_step_with_marginal_notes_proposed_transfer<
     DSF: DataStoreFactory,
     <DSF as DataStoreFactory>::AccountId: std::fmt::Debug,
 {
-    use crate::data_api::{testing::transparent::GapLimits, MaxSpendMode, OutputOfSentTx};
+    use crate::data_api::{MaxSpendMode, OutputOfSentTx, testing::transparent::GapLimits};
 
     let gap_limits = GapLimits::new(10, 5, 3);
     let mut st = TestBuilder::new()
@@ -1842,7 +1840,7 @@ pub fn send_multi_step_proposed_transfer<T: ShieldedPoolTester, DSF>(
 {
     use transparent::builder::TransparentSigningSet;
 
-    use crate::data_api::{testing::transparent::GapLimits, OutputOfSentTx};
+    use crate::data_api::{OutputOfSentTx, testing::transparent::GapLimits};
 
     let gap_limits = GapLimits::new(10, 5, 3);
     let mut st = TestBuilder::new()
@@ -2382,7 +2380,7 @@ pub fn spend_all_funds_multi_step_proposed_transfer<T: ShieldedPoolTester, DSF>(
     DSF: DataStoreFactory,
     <DSF as DataStoreFactory>::AccountId: std::fmt::Debug,
 {
-    use crate::data_api::{testing::transparent::GapLimits, OutputOfSentTx};
+    use crate::data_api::{OutputOfSentTx, testing::transparent::GapLimits};
 
     let gap_limits = GapLimits::new(10, 5, 3);
     let mut st = TestBuilder::new()
@@ -3553,9 +3551,11 @@ where
     // Verify that a transaction enhancement request for the transaction containing the spent
     // outpoint does not yet exist.
     let requests = st.wallet().transaction_data_requests().unwrap();
-    assert!(!requests
-        .iter()
-        .any(|req| req == &TransactionDataRequest::Enhancement(*spent_outpoint.txid())));
+    assert!(
+        !requests
+            .iter()
+            .any(|req| req == &TransactionDataRequest::Enhancement(*spent_outpoint.txid()))
+    );
 
     // Use `decrypt_and_store_transaction` for the side effect of creating enhancement requests for
     // the transparent inputs of the transaction.
@@ -3569,9 +3569,11 @@ where
 
     // Verify that a transaction enhancement request for the received transaction was created
     let requests = st.wallet().transaction_data_requests().unwrap();
-    assert!(requests
-        .iter()
-        .any(|req| req == &TransactionDataRequest::Enhancement(*spent_outpoint.txid())));
+    assert!(
+        requests
+            .iter()
+            .any(|req| req == &TransactionDataRequest::Enhancement(*spent_outpoint.txid()))
+    );
 
     // Now advance the chain by 40 blocks; even though a record for the transaction that created
     // `spent_outpoint` exists in the wallet database, the transaction can't be enhanced because
@@ -3598,9 +3600,11 @@ where
 
     // Verify that the transaction enhancement request for the invalid txid has been deleted.
     let requests = st.wallet().transaction_data_requests().unwrap();
-    assert!(!requests
-        .iter()
-        .any(|req| req == &TransactionDataRequest::Enhancement(*spent_outpoint.txid())));
+    assert!(
+        !requests
+            .iter()
+            .any(|req| req == &TransactionDataRequest::Enhancement(*spent_outpoint.txid()))
+    );
 }
 
 // FIXME: This requires fixes to the test framework.

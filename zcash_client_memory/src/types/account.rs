@@ -536,8 +536,8 @@ impl zcash_client_backend::data_api::Account for Account {
 }
 
 mod serialization {
-    use zcash_client_backend::data_api::chain::ChainState;
     use zcash_client_backend::data_api::Zip32Derivation;
+    use zcash_client_backend::data_api::chain::ChainState;
     use zcash_keys::encoding::AddressCodec;
     use zcash_primitives::block::BlockHash;
     use zcash_primitives::consensus::Network::MainNetwork as EncodingParams;

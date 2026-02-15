@@ -6,18 +6,17 @@ use ::transparent::{
     keys::{AccountPrivKey, IncomingViewingKey},
 };
 use orchard::{
-    note::AssetBase, orchard_flavor::OrchardVanilla, primitives::OrchardDomain,
-    tree::MerkleHashOrchard,
+    flavor::OrchardVanilla, note::AssetBase, primitives::OrchardDomain, tree::MerkleHashOrchard,
 };
 use pczt::{
+    Pczt,
     roles::{
         combiner::Combiner, creator::Creator, io_finalizer::IoFinalizer, prover::Prover,
         signer::Signer, spend_finalizer::SpendFinalizer, tx_extractor::TransactionExtractor,
         updater::Updater,
     },
-    Pczt,
 };
-use shardtree::{store::memory::MemoryShardStore, ShardTree};
+use shardtree::{ShardTree, store::memory::MemoryShardStore};
 use zcash_note_encryption::try_note_decryption;
 use zcash_primitives::transaction::{
     builder::{BuildConfig, Builder, PcztResult},
@@ -96,7 +95,7 @@ fn transparent_to_orchard() {
             Some(orchard_ovk),
             recipient,
             100_000,
-            AssetBase::native(),
+            AssetBase::zatoshi(),
             MemoBytes::empty(),
         )
         .unwrap();
@@ -105,7 +104,7 @@ fn transparent_to_orchard() {
             Some(orchard_fvk.to_ovk(zip32::Scope::Internal)),
             orchard_fvk.address_at(0u32, orchard::keys::Scope::Internal),
             885_000,
-            AssetBase::native(),
+            AssetBase::zatoshi(),
             MemoBytes::empty(),
         )
         .unwrap();
@@ -231,7 +230,7 @@ fn sapling_to_orchard() {
             Some(sapling_dfvk.to_ovk(zip32::Scope::External).0.into()),
             recipient,
             100_000,
-            AssetBase::native(),
+            AssetBase::zatoshi(),
             MemoBytes::empty(),
         )
         .unwrap();
@@ -345,7 +344,7 @@ fn orchard_to_orchard() {
     let value = orchard::value::NoteValue::from_raw(1_000_000);
     let note = {
         let mut orchard_builder = orchard::builder::Builder::new(
-            orchard::builder::BundleType::DEFAULT_VANILLA,
+            orchard::builder::BundleType::DEFAULT,
             orchard::Anchor::empty_tree(),
         );
         orchard_builder
@@ -353,12 +352,13 @@ fn orchard_to_orchard() {
                 None,
                 recipient,
                 value,
-                AssetBase::native(),
+                AssetBase::zatoshi(),
                 Memo::Empty.encode().into_bytes(),
             )
             .unwrap();
         let (bundle, meta) = orchard_builder
             .build::<i64, OrchardVanilla>(&mut rng)
+            .unwrap()
             .unwrap();
         let action = bundle
             .actions()
@@ -404,7 +404,7 @@ fn orchard_to_orchard() {
             Some(orchard_ovk),
             recipient,
             100_000,
-            AssetBase::native(),
+            AssetBase::zatoshi(),
             MemoBytes::empty(),
         )
         .unwrap();
@@ -413,7 +413,7 @@ fn orchard_to_orchard() {
             Some(orchard_fvk.to_ovk(zip32::Scope::Internal)),
             orchard_fvk.address_at(0u32, orchard::keys::Scope::Internal),
             890_000,
-            AssetBase::native(),
+            AssetBase::zatoshi(),
             MemoBytes::empty(),
         )
         .unwrap();

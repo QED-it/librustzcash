@@ -114,12 +114,15 @@ zcash_protocol = { workspace = true, features = ["test-dependencies"] }
 pprof = { version = "0.14", features = ["criterion", "flamegraph"] }
 
 [features]
-default = ["multicore", "std", "circuits"]
+default = ["multicore", "std", "circuits", "zsa-issuance"]
 std = ["document-features", "redjubjub/std"]
 zip-233 = []
 
 ## Enables creating proofs
 circuits = ["orchard/circuit", "sapling/circuit"]
+
+## Enables ZSA issuance support in Orchard
+zsa-issuance = ["orchard/zsa-issuance"]
 
 ## Enables multithreading support for creating proofs.
 multicore = ["orchard/multicore", "sapling/multicore"]

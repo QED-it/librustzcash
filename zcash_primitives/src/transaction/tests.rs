@@ -3,9 +3,9 @@ use proptest::prelude::*;
 #[cfg(test)]
 use {
     crate::transaction::{
-        sighash::signature_hash, sighash::SignableInput, sighash_v4::v4_signature_hash,
-        testing::arb_tx, transparent, txid::TxIdDigester, Authorization,
-        OrchardBundle::OrchardVanilla, Transaction, TransactionData, TxDigests, TxIn,
+        Authorization, OrchardBundle::OrchardVanilla, Transaction, TransactionData, TxDigests,
+        TxIn, sighash::SignableInput, sighash::signature_hash, sighash_v4::v4_signature_hash,
+        testing::arb_tx, transparent, txid::TxIdDigester,
     },
     ::transparent::{
         address::Script, sighash::SighashType, sighash::TransparentAuthorizingContext,
@@ -337,7 +337,9 @@ fn zip_0244() {
 
     #[allow(unused_mut)] // mutability required for the V6 case which is flagged off by default
     let mut test_vectors = self::data::zip_0244::make_test_vectors();
-    #[cfg(zcash_unstable = "nu7")]
+
+    // The orchard_zsa_digests test vectors include zip233_amount
+    #[cfg(all(zcash_unstable = "nu7", feature = "zip-233"))]
     test_vectors.extend(orchard_zsa_digests::make_test_vectors());
 
     for tv in test_vectors {
@@ -442,7 +444,7 @@ fn zip_0233() {
         let input_scriptpubkeys = tv
             .script_pubkeys
             .iter()
-            .map(|s| Script(s.clone()))
+            .map(|s| Script(script::Code(s.clone())))
             .collect();
 
         let test_bundle = txdata
@@ -480,6 +482,7 @@ fn zip_0233() {
             txdata.sprout_bundle().cloned(),
             txdata.sapling_bundle().cloned(),
             txdata.orchard_bundle().cloned(),
+            txdata.issue_bundle().cloned(),
         );
 
         (tdata, txdata.digest(TxIdDigester))

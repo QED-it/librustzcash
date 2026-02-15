@@ -33,15 +33,15 @@ use self::{
         orchard as orchard_serialization, sapling as sapling_serialization,
         sprout::{self, JsDescription},
     },
-    txid::{to_txid, BlockTxCommitmentDigester, TxIdDigester},
+    txid::{BlockTxCommitmentDigester, TxIdDigester, to_txid},
     util::sha256d::{HashReader, HashWriter},
 };
 
 #[cfg(feature = "circuits")]
 use {::sapling::builder as sapling_builder, orchard::builder::Unproven};
 
-use orchard::orchard_flavor::OrchardVanilla;
 use orchard::Bundle;
+use orchard::flavor::OrchardVanilla;
 use zcash_protocol::constants::{
     V3_TX_VERSION, V3_VERSION_GROUP_ID, V4_TX_VERSION, V4_VERSION_GROUP_ID, V5_TX_VERSION,
     V5_VERSION_GROUP_ID,
@@ -49,7 +49,7 @@ use zcash_protocol::constants::{
 #[cfg(zcash_unstable = "nu7")]
 use {
     crate::transaction::components::issuance,
-    orchard::{issuance::IssueBundle, orchard_flavor::OrchardZSA},
+    orchard::{flavor::OrchardZSA, issuance::IssueBundle},
 };
 
 #[cfg(zcash_unstable = "nu7")]
@@ -333,11 +333,25 @@ impl PartialEq for Transaction {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub enum OrchardBundle<A: orchard::bundle::Authorization> {
     OrchardVanilla(Bundle<A, ZatBalance, OrchardVanilla>),
     #[cfg(zcash_unstable = "nu7")]
     OrchardZSA(Bundle<A, ZatBalance, OrchardZSA>),
+}
+
+impl<A> Clone for OrchardBundle<A>
+where
+    A: orchard::bundle::Authorization + Clone,
+    <A as orchard::bundle::Authorization>::SpendAuth: Clone,
+{
+    fn clone(&self) -> Self {
+        match self {
+            OrchardBundle::OrchardVanilla(b) => OrchardBundle::OrchardVanilla(b.clone()),
+            #[cfg(zcash_unstable = "nu7")]
+            OrchardBundle::OrchardZSA(b) => OrchardBundle::OrchardZSA(b.clone()),
+        }
+    }
 }
 
 impl<A: orchard::bundle::Authorization> OrchardBundle<A> {
@@ -918,7 +932,12 @@ impl Transaction {
         let vout = Vector::read(&mut reader, TxOut::read)?;
         for _ in 0..vin.len() {
             let sighash_info = Vector::read(&mut reader, |r| r.read_u8())?;
-            assert!(sighash_info == TRANSPARENT_SIGHASH_INFO_V0.to_vec());
+            if sighash_info != TRANSPARENT_SIGHASH_INFO_V0.to_vec() {
+                return Err(io::Error::new(
+                    io::ErrorKind::InvalidData,
+                    "unexpected transparent sighash info",
+                ));
+            }
         }
         Ok(if vin.is_empty() && vout.is_empty() {
             None
@@ -969,6 +988,13 @@ impl Transaction {
     #[cfg(zcash_unstable = "nu7")]
     fn read_v6<R: Read>(mut reader: R, version: TxVersion) -> io::Result<Self> {
         let header_fragment = Self::read_v6_header_fragment(&mut reader)?;
+
+        if header_fragment.expiry_height != BlockHeight::from(0u32) {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                "v6 transactions must have expiry_height = 0",
+            ));
+        }
 
         let transparent_bundle = Self::read_transparent_v6(&mut reader)?;
         let sapling_bundle = sapling_serialization::read_v6_bundle(&mut reader)?;
@@ -1079,7 +1105,7 @@ impl Transaction {
         if self.orchard_bundle.is_some() {
             return Err(io::Error::new(
                 io::ErrorKind::InvalidInput,
-                "Orchard components cannot be present when serializing to the V4 transaction format."
+                "Orchard components cannot be present when serializing to the V4 transaction format.",
             ));
         }
 
@@ -1326,15 +1352,15 @@ pub mod testing {
     use proptest::prelude::*;
 
     use super::{
+        Authorized, Transaction, TransactionData, TxId, TxVersion,
         components::{
             orchard::testing::{self as orchard_testing},
             sapling::testing::{self as sapling_testing},
         },
-        Authorized, Transaction, TransactionData, TxId, TxVersion,
     };
 
     #[cfg(all(zcash_unstable = "nu7", feature = "zip-233"))]
-    use zcash_protocol::value::{Zatoshis, MAX_MONEY};
+    use zcash_protocol::value::{MAX_MONEY, Zatoshis};
 
     #[cfg(zcash_unstable = "zfuture")]
     use super::components::tze::testing::{self as tze};
@@ -1398,7 +1424,7 @@ pub mod testing {
             version in arb_tx_version(consensus_branch_id)
         )(
             lock_time in any::<u32>(),
-            expiry_height in any::<u32>(),
+            expiry_height in if version == TxVersion::V6 { Just(0u32).boxed() } else { any::<u32>().boxed() },
             transparent_bundle in transparent_testing::arb_bundle(),
             sapling_bundle in sapling_testing::arb_bundle_for_version(version),
             orchard_bundle in orchard_testing::arb_bundle_for_version(version),
@@ -1429,7 +1455,7 @@ pub mod testing {
             version in arb_tx_version(consensus_branch_id)
         )(
             lock_time in any::<u32>(),
-            expiry_height in any::<u32>(),
+            expiry_height in if version == TxVersion::V6 { Just(0u32).boxed() } else { any::<u32>().boxed() },
             zip233_amount in 0..=MAX_MONEY,
             transparent_bundle in transparent_testing::arb_bundle(),
             sapling_bundle in sapling_testing::arb_bundle_for_version(version),
@@ -1462,7 +1488,7 @@ pub mod testing {
             version in arb_tx_version(consensus_branch_id),
         )(
             lock_time in any::<u32>(),
-            expiry_height in any::<u32>(),
+            expiry_height in if version == TxVersion::V6 || version == TxVersion::ZFuture { Just(0u32).boxed() } else { any::<u32>().boxed() },
             transparent_bundle in transparent_testing::arb_bundle(),
             sapling_bundle in sapling_testing::arb_bundle_for_version(version),
             orchard_bundle in orchard_testing::arb_bundle_for_version(version),
@@ -1495,7 +1521,7 @@ pub mod testing {
             version in arb_tx_version(consensus_branch_id),
         )(
             lock_time in any::<u32>(),
-            expiry_height in any::<u32>(),
+            expiry_height in if version == TxVersion::V6 || version == TxVersion::ZFuture { Just(0u32).boxed() } else { any::<u32>().boxed() },
             zip233_amount in 0..=MAX_MONEY,
             transparent_bundle in transparent::arb_bundle(),
             sapling_bundle in sapling::arb_bundle_for_version(version),
