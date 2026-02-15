@@ -2,7 +2,7 @@
 
 use incrementalmerkletree::frontier::CommitmentTree;
 use nonempty::NonEmpty;
-use sapling::{self, note::ExtractedNoteCommitment, note_encryption::COMPACT_NOTE_SIZE, Node};
+use sapling::{self, Node, note::ExtractedNoteCommitment, note_encryption::COMPACT_NOTE_SIZE};
 use std::{
     array::TryFromSliceError,
     collections::BTreeMap,
@@ -17,15 +17,15 @@ use zcash_primitives::{
     transaction::TxId,
 };
 use zcash_protocol::{
+    PoolType, ShieldedProtocol,
     consensus::{self, BlockHeight, NetworkType},
     memo::{self, MemoBytes},
     value::Zatoshis,
-    PoolType, ShieldedProtocol,
 };
 use zip321::{TransactionRequest, Zip321Error};
 
 use crate::{
-    data_api::{chain::ChainState, InputSource},
+    data_api::{InputSource, chain::ChainState},
     fees::{ChangeValue, StandardFeeRule, TransactionBalance},
     proposal::{Proposal, ProposalError, ShieldedInputs, Step, StepOutput, StepOutputIndex},
 };
@@ -34,7 +34,7 @@ use crate::{
 use transparent::bundle::OutPoint;
 
 #[cfg(feature = "orchard")]
-use orchard::orchard_flavor::OrchardVanilla;
+use orchard::flavor::OrchardVanilla;
 #[cfg(feature = "orchard")]
 use orchard::primitives::OrchardPrimitives;
 #[cfg(feature = "orchard")]

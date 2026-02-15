@@ -46,18 +46,18 @@ use shardtree::error::{QueryError, ShardTreeError};
 use super::InputSource;
 use crate::{
     data_api::{
-        error::Error, wallet::input_selection::propose_send_max, Account, MaxSpendMode,
-        SentTransaction, SentTransactionOutput, WalletCommitmentTrees, WalletRead, WalletWrite,
+        Account, MaxSpendMode, SentTransaction, SentTransactionOutput, WalletCommitmentTrees,
+        WalletRead, WalletWrite, error::Error, wallet::input_selection::propose_send_max,
     },
     decrypt_transaction,
     fees::{
-        standard::SingleOutputChangeStrategy, ChangeStrategy, DustOutputPolicy, StandardFeeRule,
+        ChangeStrategy, DustOutputPolicy, StandardFeeRule, standard::SingleOutputChangeStrategy,
     },
     proposal::{Proposal, ProposalError, Step, StepOutputIndex},
     wallet::{Note, OvkPolicy, Recipient},
 };
 use sapling::{
-    note_encryption::{try_sapling_note_decryption, PreparedIncomingViewingKey},
+    note_encryption::{PreparedIncomingViewingKey, try_sapling_note_decryption},
     prover::{OutputProver, SpendProver},
 };
 use transparent::{address::TransparentAddress, builder::TransparentSigningSet, bundle::OutPoint};
@@ -67,16 +67,16 @@ use zcash_keys::{
     keys::{UnifiedFullViewingKey, UnifiedSpendingKey},
 };
 use zcash_primitives::transaction::{
+    Transaction, TxId,
     builder::{BuildConfig, BuildResult, Builder},
     components::sapling::zip212_enforcement,
     fees::FeeRule,
-    Transaction, TxId,
 };
 use zcash_protocol::{
+    PoolType, ShieldedProtocol,
     consensus::{self, BlockHeight},
     memo::MemoBytes,
     value::{BalanceError, Zatoshis},
-    PoolType, ShieldedProtocol,
 };
 use zip32::Scope;
 use zip321::Payment;
@@ -614,21 +614,20 @@ pub fn propose_standard_transfer_to_address<DbT, ParamsT, CommitmentTreeErrT>(
 where
     ParamsT: consensus::Parameters + Clone,
     DbT: InputSource,
-    DbT: WalletRead<
-        Error = <DbT as InputSource>::Error,
-        AccountId = <DbT as InputSource>::AccountId,
-    >,
+    DbT: WalletRead<Error = <DbT as InputSource>::Error, AccountId = <DbT as InputSource>::AccountId>,
     DbT::NoteRef: Copy + Eq + Ord,
 {
-    let request = zip321::TransactionRequest::new(vec![Payment::new(
-        to.to_zcash_address(params),
-        amount,
-        memo,
-        None,
-        None,
-        vec![],
-    )
-    .ok_or(Error::MemoForbidden)?])
+    let request = zip321::TransactionRequest::new(vec![
+        Payment::new(
+            to.to_zcash_address(params),
+            amount,
+            memo,
+            None,
+            None,
+            vec![],
+        )
+        .ok_or(Error::MemoForbidden)?,
+    ])
     .expect(
         "It should not be possible for this to violate ZIP 321 request construction invariants.",
     );
@@ -1353,7 +1352,7 @@ where
                     orchard_external_ovk.clone(),
                     to,
                     payment.amount().into(),
-                    AssetBase::native(),
+                    AssetBase::zatoshi(),
                     memo.clone(),
                 )?;
                 orchard_output_meta.push((
@@ -1478,7 +1477,7 @@ where
                             .ok_or(Error::KeyNotAvailable(PoolType::ORCHARD))?
                             .address_at(0u32, orchard::keys::Scope::Internal),
                         change_value.value().into(),
-                        AssetBase::native(),
+                        AssetBase::zatoshi(),
                         memo.clone(),
                     )?;
                     orchard_output_meta.push((
@@ -2119,7 +2118,7 @@ where
                     orchard::note::RandomSeed::from_bytes(*rseed, &rho).into_option()
                 })?;
 
-                orchard::Note::from_parts(recipient, value, AssetBase::native(), rho, rseed)
+                orchard::Note::from_parts(recipient, value, AssetBase::zatoshi(), rho, rseed)
                     .into_option()
             };
 

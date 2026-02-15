@@ -1,10 +1,10 @@
 use std::{
-    collections::{btree_map::Entry, BTreeMap},
+    collections::{BTreeMap, btree_map::Entry},
     ops::Deref,
 };
 
 use zcash_client_backend::{
-    data_api::{wallet::TargetHeight, TransactionStatus},
+    data_api::{TransactionStatus, wallet::TargetHeight},
     wallet::WalletTx,
 };
 use zcash_primitives::{
@@ -13,8 +13,8 @@ use zcash_primitives::{
 };
 use zcash_protocol::value::Zatoshis;
 
-use crate::error::Error;
 use crate::AccountId;
+use crate::error::Error;
 
 /// Maps a block height and transaction index to a transaction ID.
 #[derive(Debug, Clone, PartialEq)]
