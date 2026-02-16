@@ -9,7 +9,7 @@ use zcash_protocol::consensus::{self, BlockHeight};
 
 use crate::wallet::{
     self,
-    init::{WalletMigrationError, migrations::support_legacy_sqlite},
+    init::{migrations::support_legacy_sqlite, WalletMigrationError},
 };
 
 #[cfg(feature = "transparent-inputs")]

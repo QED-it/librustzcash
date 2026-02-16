@@ -15,14 +15,14 @@ use core::convert::TryFrom;
 use core2::io::{self, Read, Write};
 use nonempty::NonEmpty;
 use orchard::{
-    Action, Anchor, Bundle,
     bundle::{Authorization, Authorized, Flags},
     flavor::OrchardVanilla,
     note::{ExtractedNoteCommitment, Nullifier, TransmittedNoteCiphertext},
-    primitives::OrchardPrimitives,
     primitives::redpallas::{self, SigType, Signature, SpendAuth, VerificationKey},
+    primitives::OrchardPrimitives,
     sighash_kind::{OrchardSig, OrchardSighashKind},
     value::ValueCommitment,
+    Action, Anchor, Bundle,
 };
 use zcash_encoding::{Array, CompactSize, Vector};
 use zcash_note_encryption::note_bytes::NoteBytes;
@@ -446,8 +446,8 @@ mod tests {
         alloc::vec::Vec,
         orchard::primitives::redpallas,
         orchard::sighash_kind::{OrchardSig, OrchardSighashKind},
-        rand::RngCore,
         rand::rngs::OsRng,
+        rand::RngCore,
         std::io::Cursor,
     };
 
@@ -477,7 +477,7 @@ pub mod testing {
     use proptest::prelude::*;
 
     use crate::transaction::{OrchardBundle, TxVersion};
-    use orchard::bundle::{Authorized, testing as t_orch};
+    use orchard::bundle::{testing as t_orch, Authorized};
     use zcash_protocol::value::testing::arb_zat_balance;
 
     #[cfg(zcash_unstable = "nu7")]

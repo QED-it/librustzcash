@@ -6,8 +6,8 @@ use core2::io::{self, Read, Write};
 use zcash_script::script;
 
 use zcash_protocol::{
-    TxId,
     value::{BalanceError, ZatBalance, Zatoshis},
+    TxId,
 };
 
 use crate::{

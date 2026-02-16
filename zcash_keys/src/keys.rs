@@ -1592,7 +1592,7 @@ mod tests {
     };
 
     #[cfg(feature = "unstable")]
-    use super::{Era, UnifiedSpendingKey, testing::arb_unified_spending_key};
+    use super::{testing::arb_unified_spending_key, Era, UnifiedSpendingKey};
 
     #[cfg(all(feature = "orchard", feature = "unstable"))]
     use subtle::ConstantTimeEq;

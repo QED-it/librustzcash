@@ -46,18 +46,18 @@ use shardtree::error::{QueryError, ShardTreeError};
 use super::InputSource;
 use crate::{
     data_api::{
-        Account, MaxSpendMode, SentTransaction, SentTransactionOutput, WalletCommitmentTrees,
-        WalletRead, WalletWrite, error::Error, wallet::input_selection::propose_send_max,
+        error::Error, wallet::input_selection::propose_send_max, Account, MaxSpendMode,
+        SentTransaction, SentTransactionOutput, WalletCommitmentTrees, WalletRead, WalletWrite,
     },
     decrypt_transaction,
     fees::{
-        ChangeStrategy, DustOutputPolicy, StandardFeeRule, standard::SingleOutputChangeStrategy,
+        standard::SingleOutputChangeStrategy, ChangeStrategy, DustOutputPolicy, StandardFeeRule,
     },
     proposal::{Proposal, ProposalError, Step, StepOutputIndex},
     wallet::{Note, OvkPolicy, Recipient},
 };
 use sapling::{
-    note_encryption::{PreparedIncomingViewingKey, try_sapling_note_decryption},
+    note_encryption::{try_sapling_note_decryption, PreparedIncomingViewingKey},
     prover::{OutputProver, SpendProver},
 };
 use transparent::{address::TransparentAddress, builder::TransparentSigningSet, bundle::OutPoint};
@@ -67,16 +67,16 @@ use zcash_keys::{
     keys::{UnifiedFullViewingKey, UnifiedSpendingKey},
 };
 use zcash_primitives::transaction::{
-    Transaction, TxId,
     builder::{BuildConfig, BuildResult, Builder},
     components::sapling::zip212_enforcement,
     fees::FeeRule,
+    Transaction, TxId,
 };
 use zcash_protocol::{
-    PoolType, ShieldedProtocol,
     consensus::{self, BlockHeight},
     memo::MemoBytes,
     value::{BalanceError, Zatoshis},
+    PoolType, ShieldedProtocol,
 };
 use zip32::Scope;
 use zip321::Payment;
@@ -614,20 +614,21 @@ pub fn propose_standard_transfer_to_address<DbT, ParamsT, CommitmentTreeErrT>(
 where
     ParamsT: consensus::Parameters + Clone,
     DbT: InputSource,
-    DbT: WalletRead<Error = <DbT as InputSource>::Error, AccountId = <DbT as InputSource>::AccountId>,
+    DbT: WalletRead<
+        Error = <DbT as InputSource>::Error,
+        AccountId = <DbT as InputSource>::AccountId,
+    >,
     DbT::NoteRef: Copy + Eq + Ord,
 {
-    let request = zip321::TransactionRequest::new(vec![
-        Payment::new(
-            to.to_zcash_address(params),
-            amount,
-            memo,
-            None,
-            None,
-            vec![],
-        )
-        .ok_or(Error::MemoForbidden)?,
-    ])
+    let request = zip321::TransactionRequest::new(vec![Payment::new(
+        to.to_zcash_address(params),
+        amount,
+        memo,
+        None,
+        None,
+        vec![],
+    )
+    .ok_or(Error::MemoForbidden)?])
     .expect(
         "It should not be possible for this to violate ZIP 321 request construction invariants.",
     );

@@ -221,8 +221,8 @@ pub mod testing {
     use proptest::prelude::*;
 
     use orchard::issuance::{
-        IssueBundle, Signed,
         testing::{self as t_issue},
+        IssueBundle, Signed,
     };
 
     use crate::transaction::TxVersion;

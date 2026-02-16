@@ -10,9 +10,9 @@ use ::transparent::{
 use zcash_protocol::consensus::BranchId;
 
 use super::{
-    Authorization, TransactionData,
     components::{sapling as sapling_serialization, sprout::JsDescription},
     sighash::SignableInput,
+    Authorization, TransactionData,
 };
 
 const ZCASH_SIGHASH_PERSONALIZATION_PREFIX: &[u8; 12] = b"ZcashSigHash";

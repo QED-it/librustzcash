@@ -1,8 +1,8 @@
 //! Functions for wallet support of ephemeral transparent addresses.
 use std::ops::Range;
 
-use rand::{RngCore, seq::SliceRandom};
-use rusqlite::{OptionalExtension, named_params};
+use rand::{seq::SliceRandom, RngCore};
+use rusqlite::{named_params, OptionalExtension};
 
 use ::transparent::{
     address::TransparentAddress,
@@ -13,13 +13,13 @@ use zcash_keys::encoding::AddressCodec;
 use zcash_protocol::consensus;
 
 use crate::{
-    AccountRef, AccountUuid,
     error::SqliteClientError,
     util::Clock,
     wallet::{
-        KeyScope,
         encoding::{decode_epoch_seconds, epoch_seconds},
+        KeyScope,
     },
+    AccountRef, AccountUuid,
 };
 
 use super::next_check_time;

@@ -81,7 +81,9 @@ pub enum Error {
     ProtoEncodingError(#[from] prost::EncodeError),
     #[error("Missing proto field: {0}")]
     ProtoMissingField(&'static str),
-    #[error("Requested rewind to invalid block height. Safe height: {0:?}, requested height {1:?}")]
+    #[error(
+        "Requested rewind to invalid block height. Safe height: {0:?}, requested height {1:?}"
+    )]
     RequestedRewindInvalid(Option<BlockHeight>, BlockHeight),
     #[cfg(feature = "transparent-inputs")]
     #[error("Requested gap limit {1} reached for account {0:?}")]

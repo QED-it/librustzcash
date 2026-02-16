@@ -4,7 +4,7 @@ use core::cmp::Ordering;
 use core::fmt;
 use rand::{CryptoRng, RngCore};
 
-use ::sapling::{Note, PaymentAddress, builder::SaplingMetadata};
+use ::sapling::{builder::SaplingMetadata, Note, PaymentAddress};
 use ::transparent::{address::TransparentAddress, builder::TransparentBuilder, bundle::TxOut};
 use zcash_protocol::{
     consensus::{self, BlockHeight, BranchId, NetworkUpgrade, Parameters},
@@ -13,11 +13,11 @@ use zcash_protocol::{
 };
 
 use crate::transaction::{
-    Transaction, TxVersion,
     fees::{
-        FeeRule,
         transparent::{InputView, OutputView},
+        FeeRule,
     },
+    Transaction, TxVersion,
 };
 
 #[cfg(feature = "std")]
@@ -26,9 +26,9 @@ use std::sync::mpsc::Sender;
 #[cfg(feature = "circuits")]
 use {
     crate::transaction::{
-        OrchardBundle, TransactionData, Unauthorized,
-        sighash::{SignableInput, signature_hash},
+        sighash::{signature_hash, SignableInput},
         txid::TxIdDigester,
+        OrchardBundle, TransactionData, Unauthorized,
     },
     ::sapling::prover::{OutputProver, SpendProver},
     ::transparent::builder::TransparentSigningSet,
@@ -40,7 +40,7 @@ use {
     },
 };
 
-use orchard::{Address, builder::BundleType, flavor::OrchardVanilla, note::AssetBase};
+use orchard::{builder::BundleType, flavor::OrchardVanilla, note::AssetBase, Address};
 
 #[cfg(feature = "transparent-inputs")]
 use ::transparent::builder::TransparentInputInfo;
@@ -1382,7 +1382,7 @@ mod tests {
     use rand_core::OsRng;
 
     use crate::transaction::builder::BuildConfig;
-    use ::sapling::{Node, Rseed, zip32::ExtendedSpendingKey};
+    use ::sapling::{zip32::ExtendedSpendingKey, Node, Rseed};
     use ::transparent::{address::TransparentAddress, builder::TransparentSigningSet};
     use zcash_protocol::{
         consensus::{NetworkUpgrade, Parameters, TEST_NETWORK},
@@ -1402,7 +1402,7 @@ mod tests {
 
     #[cfg(feature = "transparent-inputs")]
     use {
-        crate::transaction::{OutPoint, TxOut, builder::DEFAULT_TX_EXPIRY_DELTA},
+        crate::transaction::{builder::DEFAULT_TX_EXPIRY_DELTA, OutPoint, TxOut},
         ::transparent::keys::{AccountPrivKey, IncomingViewingKey},
         zip32::AccountId,
     };
@@ -1414,14 +1414,14 @@ mod tests {
         orchard::{
             flavor::OrchardVanilla,
             issuance::auth::{IssueAuthKey, IssueValidatingKey},
-            issuance::{IssueInfo, compute_asset_desc_hash},
+            issuance::{compute_asset_desc_hash, IssueInfo},
             keys::{FullViewingKey, Scope, SpendAuthorizingKey, SpendingKey},
             note::{AssetBase, AssetId},
             primitives::OrchardDomain,
             tree::MerkleHashOrchard,
             value::NoteValue,
         },
-        shardtree::{ShardTree, store::memory::MemoryShardStore},
+        shardtree::{store::memory::MemoryShardStore, ShardTree},
         zcash_note_encryption::try_note_decryption,
         zcash_protocol::memo::Memo,
     };
