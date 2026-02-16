@@ -21,6 +21,8 @@ jobs:
           - Linux
         state:
           - transparent
+          - transparent-inputs-only
+          - transparent-key-encoding-only
           - Sapling-only
           - Orchard
           - all-pools
@@ -33,6 +35,10 @@ jobs:
 
           - state: transparent
             transparent-pool: true
+          - state: transparent-inputs-only
+            extra_flags: transparent-inputs
+          - state: transparent-key-encoding-only
+            extra_flags: transparent-key-encoding
           - state: Orchard
             orchard-pool: true
           - state: all-pools
