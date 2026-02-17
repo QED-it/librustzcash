@@ -33,15 +33,15 @@ use self::{
         orchard as orchard_serialization, sapling as sapling_serialization,
         sprout::{self, JsDescription},
     },
-    txid::{BlockTxCommitmentDigester, TxIdDigester, to_txid},
+    txid::{to_txid, BlockTxCommitmentDigester, TxIdDigester},
     util::sha256d::{HashReader, HashWriter},
 };
 
 #[cfg(feature = "circuits")]
 use {::sapling::builder as sapling_builder, orchard::builder::Unproven};
 
-use orchard::Bundle;
 use orchard::flavor::OrchardVanilla;
+use orchard::Bundle;
 use zcash_protocol::constants::{
     V3_TX_VERSION, V3_VERSION_GROUP_ID, V4_TX_VERSION, V4_VERSION_GROUP_ID, V5_TX_VERSION,
     V5_VERSION_GROUP_ID,
@@ -1352,15 +1352,15 @@ pub mod testing {
     use proptest::prelude::*;
 
     use super::{
-        Authorized, Transaction, TransactionData, TxId, TxVersion,
         components::{
             orchard::testing::{self as orchard_testing},
             sapling::testing::{self as sapling_testing},
         },
+        Authorized, Transaction, TransactionData, TxId, TxVersion,
     };
 
     #[cfg(all(zcash_unstable = "nu7", feature = "zip-233"))]
-    use zcash_protocol::value::{MAX_MONEY, Zatoshis};
+    use zcash_protocol::value::{Zatoshis, MAX_MONEY};
 
     #[cfg(zcash_unstable = "zfuture")]
     use super::components::tze::testing::{self as tze};

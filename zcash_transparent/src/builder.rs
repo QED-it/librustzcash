@@ -19,7 +19,7 @@ use crate::{
 use {
     crate::{
         bundle::OutPoint,
-        sighash::{SIGHASH_ALL, SighashType},
+        sighash::{SighashType, SIGHASH_ALL},
     },
     sha2::Digest,
     zcash_script::pv::push_value,

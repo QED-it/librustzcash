@@ -7,18 +7,18 @@ use std::hash::Hash;
 
 use incrementalmerkletree::{Marking, Position, Retention};
 use sapling::{
-    SaplingIvk,
     note_encryption::{CompactOutputDescription, SaplingDomain},
+    SaplingIvk,
 };
 use subtle::{ConditionallySelectable, ConstantTimeEq, CtOption};
 
 use tracing::{debug, trace};
 use zcash_keys::keys::UnifiedFullViewingKey;
-use zcash_note_encryption::{BatchDomain, Domain, ShieldedOutput, batch};
-use zcash_primitives::transaction::{TxId, components::sapling::zip212_enforcement};
+use zcash_note_encryption::{batch, BatchDomain, Domain, ShieldedOutput};
+use zcash_primitives::transaction::{components::sapling::zip212_enforcement, TxId};
 use zcash_protocol::{
-    ShieldedProtocol,
     consensus::{self, BlockHeight, NetworkUpgrade},
+    ShieldedProtocol,
 };
 use zip32::Scope;
 
@@ -207,10 +207,10 @@ impl<AccountId, IvkTag> ScanningKeys<AccountId, IvkTag> {
             IvkTag,
             Box<
                 dyn ScanningKeyOps<
-                        OrchardDomain<OrchardVanilla>,
-                        AccountId,
-                        orchard::note::Nullifier,
-                    >,
+                    OrchardDomain<OrchardVanilla>,
+                    AccountId,
+                    orchard::note::Nullifier,
+                >,
             >,
         >,
     ) -> Self {
@@ -267,10 +267,10 @@ impl<AccountId: Copy + Eq + Hash + 'static> ScanningKeys<AccountId, (AccountId, 
             (AccountId, Scope),
             Box<
                 dyn ScanningKeyOps<
-                        OrchardDomain<OrchardVanilla>,
-                        AccountId,
-                        orchard::note::Nullifier,
-                    >,
+                    OrchardDomain<OrchardVanilla>,
+                    AccountId,
+                    orchard::note::Nullifier,
+                >,
             >,
         > = HashMap::new();
 
@@ -1201,18 +1201,18 @@ fn find_received<
 #[cfg(any(test, feature = "test-dependencies"))]
 pub mod testing {
     use group::{
-        GroupEncoding,
         ff::{Field, PrimeField},
+        GroupEncoding,
     };
     use rand_core::{OsRng, RngCore};
     use sapling::note_encryption::COMPACT_NOTE_SIZE;
     use sapling::{
-        Nullifier,
         constants::SPENDING_KEY_GENERATOR,
-        note_encryption::{SaplingDomain, sapling_note_encryption},
+        note_encryption::{sapling_note_encryption, SaplingDomain},
         util::generate_random_rseed,
         value::NoteValue,
         zip32::DiversifiableFullViewingKey,
+        Nullifier,
     };
     use zcash_note_encryption::Domain;
     use zcash_primitives::{
@@ -1367,7 +1367,7 @@ mod tests {
         scanning::{BatchRunners, ScanningKeys},
     };
 
-    use super::{Nullifiers, scan_block, scan_block_with_runners, testing::fake_compact_block};
+    use super::{scan_block, scan_block_with_runners, testing::fake_compact_block, Nullifiers};
 
     #[test]
     fn scan_block_with_my_tx() {

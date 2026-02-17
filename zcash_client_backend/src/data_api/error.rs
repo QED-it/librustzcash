@@ -8,8 +8,8 @@ use zcash_address::ConversionError;
 use zcash_keys::address::UnifiedAddress;
 use zcash_primitives::transaction::builder;
 use zcash_protocol::{
-    PoolType,
     value::{BalanceError, Zatoshis},
+    PoolType,
 };
 
 use crate::{

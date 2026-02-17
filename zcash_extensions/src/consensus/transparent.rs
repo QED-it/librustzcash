@@ -5,7 +5,7 @@ use zcash_primitives::consensus::{BlockHeight, BranchId};
 use zcash_primitives::extensions::transparent::{
     AuthData, Error, Extension, Precondition, Witness,
 };
-use zcash_primitives::transaction::{Transaction, components::tze::TzeOut};
+use zcash_primitives::transaction::{components::tze::TzeOut, Transaction};
 
 use crate::transparent::demo;
 

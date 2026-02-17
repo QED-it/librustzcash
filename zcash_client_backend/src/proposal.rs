@@ -7,7 +7,7 @@ use std::{
 
 use nonempty::NonEmpty;
 use zcash_primitives::transaction::TxId;
-use zcash_protocol::{PoolType, ShieldedProtocol, consensus::BlockHeight, value::Zatoshis};
+use zcash_protocol::{consensus::BlockHeight, value::Zatoshis, PoolType, ShieldedProtocol};
 use zip321::{TransactionRequest, Zip321Error};
 
 use crate::{

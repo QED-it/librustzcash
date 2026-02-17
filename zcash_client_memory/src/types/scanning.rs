@@ -1,7 +1,7 @@
 use std::ops::{Deref, DerefMut, Range};
 
 use zcash_client_backend::data_api::scanning::{
-    ScanPriority, ScanRange, spanning_tree::SpanningTree,
+    spanning_tree::SpanningTree, ScanPriority, ScanRange,
 };
 use zcash_primitives::consensus::BlockHeight;
 
