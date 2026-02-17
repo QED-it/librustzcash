@@ -14,7 +14,7 @@
 // Temporary until we have addressed all Result<T, ()> cases.
 #![allow(clippy::result_unit_err)]
 
-use bellman::groth16::{PreparedVerifyingKey, VerifyingKey, prepare_verifying_key};
+use bellman::groth16::{prepare_verifying_key, PreparedVerifyingKey, VerifyingKey};
 use bls12_381::Bls12;
 use sapling::circuit::{
     OutputParameters, PreparedOutputVerifyingKey, PreparedSpendVerifyingKey, SpendParameters,
@@ -77,7 +77,7 @@ pub struct SaplingParameterPaths {
 pub fn default_params_folder() -> Option<PathBuf> {
     #[cfg(windows)]
     {
-        use known_folders::{KnownFolder, get_known_folder_path};
+        use known_folders::{get_known_folder_path, KnownFolder};
         get_known_folder_path(KnownFolder::RoamingAppData).map(|base| base.join("ZcashParams"))
     }
 
