@@ -9,14 +9,14 @@ use orchard::{
     flavor::OrchardVanilla, note::AssetBase, primitives::OrchardDomain, tree::MerkleHashOrchard,
 };
 use pczt::{
-    Pczt,
     roles::{
         combiner::Combiner, creator::Creator, io_finalizer::IoFinalizer, prover::Prover,
         signer::Signer, spend_finalizer::SpendFinalizer, tx_extractor::TransactionExtractor,
         updater::Updater,
     },
+    Pczt,
 };
-use shardtree::{ShardTree, store::memory::MemoryShardStore};
+use shardtree::{store::memory::MemoryShardStore, ShardTree};
 use zcash_note_encryption::try_note_decryption;
 use zcash_primitives::transaction::{
     builder::{BuildConfig, Builder, PcztResult},

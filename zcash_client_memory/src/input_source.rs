@@ -2,16 +2,16 @@ use std::num::NonZeroU32;
 
 use zcash_client_backend::{
     data_api::{
-        AccountMeta, InputSource, NoteFilter, PoolMeta, ReceivedNotes, TargetValue, WalletRead,
         wallet::{ConfirmationsPolicy, TargetHeight},
+        AccountMeta, InputSource, NoteFilter, PoolMeta, ReceivedNotes, TargetValue, WalletRead,
     },
     wallet::NoteId,
 };
 use zcash_primitives::transaction::Transaction;
 use zcash_protocol::{
-    ShieldedProtocol::{self, Sapling},
     consensus::{self, BranchId},
     value::Zatoshis,
+    ShieldedProtocol::{self, Sapling},
 };
 
 #[cfg(feature = "orchard")]
@@ -25,7 +25,7 @@ use {
     zcash_protocol::consensus::BlockHeight,
 };
 
-use crate::{AccountId, MemoryWalletDb, error::Error, to_spendable_notes};
+use crate::{error::Error, to_spendable_notes, AccountId, MemoryWalletDb};
 
 impl<P: consensus::Parameters> InputSource for MemoryWalletDb<P> {
     type Error = crate::error::Error;

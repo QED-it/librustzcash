@@ -1,4 +1,4 @@
-use std::cmp::{Ordering, max};
+use std::cmp::{max, Ordering};
 use std::ops::{Not, Range};
 
 use zcash_protocol::consensus::BlockHeight;
@@ -415,7 +415,7 @@ mod tests {
 
     use zcash_protocol::consensus::BlockHeight;
 
-    use super::{Joined, RangeOrdering, SpanningTree, join_nonoverlapping, testing::scan_range};
+    use super::{join_nonoverlapping, testing::scan_range, Joined, RangeOrdering, SpanningTree};
     use crate::data_api::scanning::{ScanPriority, ScanRange};
 
     #[test]

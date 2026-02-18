@@ -72,8 +72,8 @@ use std::{
     num::{NonZeroU32, TryFromIntError},
 };
 
-use incrementalmerkletree::{Retention, frontier::Frontier};
-use shardtree::{ShardTree, error::ShardTreeError, store::ShardStore};
+use incrementalmerkletree::{frontier::Frontier, Retention};
+use shardtree::{error::ShardTreeError, store::ShardStore, ShardTree};
 
 use zcash_keys::{
     address::{Address, UnifiedAddress},
@@ -83,12 +83,12 @@ use zcash_keys::{
 };
 use zcash_primitives::{block::BlockHash, transaction::Transaction};
 use zcash_protocol::{
-    ShieldedProtocol, TxId,
     consensus::BlockHeight,
     memo::{Memo, MemoBytes},
     value::{BalanceError, Zatoshis},
+    ShieldedProtocol, TxId,
 };
-use zip32::{DiversifierIndex, fingerprint::SeedFingerprint};
+use zip32::{fingerprint::SeedFingerprint, DiversifierIndex};
 
 use self::{
     chain::{ChainState, CommitmentTreeRoot},
@@ -2962,7 +2962,11 @@ pub trait WalletCommitmentTrees {
     type Error: Debug;
 
     /// The type of the backing [`ShardStore`] for the Sapling note commitment tree.
-    type SaplingShardStore<'a>: ShardStore<H = sapling::Node, CheckpointId = BlockHeight, Error = Self::Error>;
+    type SaplingShardStore<'a>: ShardStore<
+        H = sapling::Node,
+        CheckpointId = BlockHeight,
+        Error = Self::Error,
+    >;
 
     /// Evaluates the given callback function with a reference to the Sapling
     /// note commitment tree maintained by the wallet.
@@ -2990,10 +2994,10 @@ pub trait WalletCommitmentTrees {
     /// The type of the backing [`ShardStore`] for the Orchard note commitment tree.
     #[cfg(feature = "orchard")]
     type OrchardShardStore<'a>: ShardStore<
-            H = orchard::tree::MerkleHashOrchard,
-            CheckpointId = BlockHeight,
-            Error = Self::Error,
-        >;
+        H = orchard::tree::MerkleHashOrchard,
+        CheckpointId = BlockHeight,
+        Error = Self::Error,
+    >;
 
     /// Evaluates the given callback function with a reference to the Orchard
     /// note commitment tree maintained by the wallet.

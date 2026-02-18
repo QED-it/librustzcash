@@ -5,19 +5,19 @@ use bls12_381::Bls12;
 use std::path::Path;
 
 use sapling::{
-    Diversifier, MerklePath, PaymentAddress, ProofGenerationKey, Rseed,
     bundle::GrothProofBytes,
     circuit::{OutputVerifyingKey, SpendVerifyingKey},
     keys::EphemeralSecretKey,
     prover::{OutputProver, SpendProver},
     value::{NoteValue, ValueCommitTrapdoor},
+    Diversifier, MerklePath, PaymentAddress, ProofGenerationKey, Rseed,
 };
 use zcash_primitives::transaction::components::GROTH_PROOF_SIZE;
 
-use crate::{OutputParameters, SpendParameters, load_parameters, parse_parameters};
+use crate::{load_parameters, parse_parameters, OutputParameters, SpendParameters};
 
 #[cfg(feature = "local-prover")]
-use crate::{SAPLING_OUTPUT_NAME, SAPLING_SPEND_NAME, default_params_folder};
+use crate::{default_params_folder, SAPLING_OUTPUT_NAME, SAPLING_SPEND_NAME};
 
 /// An implementation of [`SpendProver`] and [`OutputProver`] using Sapling Spend and
 /// Output parameters from locally-accessible paths.

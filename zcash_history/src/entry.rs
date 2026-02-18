@@ -1,6 +1,6 @@
 use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
 
-use crate::{EntryKind, EntryLink, Error, MAX_NODE_DATA_SIZE, Version};
+use crate::{EntryKind, EntryLink, Error, Version, MAX_NODE_DATA_SIZE};
 
 /// Max serialized length of entry data.
 pub const MAX_ENTRY_SIZE: usize = MAX_NODE_DATA_SIZE + 9;

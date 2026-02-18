@@ -1,16 +1,17 @@
 use core::iter;
 
-use criterion::{BenchmarkId, Criterion, Throughput, criterion_group, criterion_main};
+use criterion::{criterion_group, criterion_main, BenchmarkId, Criterion, Throughput};
 use ff::Field;
 use rand_core::OsRng;
 use sapling::{
-    self, Diversifier, SaplingIvk,
+    self,
     note_encryption::{
-        CompactOutputDescription, PreparedIncomingViewingKey, SaplingDomain,
-        try_sapling_compact_note_decryption, try_sapling_note_decryption,
+        try_sapling_compact_note_decryption, try_sapling_note_decryption, CompactOutputDescription,
+        PreparedIncomingViewingKey, SaplingDomain,
     },
     prover::mock::{MockOutputProver, MockSpendProver},
     value::NoteValue,
+    Diversifier, SaplingIvk,
 };
 use zcash_note_encryption::batch;
 use zcash_primitives::transaction::components::sapling::zip212_enforcement;

@@ -1,5 +1,5 @@
 use orchard::{
-    Bundle, bundle::Authorized, circuit::VerifyingKey, flavor::OrchardVanilla, pczt::Unbound,
+    bundle::Authorized, circuit::VerifyingKey, flavor::OrchardVanilla, pczt::Unbound, Bundle,
 };
 use rand_core::OsRng;
 use zcash_protocol::value::ZatBalance;

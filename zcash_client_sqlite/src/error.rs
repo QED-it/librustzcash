@@ -12,12 +12,12 @@ use zcash_address::ParseError;
 use zcash_client_backend::data_api::NoteFilter;
 use zcash_keys::address::UnifiedAddress;
 use zcash_keys::keys::AddressGenerationError;
-use zcash_protocol::{PoolType, TxId, consensus::BlockHeight, value::BalanceError};
+use zcash_protocol::{consensus::BlockHeight, value::BalanceError, PoolType, TxId};
 use zip32::DiversifierIndex;
 
 use crate::{
-    AccountUuid,
     wallet::{commitment_tree, common::ErrUnsupportedPool},
+    AccountUuid,
 };
 
 #[cfg(feature = "transparent-inputs")]
