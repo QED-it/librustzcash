@@ -1196,7 +1196,7 @@ impl<P: consensus::Parameters, U: sapling::builder::ProverProgress> Builder<'_, 
                     None,
                 )
             }
-            BuildConfig::Standard { .. } => {
+            _ => {
                 let fee = self
                     .get_fee_zfuture(fee_rule, is_new_asset)
                     .map_err(Error::Fee)?;
@@ -1589,7 +1589,6 @@ where
 /// Returns the first nullifier from the first transfer action in the Orchard bundle.
 /// Returns `None` if the bundle is not an OrchardZSA bundle with at least one action.
 #[cfg(zcash_unstable = "nu7")]
-#[cfg(feature = "circuits")]
 fn first_nullifier<A: bundle::Authorization>(
     orchard_bundle: &Option<OrchardBundle<A>>,
 ) -> Option<&Nullifier> {
@@ -1598,6 +1597,8 @@ fn first_nullifier<A: bundle::Authorization>(
         _ => None,
     }
 }
+
+#[cfg(feature = "circuits")]
 fn authorize_transparent(
     b: &transparent::bundle::Bundle<transparent::builder::Unauthorized>,
     unauthed_tx: &TransactionData<Unauthorized>,
