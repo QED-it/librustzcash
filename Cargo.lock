@@ -2975,8 +2975,8 @@ checksum = "04744f49eae99ab78e0d5c0b603ab218f515ea8cfe5a456d7629ad883a3b6e7d"
 
 [[package]]
 name = "orchard"
-version = "0.11.0"
-source = "git+https://github.com/QED-it/orchard?rev=7ec34c9be7d36ecdce7c3658efe9a78c2863ed97#7ec34c9be7d36ecdce7c3658efe9a78c2863ed97"
+version = "0.12.0"
+source = "git+https://github.com/QED-it/orchard?rev=4b39a10c9ccd871fd08fbd40b583c3ff6ce39db2#4b39a10c9ccd871fd08fbd40b583c3ff6ce39db2"
 dependencies = [
  "aes",
  "bitvec",
@@ -4133,8 +4133,8 @@ dependencies = [
 
 [[package]]
 name = "sapling-crypto"
-version = "0.5.0"
-source = "git+https://github.com/QED-it/sapling-crypto?rev=9393f93fe547d1b3738c9f4618c0f8a2fffed29f#9393f93fe547d1b3738c9f4618c0f8a2fffed29f"
+version = "0.6.0"
+source = "git+https://github.com/QED-it/sapling-crypto?rev=84c0e9f847ea387c20fa81de6bd04b267ab8c395#84c0e9f847ea387c20fa81de6bd04b267ab8c395"
 dependencies = [
  "aes",
  "bellman",
