@@ -364,6 +364,9 @@ impl Authorization for Coinbase {
     type OrchardAuth =
         orchard::builder::InProgress<orchard::builder::Unproven, orchard::builder::Unauthorized>;
 
+    #[cfg(zcash_unstable = "nu7")]
+    type IssueAuth = orchard::issuance::AwaitingSighash;
+
     #[cfg(zcash_unstable = "zfuture")]
     type TzeAuth = tze::builder::Unauthorized;
 }
