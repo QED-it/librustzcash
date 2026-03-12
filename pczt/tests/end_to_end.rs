@@ -414,7 +414,12 @@ fn sapling_to_orchard() {
             sapling::Anchor::empty_tree(),
         );
         sapling_builder
-            .add_output(None, sapling_recipient, value, None)
+            .add_output(
+                None,
+                sapling_recipient,
+                value,
+                Memo::Empty.encode().into_bytes(),
+            )
             .unwrap();
         let (bundle, meta) = sapling_builder
             .build::<LocalTxProver, LocalTxProver, _, i64>(&[], &mut rng)

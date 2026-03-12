@@ -782,7 +782,7 @@ impl<P: consensus::Parameters, U> Builder<'_, P, U> {
                 ovk,
                 to,
                 sapling::value::NoteValue::from_raw(u64::from(value)),
-                Some(*memo.as_array()),
+                *memo.as_array(),
             )
             .map_err(Error::SaplingBuild)
     }
