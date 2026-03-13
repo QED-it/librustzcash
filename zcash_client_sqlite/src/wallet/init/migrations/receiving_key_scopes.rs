@@ -359,7 +359,7 @@ mod tests {
         let mut builder = Builder::new(
             db_data.params.clone(),
             height,
-            BuildConfig::Standard {
+            BuildConfig::TxV5 {
                 sapling_anchor: Some(sapling::Anchor::empty_tree()),
                 orchard_anchor: None,
             },
@@ -413,6 +413,8 @@ mod tests {
                 &prover,
                 #[allow(deprecated)]
                 &fixed::FeeRule::non_standard(Zatoshis::ZERO),
+                #[cfg(zcash_unstable = "nu7")]
+                |_| false,
             )
             .unwrap();
 

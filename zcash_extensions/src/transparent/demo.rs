@@ -478,6 +478,7 @@ mod tests {
 
     use blake2b_simd::Params;
     use ff::Field;
+    use orchard::note::AssetBase;
     use rand_core::OsRng;
 
     use sapling::{Node, Rseed, zip32::ExtendedSpendingKey};
@@ -514,6 +515,8 @@ mod tests {
                 NetworkUpgrade::Nu5 => Some(BlockHeight::from_u32(1_200_000)),
                 NetworkUpgrade::Nu6 => Some(BlockHeight::from_u32(1_300_000)),
                 NetworkUpgrade::Nu6_1 => Some(BlockHeight::from_u32(1_400_000)),
+                #[cfg(zcash_unstable = "nu7")]
+                NetworkUpgrade::Nu7 => Some(BlockHeight::from_u32(1_500_000)),
                 NetworkUpgrade::ZFuture => Some(BlockHeight::from_u32(1_500_000)),
             }
         }
@@ -537,6 +540,12 @@ mod tests {
         };
 
         (hash_1(preimage_1, &hash_2), hash_2)
+    }
+
+    /// This is a helper function for testing that indicates no assets are newly created.
+    #[cfg(all(test, zcash_unstable = "nu7"))]
+    fn no_new_assets(_: &AssetBase) -> bool {
+        false
     }
 
     #[test]
@@ -622,7 +631,7 @@ mod tests {
             txn_builder: Builder::new(
                 FutureNetwork,
                 height,
-                BuildConfig::Standard {
+                BuildConfig::TxV5 {
                     sapling_anchor: Some(sapling_anchor),
                     orchard_anchor: Some(orchard::Anchor::empty_tree()),
                 },
@@ -683,6 +692,7 @@ mod tests {
             None,
             None,
             None,
+            None,
             Some(Bundle {
                 vin: vec![],
                 vout: vec![out_a],
@@ -716,6 +726,7 @@ mod tests {
             None,
             None,
             None,
+            None,
             Some(Bundle {
                 vin: vec![in_b],
                 vout: vec![out_b],
@@ -741,6 +752,7 @@ mod tests {
             0u32.into(),
             #[cfg(feature = "zip-233")]
             Zatoshis::ZERO,
+            None,
             None,
             None,
             None,
@@ -839,6 +851,8 @@ mod tests {
                 &prover,
                 &prover,
                 &fee_rule,
+                #[cfg(zcash_unstable = "nu7")]
+                no_new_assets,
             )
             .map_err(|e| format!("build failure: {:?}", e))
             .unwrap();
@@ -868,6 +882,8 @@ mod tests {
                 &prover,
                 &prover,
                 &fee_rule,
+                #[cfg(zcash_unstable = "nu7")]
+                no_new_assets,
             )
             .map_err(|e| format!("build failure: {:?}", e))
             .unwrap();
@@ -904,6 +920,8 @@ mod tests {
                 &prover,
                 &prover,
                 &fee_rule,
+                #[cfg(zcash_unstable = "nu7")]
+                no_new_assets,
             )
             .map_err(|e| format!("build failure: {:?}", e))
             .unwrap();

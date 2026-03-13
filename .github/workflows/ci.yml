@@ -143,6 +143,12 @@ jobs:
           cargo test
           --workspace
           ${{ steps.prepare.outputs.feature-flags }}
+      - name: Run pczt end-to-end tests
+        run: >
+          cargo test
+          --package pczt
+          --test end_to_end
+          --features "io-finalizer,prover,signer,tx-extractor,spend-finalizer,zcp-builder,internal-tests"
       - name: Verify working directory is clean
         run: git diff --exit-code
 
@@ -227,10 +233,10 @@ jobs:
             os: windows-latest
 
           - state: ZFuture
-            rustflags: '--cfg zcash_unstable="zfuture"'
+            rustflags: '--cfg zcash_unstable="nu7" --cfg zcash_unstable="zfuture"'
           - state: ZFuture-allfeatures
             all-features: true
-            rustflags: '--cfg zcash_unstable="zfuture"'
+            rustflags: '--cfg zcash_unstable="nu7" --cfg zcash_unstable="zfuture"'
 
     env:
       RUSTFLAGS: ${{ matrix.rustflags }}

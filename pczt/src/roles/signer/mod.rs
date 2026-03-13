@@ -19,7 +19,7 @@ use rand_core::OsRng;
 
 use ::transparent::sighash::{SIGHASH_ANYONECANPAY, SIGHASH_NONE, SIGHASH_SINGLE};
 use zcash_primitives::transaction::{
-    Authorization, TransactionData, TxDigests, TxVersion, sighash::SignableInput,
+    Authorization, OrchardBundle, TransactionData, TxDigests, TxVersion, sighash::SignableInput,
     sighash_v5::v5_signature_hash, txid::TxIdDigester,
 };
 use zcash_protocol::consensus::BranchId;
@@ -384,7 +384,10 @@ pub(crate) fn pczt_to_tx_data(
 
     let sapling_bundle = sapling.extract_effects().map_err(Error::SaplingExtract)?;
 
-    let orchard_bundle = orchard.extract_effects().map_err(Error::OrchardExtract)?;
+    let orchard_bundle = orchard
+        .extract_effects()
+        .map_err(Error::OrchardExtract)?
+        .map(OrchardBundle::OrchardVanilla);
 
     Ok(TransactionData::from_parts(
         version,
@@ -400,6 +403,8 @@ pub(crate) fn pczt_to_tx_data(
         None,
         sapling_bundle,
         orchard_bundle,
+        #[cfg(zcash_unstable = "nu7")]
+        None,
     ))
 }
 
@@ -409,6 +414,8 @@ impl Authorization for EffectsOnly {
     type TransparentAuth = transparent::bundle::EffectsOnly;
     type SaplingAuth = sapling::bundle::EffectsOnly;
     type OrchardAuth = orchard::bundle::EffectsOnly;
+    #[cfg(zcash_unstable = "nu7")]
+    type IssueAuth = orchard::issuance::EffectsOnly;
     #[cfg(zcash_unstable = "zfuture")]
     type TzeAuth = core::convert::Infallible;
 }
