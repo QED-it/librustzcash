@@ -230,7 +230,7 @@ unexpected_cfgs = { level = "warn", check-cfg = [
 ] }
 
 [patch.crates-io]
-sapling = { package = "sapling-crypto", git = "https://github.com/QED-it/sapling-crypto", rev = "84c0e9f847ea387c20fa81de6bd04b267ab8c395" }
+sapling = { package = "sapling-crypto", git = "https://github.com/QED-it/sapling-crypto", rev = "ace5aabba8f03c18d2a94b10f65bc95f4de17913" }
 orchard = { git = "https://github.com/QED-it/orchard", rev = "4b39a10c9ccd871fd08fbd40b583c3ff6ce39db2" }
 sinsemilla = { git = "https://github.com/zcash/sinsemilla", rev = "aabb707e862bc3d7b803c77d14e5a771bcee3e8c" }
 zcash_note_encryption = { git = "https://github.com/zcash/zcash_note_encryption", rev = "9f7e93d42cef839d02b9d75918117941d453f8cb" }

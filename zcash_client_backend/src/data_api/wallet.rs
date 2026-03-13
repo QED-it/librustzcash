@@ -1733,7 +1733,7 @@ where
         output_prover,
         fee_rule,
         #[cfg(zcash_unstable = "nu7")]
-        |_| false,
+        crate::no_new_assets,
     )?;
 
     #[cfg(feature = "orchard")]
@@ -1915,7 +1915,7 @@ where
         OsRng,
         fee_rule,
         #[cfg(zcash_unstable = "nu7")]
-        |_| false,
+        crate::no_new_assets,
     )?;
 
     let created = Creator::build_from_parts(build_result.pczt_parts).ok_or(PcztError::Build)?;

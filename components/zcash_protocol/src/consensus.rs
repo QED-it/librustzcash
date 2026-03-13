@@ -566,7 +566,7 @@ impl Parameters for RegtestNetwork {
 }
 
 /// The enumeration of known Zcash networks.
-#[derive(PartialEq, Eq, Copy, Clone, Debug, Hash)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum Network {
     /// Zcash Mainnet.
     MainNetwork,
