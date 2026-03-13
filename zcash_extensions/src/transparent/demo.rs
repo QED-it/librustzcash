@@ -543,7 +543,7 @@ mod tests {
     }
 
     /// This is a helper function for testing that indicates no assets are newly created.
-    #[cfg(zcash_unstable = "nu7")]
+    #[cfg(all(test, zcash_unstable = "nu7"))]
     fn no_new_assets(_: &AssetBase) -> bool {
         false
     }
