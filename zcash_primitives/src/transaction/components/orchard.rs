@@ -283,9 +283,7 @@ pub fn read_signature<R: Read, T: SigType>(mut reader: R) -> io::Result<OrchardS
 }
 
 #[cfg(zcash_unstable = "nu7")]
-pub(crate) fn read_versioned_signature<R: Read, T: SigType>(
-    mut reader: R,
-) -> io::Result<OrchardSig<T>> {
+fn read_versioned_signature<R: Read, T: SigType>(mut reader: R) -> io::Result<OrchardSig<T>> {
     let sighash_info_bytes = Vector::read(&mut reader, |r| r.read_u8())?;
     let sighash_kind =
         orchard_sighash_kind_from_info(sighash_info_bytes.as_slice()).ok_or_else(|| {
@@ -301,7 +299,7 @@ pub(crate) fn read_versioned_signature<R: Read, T: SigType>(
 }
 
 #[cfg(zcash_unstable = "nu7")]
-pub(crate) fn write_versioned_signature<W: Write, T: SigType>(
+fn write_versioned_signature<W: Write, T: SigType>(
     mut writer: W,
     versioned_sig: &OrchardSig<T>,
 ) -> io::Result<()> {
