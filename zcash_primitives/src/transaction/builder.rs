@@ -8,6 +8,10 @@ use ::sapling::{Note, PaymentAddress, builder::SaplingMetadata};
 use ::transparent::{
     address::TransparentAddress, builder::TransparentBuilder, bundle::TxOut, coinbase,
 };
+use orchard::{
+    builder::BuildError::BundleTypeNotSatisfiable, builder::BundleType, flavor::OrchardVanilla,
+    note::AssetBase,
+};
 use zcash_protocol::{
     PoolType,
     consensus::{self, BlockHeight, BranchId, NetworkUpgrade, Parameters},
@@ -44,8 +48,6 @@ use {
     },
 };
 
-use orchard::{Address, builder::BundleType, flavor::OrchardVanilla, note::AssetBase};
-
 #[cfg(feature = "transparent-inputs")]
 use {::transparent::builder::TransparentInputInfo, zcash_script::script};
 
@@ -63,11 +65,11 @@ use crate::{
         fees::FutureFeeRule,
     },
 };
-use orchard::builder::BuildError::BundleTypeNotSatisfiable;
+
 #[cfg(zcash_unstable = "nu7")]
 use {
     orchard::{
-        bundle,
+        Address, bundle,
         flavor::OrchardZSA,
         issuance,
         issuance::auth::{IssueAuthKey, IssueValidatingKey, ZSASchnorr},
@@ -328,7 +330,7 @@ impl BuildConfig {
         }
     }
 
-    pub fn orchard_bundle_type<FE>(&self) -> Result<BundleType, Error<FE>> {
+    fn orchard_bundle_type<FE>(&self) -> Result<BundleType, Error<FE>> {
         let (bundle_type, _) = self
             .orchard_builder_config()
             .ok_or(Error::OrchardBuilderNotAvailable)?;
@@ -727,7 +729,7 @@ impl<P: consensus::Parameters, U> Builder<'_, P, U> {
     pub fn add_orchard_output<FE>(
         &mut self,
         ovk: Option<orchard::keys::OutgoingViewingKey>,
-        recipient: Address,
+        recipient: orchard::Address,
         value: Zatoshis,
         asset: AssetBase,
         memo: MemoBytes,
@@ -782,7 +784,7 @@ impl<P: consensus::Parameters, U> Builder<'_, P, U> {
                 ovk,
                 to,
                 sapling::value::NoteValue::from_raw(u64::from(value)),
-                *memo.as_array(),
+                memo.into_bytes(),
             )
             .map_err(Error::SaplingBuild)
     }
@@ -1650,14 +1652,15 @@ impl<'a, P: consensus::Parameters, U: sapling::builder::ProverProgress> Extensio
 
 #[cfg(all(any(test, feature = "test-dependencies"), feature = "circuits"))]
 mod testing {
-    use super::{BuildResult, Builder, Error};
-
-    use crate::transaction::fees::zip317;
-    use ::sapling::prover::mock::{MockOutputProver, MockSpendProver};
     use rand::RngCore;
     use rand_core::CryptoRng;
+
+    use ::sapling::prover::mock::{MockOutputProver, MockSpendProver};
     use transparent::builder::TransparentSigningSet;
     use zcash_protocol::consensus;
+
+    use super::{BuildResult, Builder, Error};
+    use crate::transaction::fees::zip317;
 
     impl<P: consensus::Parameters, U: sapling::builder::ProverProgress> Builder<'_, P, U> {
         /// Build the transaction using mocked randomness and proving capabilities.
@@ -2331,20 +2334,8 @@ mod tests {
         let asset_1 = compute_asset_desc_hash(&NonEmpty::from_slice(b"This is Asset 1").unwrap());
         let asset_2 = compute_asset_desc_hash(&NonEmpty::from_slice(b"This is Asset 2").unwrap());
 
-        /// Returns a predicate closure that determines if the given asset is newly created (not in the previously issued list).
-        fn new_asset_predicate(
-            previously_issued: &[AssetBase],
-        ) -> impl Fn(&AssetBase) -> bool + '_ {
-            move |asset: &AssetBase| {
-                if *asset == AssetBase::zatoshi() {
-                    return false;
-                }
-                !previously_issued.contains(asset)
-            }
-        }
-
-        let prev_issued = [AssetBase::custom(&AssetId::new_v0(&ik, &asset_1))];
-        let is_new_asset = new_asset_predicate(&prev_issued);
+        let prev_issued = AssetBase::custom(&AssetId::new_v0(&ik, &asset_1));
+        let is_new_asset = move |asset: &AssetBase| asset != &prev_issued;
 
         // Add spend and output for fees
         builder
