@@ -1328,10 +1328,9 @@ impl<P: consensus::Parameters, U: sapling::builder::ProverProgress> Builder<'_, 
         let mut orchard_meta = orchard::builder::BundleMetadata::empty();
 
         if let Some(builder) = self.orchard_builder {
-            let bundle_type = self.build_config.orchard_bundle_type()?;
-            if bundle_type == BundleType::DEFAULT_ZSA {
+            match self.build_config {
                 #[cfg(zcash_unstable = "nu7")]
-                {
+                BuildConfig::TxV6 { .. } => {
                     if let Some((bundle, meta)) =
                         builder.build(&mut rng).map_err(Error::OrchardBuild)?
                     {
@@ -1339,13 +1338,14 @@ impl<P: consensus::Parameters, U: sapling::builder::ProverProgress> Builder<'_, 
                         orchard_meta = meta;
                     }
                 }
-                #[cfg(not(zcash_unstable = "nu7"))]
-                return Err(Error::OrchardBuild(BundleTypeNotSatisfiable));
-            } else if let Some((bundle, meta)) =
-                builder.build(&mut rng).map_err(Error::OrchardBuild)?
-            {
-                unproven_orchard_bundle = Some(OrchardBundle::OrchardVanilla(bundle));
-                orchard_meta = meta;
+                _ => {
+                    if let Some((bundle, meta)) =
+                        builder.build(&mut rng).map_err(Error::OrchardBuild)?
+                    {
+                        unproven_orchard_bundle = Some(OrchardBundle::OrchardVanilla(bundle));
+                        orchard_meta = meta;
+                    }
+                }
             }
         };
 
@@ -1750,7 +1750,7 @@ mod tests {
         crate::transaction::fees::zip317,
         nonempty::NonEmpty,
         orchard::{
-            flavor::OrchardVanilla,
+            flavor::OrchardZSA,
             issuance::auth::{IssueAuthKey, IssueValidatingKey},
             issuance::{IssueInfo, compute_asset_desc_hash},
             keys::{FullViewingKey, Scope, SpendAuthorizingKey, SpendingKey},
@@ -2262,9 +2262,7 @@ mod tests {
         const EXPECTED_FEE: u64 = 525_000;
 
         let mut rng = OsRng;
-        let tx_height = TEST_NETWORK
-            .activation_height(NetworkUpgrade::Nu6_1)
-            .unwrap();
+        let tx_height = TEST_NETWORK.activation_height(NetworkUpgrade::Nu7).unwrap();
 
         // Generate keys
         let sk = SpendingKey::from_zip32_seed(&[1u8; 32], 1, AccountId::ZERO).unwrap();
@@ -2288,10 +2286,7 @@ mod tests {
                     Memo::Empty.encode().into_bytes(),
                 )
                 .unwrap();
-            let (bundle, meta) = builder
-                .build::<i64, OrchardVanilla>(&mut rng)
-                .unwrap()
-                .unwrap();
+            let (bundle, meta) = builder.build::<i64, OrchardZSA>(&mut rng).unwrap().unwrap();
             let action = bundle
                 .actions()
                 .get(meta.output_action_index(0).unwrap())
