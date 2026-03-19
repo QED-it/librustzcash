@@ -478,9 +478,9 @@ mod tests {
 
     use blake2b_simd::Params;
     use ff::Field;
-    use orchard::note::AssetBase;
     use rand_core::OsRng;
 
+    use orchard::note::AssetBase;
     use sapling::{Node, Rseed, zip32::ExtendedSpendingKey};
     use transparent::{address::TransparentAddress, builder::TransparentSigningSet};
     use zcash_primitives::{

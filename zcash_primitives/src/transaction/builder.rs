@@ -1656,7 +1656,7 @@ mod testing {
     use rand_core::CryptoRng;
 
     use ::sapling::prover::mock::{MockOutputProver, MockSpendProver};
-    use transparent::builder::TransparentSigningSet;
+    use ::transparent::builder::TransparentSigningSet;
     use zcash_protocol::consensus;
 
     use super::{BuildResult, Builder, Error};
