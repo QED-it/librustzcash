@@ -46,7 +46,7 @@ jobs:
           - state: all-features
             all-features: true
           - state: NU7
-            all-features: true
+            all-features: true # ZIP-233 feature is enabled
             rustflags: '--cfg zcash_unstable="nu7"'
 
     env:
@@ -109,7 +109,7 @@ jobs:
           - state: all-features
             all-features: true
           - state: NU7
-            all-features: true
+            all-features: true # ZIP-233 feature is enabled
             rustflags: '--cfg zcash_unstable="nu7"'
 
         exclude:
@@ -178,7 +178,7 @@ jobs:
           - state: all-features
             all-features: true
           - state: NU7
-            all-features: true
+            all-features: true # ZIP-233 feature is enabled
             rustflags: '--cfg zcash_unstable="nu7"'
 
     env:

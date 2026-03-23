@@ -753,9 +753,7 @@ impl<P: consensus::Parameters, U> Builder<'_, P, U> {
                     return Err(Error::OrchardBuild(BundleTypeNotSatisfiable));
                 }
                 #[cfg(zcash_unstable = "nu7")]
-                TxVersion::V6 => {
-                    // TODO check that ZSA flag is enabled
-                }
+                TxVersion::V6 => {}
                 #[cfg(zcash_unstable = "zfuture")]
                 TxVersion::ZFuture => {}
             }
