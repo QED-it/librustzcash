@@ -90,7 +90,7 @@ fn transparent_to_orchard() {
     let mut builder = Builder::new(
         params,
         10_000_000.into(),
-        BuildConfig::TxV5 {
+        BuildConfig::Standard {
             sapling_anchor: None,
             orchard_anchor: Some(orchard::Anchor::empty_tree()),
         },
@@ -253,7 +253,7 @@ fn transparent_p2sh_multisig_to_orchard() {
     let mut builder = Builder::new(
         params,
         10_000_000.into(),
-        BuildConfig::TxV5 {
+        BuildConfig::Standard {
             sapling_anchor: None,
             orchard_anchor: Some(orchard::Anchor::empty_tree()),
         },
@@ -460,7 +460,7 @@ fn sapling_to_orchard() {
     let mut builder = Builder::new(
         MainNetwork,
         10_000_000.into(),
-        BuildConfig::TxV5 {
+        BuildConfig::Standard {
             sapling_anchor: Some(anchor),
             orchard_anchor: Some(orchard::Anchor::empty_tree()),
         },
@@ -634,7 +634,7 @@ fn orchard_to_orchard() {
     let mut builder = Builder::new(
         MainNetwork,
         10_000_000.into(),
-        BuildConfig::TxV5 {
+        BuildConfig::Standard {
             sapling_anchor: None,
             orchard_anchor: Some(anchor),
         },

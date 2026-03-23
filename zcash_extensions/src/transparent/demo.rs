@@ -631,7 +631,7 @@ mod tests {
             txn_builder: Builder::new(
                 FutureNetwork,
                 height,
-                BuildConfig::TxV5 {
+                BuildConfig::Standard {
                     sapling_anchor: Some(sapling_anchor),
                     orchard_anchor: Some(orchard::Anchor::empty_tree()),
                 },
