@@ -321,7 +321,7 @@ pub trait Authorization {
 }
 
 /// [`Authorization`] marker type for fully-authorized transactions.
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct Authorized;
 
 impl Authorization for Authorized {
