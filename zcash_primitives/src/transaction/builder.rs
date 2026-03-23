@@ -9,8 +9,7 @@ use ::transparent::{
     address::TransparentAddress, builder::TransparentBuilder, bundle::TxOut, coinbase,
 };
 use orchard::{
-    builder::BuildError::BundleTypeNotSatisfiable, builder::BundleType, flavor::OrchardVanilla,
-    note::AssetBase,
+    builder::BuildError::BundleTypeNotSatisfiable, flavor::OrchardVanilla, note::AssetBase,
 };
 use zcash_protocol::{
     PoolType,
@@ -513,7 +512,10 @@ impl<'a, P: consensus::Parameters> Builder<'a, P, ()> {
             #[cfg(zcash_unstable = "nu7")]
             if params.is_nu_active(NetworkUpgrade::Nu7, target_height) {
                 build_config.orchard_builder_config().map(|(_, anchor)| {
-                    orchard::builder::Builder::new(BundleType::DEFAULT_ZSA, anchor)
+                    orchard::builder::Builder::new(
+                        orchard::builder::BundleType::DEFAULT_ZSA,
+                        anchor,
+                    )
                 })
             } else {
                 build_config
