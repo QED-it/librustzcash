@@ -305,11 +305,13 @@ impl BuildConfig {
     }
 
     /// Returns the Orchard bundle type and anchor for this configuration.
-    pub fn orchard_builder_config(&self) -> Option<(BundleType, orchard::Anchor)> {
+    pub fn orchard_builder_config(
+        &self,
+    ) -> Option<(orchard::builder::BundleType, orchard::Anchor)> {
         match self {
-            BuildConfig::Standard { orchard_anchor, .. } => {
-                orchard_anchor.as_ref().map(|a| (BundleType::DEFAULT, *a))
-            }
+            BuildConfig::Standard { orchard_anchor, .. } => orchard_anchor
+                .as_ref()
+                .map(|a| (orchard::builder::BundleType::DEFAULT, *a)),
             BuildConfig::Coinbase { .. } => Some((
                 orchard::builder::BundleType::Coinbase,
                 orchard::Anchor::empty_tree(),
@@ -625,13 +627,8 @@ impl<'a, P: consensus::Parameters> Builder<'a, P, ()> {
         issue_info: Option<IssueInfo>,
         first_issuance: bool,
     ) -> Result<(), Error<FE>> {
-        match self.tx_version {
-            TxVersion::Sprout(_) | TxVersion::V3 | TxVersion::V4 | TxVersion::V5 => {
-                return Err(Error::OrchardBuild(BundleTypeNotSatisfiable));
-            }
-            TxVersion::V6 => {}
-            #[cfg(zcash_unstable = "zfuture")]
-            TxVersion::ZFuture => {}
+        if !self.tx_version.has_orchard_zsa() {
+            return Err(Error::OrchardBuild(BundleTypeNotSatisfiable));
         }
 
         if self.issuance_builder.is_some() {
@@ -661,14 +658,10 @@ impl<'a, P: consensus::Parameters> Builder<'a, P, ()> {
         value: orchard::value::NoteValue,
         first_issuance: bool,
     ) -> Result<(), Error<FE>> {
-        match self.tx_version {
-            TxVersion::Sprout(_) | TxVersion::V3 | TxVersion::V4 | TxVersion::V5 => {
-                return Err(Error::OrchardBuild(BundleTypeNotSatisfiable));
-            }
-            TxVersion::V6 => {}
-            #[cfg(zcash_unstable = "zfuture")]
-            TxVersion::ZFuture => {}
+        if !self.tx_version.has_orchard_zsa() {
+            return Err(Error::OrchardBuild(BundleTypeNotSatisfiable));
         }
+
         self.issuance_builder
             .as_mut()
             .ok_or(Error::IssuanceBuilderNotAvailable)?
@@ -681,14 +674,10 @@ impl<'a, P: consensus::Parameters> Builder<'a, P, ()> {
     /// Finalizes a given asset
     #[cfg(zcash_unstable = "nu7")]
     pub fn finalize_asset<FE>(&mut self, asset_desc_hash: &[u8; 32]) -> Result<(), Error<FE>> {
-        match self.tx_version {
-            TxVersion::Sprout(_) | TxVersion::V3 | TxVersion::V4 | TxVersion::V5 => {
-                return Err(Error::OrchardBuild(BundleTypeNotSatisfiable));
-            }
-            TxVersion::V6 => {}
-            #[cfg(zcash_unstable = "zfuture")]
-            TxVersion::ZFuture => {}
+        if !self.tx_version.has_orchard_zsa() {
+            return Err(Error::OrchardBuild(BundleTypeNotSatisfiable));
         }
+
         self.issuance_builder
             .as_mut()
             .ok_or(Error::IssuanceBuilderNotAvailable)?
@@ -701,14 +690,10 @@ impl<'a, P: consensus::Parameters> Builder<'a, P, ()> {
     /// Adds a Burn action to the transaction.
     #[cfg(zcash_unstable = "nu7")]
     pub fn add_burn<FE>(&mut self, value: u64, asset: AssetBase) -> Result<(), Error<FE>> {
-        match self.tx_version {
-            TxVersion::Sprout(_) | TxVersion::V3 | TxVersion::V4 | TxVersion::V5 => {
-                return Err(Error::OrchardBuild(BundleTypeNotSatisfiable));
-            }
-            TxVersion::V6 => {}
-            #[cfg(zcash_unstable = "zfuture")]
-            TxVersion::ZFuture => {}
+        if !self.tx_version.has_orchard_zsa() {
+            return Err(Error::OrchardBuild(BundleTypeNotSatisfiable));
         }
+
         self.orchard_builder
             .as_mut()
             .ok_or(Error::OrchardBuilderNotAvailable)?
@@ -747,16 +732,8 @@ impl<P: consensus::Parameters, U> Builder<'_, P, U> {
         asset: AssetBase,
         memo: MemoBytes,
     ) -> Result<(), Error<FE>> {
-        if !bool::from(asset.is_zatoshi()) {
-            match self.tx_version {
-                TxVersion::Sprout(_) | TxVersion::V3 | TxVersion::V4 | TxVersion::V5 => {
-                    return Err(Error::OrchardBuild(BundleTypeNotSatisfiable));
-                }
-                #[cfg(zcash_unstable = "nu7")]
-                TxVersion::V6 => {}
-                #[cfg(zcash_unstable = "zfuture")]
-                TxVersion::ZFuture => {}
-            }
+        if !bool::from(asset.is_zatoshi()) && !self.tx_version.has_orchard_zsa() {
+            return Err(Error::OrchardBuild(BundleTypeNotSatisfiable));
         }
 
         self.orchard_builder
@@ -1349,33 +1326,26 @@ impl<P: consensus::Parameters, U: sapling::builder::ProverProgress> Builder<'_, 
         let mut orchard_meta = orchard::builder::BundleMetadata::empty();
 
         if let Some(builder) = self.orchard_builder {
-            match self.tx_version {
-                #[cfg(zcash_unstable = "nu7")]
-                TxVersion::V6 => {
-                    if let Some((bundle, meta)) =
-                        builder.build(&mut rng).map_err(Error::OrchardBuild)?
-                    {
-                        unproven_orchard_bundle = Some(OrchardBundle::OrchardZSA(bundle));
-                        orchard_meta = meta;
-                    }
+            #[cfg(zcash_unstable = "nu7")]
+            if self.tx_version.has_orchard_zsa() {
+                if let Some((bundle, meta)) =
+                    builder.build(&mut rng).map_err(Error::OrchardBuild)?
+                {
+                    unproven_orchard_bundle = Some(OrchardBundle::OrchardZSA(bundle));
+                    orchard_meta = meta;
                 }
-                #[cfg(zcash_unstable = "zfuture")]
-                TxVersion::ZFuture => {
-                    if let Some((bundle, meta)) =
-                        builder.build(&mut rng).map_err(Error::OrchardBuild)?
-                    {
-                        unproven_orchard_bundle = Some(OrchardBundle::OrchardZSA(bundle));
-                        orchard_meta = meta;
-                    }
+            } else {
+                if let Some((bundle, meta)) =
+                    builder.build(&mut rng).map_err(Error::OrchardBuild)?
+                {
+                    unproven_orchard_bundle = Some(OrchardBundle::OrchardVanilla(bundle));
+                    orchard_meta = meta;
                 }
-                TxVersion::Sprout(_) | TxVersion::V3 | TxVersion::V4 | TxVersion::V5 => {
-                    if let Some((bundle, meta)) =
-                        builder.build(&mut rng).map_err(Error::OrchardBuild)?
-                    {
-                        unproven_orchard_bundle = Some(OrchardBundle::OrchardVanilla(bundle));
-                        orchard_meta = meta;
-                    }
-                }
+            }
+            #[cfg(not(zcash_unstable = "nu7"))]
+            if let Some((bundle, meta)) = builder.build(&mut rng).map_err(Error::OrchardBuild)? {
+                unproven_orchard_bundle = Some(OrchardBundle::OrchardVanilla(bundle));
+                orchard_meta = meta;
             }
         };
 
