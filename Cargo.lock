@@ -7550,8 +7550,3 @@ dependencies = [
  "cc",
  "pkg-config",
 ]
-
-[[patch.unused]]
-name = "halo2_proofs"
-version = "0.3.1"
-source = "git+https://github.com/zcash/halo2?rev=2308caf68c48c02468b66cfc452dad54e355e32f#2308caf68c48c02468b66cfc452dad54e355e32f"

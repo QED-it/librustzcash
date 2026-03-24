@@ -508,9 +508,13 @@ impl<'a, P: consensus::Parameters> Builder<'a, P, ()> {
     /// The expiry height will be set to the given height plus the default transaction
     /// expiry delta (20 blocks).
     pub fn new(params: P, target_height: BlockHeight, build_config: BuildConfig) -> Self {
+        // Determine the default transaction version for the consensus branch
+        let consensus_branch_id = BranchId::for_height(&params, target_height);
+        let tx_version = TxVersion::suggested_for_branch(consensus_branch_id);
+
         let orchard_builder = if params.is_nu_active(NetworkUpgrade::Nu5, target_height) {
             #[cfg(zcash_unstable = "nu7")]
-            if params.is_nu_active(NetworkUpgrade::Nu7, target_height) {
+            if tx_version.has_orchard_zsa() {
                 build_config.orchard_builder_config().map(|(_, anchor)| {
                     orchard::builder::Builder::new(
                         orchard::builder::BundleType::DEFAULT_ZSA,
@@ -556,10 +560,6 @@ impl<'a, P: consensus::Parameters> Builder<'a, P, ()> {
         } else {
             target_height + DEFAULT_TX_EXPIRY_DELTA
         };
-
-        // Determine the default transaction version for the consensus branch
-        let consensus_branch_id = BranchId::for_height(&params, target_height);
-        let tx_version = TxVersion::suggested_for_branch(consensus_branch_id);
 
         Builder {
             params,
