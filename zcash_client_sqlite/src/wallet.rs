@@ -2454,15 +2454,14 @@ fn parse_tx<P: consensus::Parameters>(
                 BranchId::for_height(params, expiry_height),
                 tx_data.lock_time(),
                 expiry_height,
-                #[cfg(all(
-                    any(zcash_unstable = "nu7", zcash_unstable = "zfuture"),
-                    feature = "zip-233"
-                ))]
+                #[cfg(all(zcash_unstable = "nu7", feature = "zip-233"))]
                 tx_data.zip233_amount(),
                 tx_data.transparent_bundle().cloned(),
                 tx_data.sprout_bundle().cloned(),
                 tx_data.sapling_bundle().cloned(),
                 tx_data.orchard_bundle().cloned(),
+                #[cfg(zcash_unstable = "nu7")]
+                tx_data.issue_bundle().cloned(),
             )
             .freeze()
             .map(|t| (expiry_height, t))
@@ -2941,7 +2940,7 @@ pub(crate) fn store_transaction_to_be_sent<P: consensus::Parameters>(
         #[cfg(feature = "orchard")]
         {
             detectable_via_scanning = true;
-            for action in _bundle.actions() {
+            for action in _bundle.as_vanilla_bundle().actions() {
                 orchard::mark_orchard_note_spent(conn, tx_ref, action.nullifier())?;
             }
         }

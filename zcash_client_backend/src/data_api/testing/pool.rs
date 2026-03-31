@@ -80,6 +80,7 @@ use zcash_protocol::PoolType;
 
 #[cfg(feature = "pczt")]
 use {
+    orchard::flavor::OrchardVanilla,
     pczt::roles::{prover::Prover, signer::Signer},
     rand_core::OsRng,
     transparent::builder::TransparentSigningSet,
@@ -4856,7 +4857,7 @@ pub fn pczt_single_step<P0: ShieldedPoolTester, P1: ShieldedPoolTester, Dsf>(
 
     // Create proofs.
     let sapling_prover = LocalTxProver::bundled();
-    let orchard_pk = ::orchard::circuit::ProvingKey::build();
+    let orchard_pk = ::orchard::circuit::ProvingKey::build::<OrchardVanilla>();
     let pczt_proven = Prover::new(pczt_updated)
         .create_orchard_proof(&orchard_pk)
         .unwrap()
@@ -5107,6 +5108,8 @@ fn build_transparent_coinbase_tx(
             &LocalTxProver::bundled(),
             // unused internally
             &StandardFeeRule::Zip317,
+            #[cfg(zcash_unstable = "nu7")]
+            crate::no_new_assets,
         )
         .unwrap()
 }

@@ -3,7 +3,7 @@ use std::{collections::HashSet, rc::Rc};
 use incrementalmerkletree::Position;
 use orchard::{
     keys::Diversifier,
-    note::{Note, Nullifier, RandomSeed, Rho},
+    note::{AssetBase, Note, Nullifier, RandomSeed, Rho},
 };
 use rusqlite::{Connection, Row, named_params, types::Value};
 
@@ -108,6 +108,7 @@ pub(crate) fn to_received_note<P: consensus::Parameters>(
             let note = Option::from(Note::from_parts(
                 recipient,
                 orchard::value::NoteValue::from_raw(note_value),
+                AssetBase::zatoshi(),
                 rho,
                 rseed,
             ))
