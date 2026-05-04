@@ -3,6 +3,13 @@
 This repository contains a (work-in-progress) set of Rust crates for working
 with Zcash.
 
+## Project Status
+
+**This is a functional prototype of the crates with support for ZSA Swaps.**
+It is not ready for production use.
+ZSA Swaps are a work-in-progress, and the protocol is not finalized.
+It is intended for testing and development purposes only, and should not be used in a production environment.
+
 ```mermaid
 graph TB
     subgraph librustzcash
