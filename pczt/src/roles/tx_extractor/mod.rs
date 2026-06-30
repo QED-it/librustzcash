@@ -6,7 +6,7 @@ use core::marker::PhantomData;
 use rand_core::OsRng;
 
 use zcash_primitives::transaction::{
-    Authorization, Transaction,
+    Authorization, OrchardBundle, Transaction,
     sighash::{SignableInput, signature_hash},
     txid::TxIdDigester,
 };

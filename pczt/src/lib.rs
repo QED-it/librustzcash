@@ -131,7 +131,13 @@ impl Pczt {
         extract_orchard: impl FnOnce(
             &::orchard::pczt::Bundle,
         ) -> Result<
-            Option<::orchard::Bundle<A::OrchardAuth, zcash_protocol::value::ZatBalance>>,
+            Option<
+                ::orchard::Bundle<
+                    A::OrchardAuth,
+                    zcash_protocol::value::ZatBalance,
+                    ::orchard::flavor::OrchardVanilla,
+                >,
+            >,
             E,
         >,
     ) -> Result<ParsedPczt<A>, E>
@@ -168,7 +174,9 @@ impl Pczt {
 
         let transparent_bundle = extract_transparent(&transparent)?;
         let sapling_bundle = extract_sapling(&sapling)?;
-        let orchard_bundle = extract_orchard(&orchard)?;
+        // FIXME: Can we really pin the bundle to OrchardBundle::OrchardVanilla here?
+        let orchard_bundle = extract_orchard(&orchard)?
+            .map(zcash_primitives::transaction::OrchardBundle::OrchardVanilla);
 
         let tx_data = TransactionData::from_parts(
             version,

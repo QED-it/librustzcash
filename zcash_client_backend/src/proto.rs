@@ -222,8 +222,8 @@ impl TryFrom<&compact_formats::CompactOrchardAction>
                 value.cmx()?,
                 value.ephemeral_key()?,
                 NoteBytesData::from_slice(&value.ciphertext)
-                    .ok_or(())
-                    .map_err(CompactFormatError::InvalidLength)?,
+                    // FIXME: Upstream uses CompactFormatError::InvalidLength - try to do the same
+                    .ok_or(CompactFormatError::InvalidValue)?,
             ),
         )
     }
