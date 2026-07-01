@@ -159,7 +159,7 @@ pub fn read_v6_bundle<R: Read>(
 
     let authorization = Authorized::from_parts(orchard::Proof::new(proof_bytes), binding_signature);
 
-    orchard::Bundle::from_parts(
+    orchard::Bundle::try_from_parts(
         actions,
         flags,
         value_balance,
@@ -455,8 +455,7 @@ mod tests {
         alloc::vec::Vec,
         orchard::primitives::redpallas,
         orchard::sighash_kind::{OrchardSig, OrchardSighashKind},
-        rand::RngCore,
-        rand::rngs::OsRng,
+        rand_core::{OsRng, RngCore},
         std::io::Cursor,
     };
 

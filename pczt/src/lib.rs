@@ -192,6 +192,9 @@ impl Pczt {
             None,
             sapling_bundle,
             orchard_bundle,
+            // FIXME: Is it correct to pass None as issue_bundle here?
+            #[cfg(zcash_unstable = "nu7")]
+            None,
         );
 
         Ok(ParsedPczt {
@@ -240,6 +243,8 @@ impl Authorization for EffectsOnly {
     type TransparentAuth = ::transparent::bundle::EffectsOnly;
     type SaplingAuth = ::sapling::bundle::EffectsOnly;
     type OrchardAuth = ::orchard::bundle::EffectsOnly;
+    #[cfg(zcash_unstable = "nu7")]
+    type IssueAuth = ::orchard::issuance::EffectsOnly;
     #[cfg(zcash_unstable = "zfuture")]
     type TzeAuth = core::convert::Infallible;
 }

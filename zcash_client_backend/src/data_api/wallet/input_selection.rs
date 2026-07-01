@@ -1308,6 +1308,11 @@ impl<DbT: InputSource> ShieldingSelector for GreedyInputSelector<DbT> {
                 0,
                 sapling_output_count,
                 orchard_action_count,
+                // FIXME: Is it correct to pass zeroes as asset_creation_count and total_issue_note_count here?
+                #[cfg(zcash_unstable = "nu7")]
+                0,
+                #[cfg(zcash_unstable = "nu7")]
+                0,
             )
             // The `InputSelectorError::Change` variant is the only existing
             // carrier capable of holding an arbitrary fee-rule error

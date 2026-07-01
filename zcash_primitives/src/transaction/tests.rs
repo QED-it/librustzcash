@@ -7,12 +7,10 @@ use {
         sighash::signature_hash, sighash_v4::v4_signature_hash, testing::arb_tx, transparent,
         txid::TxIdDigester,
     },
-    ::transparent::{
-        address::Script, sighash::SighashType, sighash::TransparentAuthorizingContext,
-    },
     alloc::vec::Vec,
     blake2b_simd::Hash as Blake2bHash,
     core::ops::Deref,
+    ::transparent::{address::Script, sighash::SighashType, sighash::TransparentAuthorizingContext},
     zcash_protocol::{consensus::BranchId, value::Zatoshis},
     zcash_script::script,
 };
@@ -487,8 +485,8 @@ fn zip_0233() {
         (tdata, txdata.digest(TxIdDigester))
     }
 
-    for tv in self::data::zip_0233::TEST_VECTORS {
-        let (txdata, txid_parts) = to_test_txdata(tv);
+    for tv in self::data::zip_0233::make_test_vectors() {
+        let (txdata, txid_parts) = to_test_txdata(&tv);
 
         assert_eq!(
             v6_signature_hash(&txdata, &SignableInput::Shielded, &txid_parts).as_ref(),
