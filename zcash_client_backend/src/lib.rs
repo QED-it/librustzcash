@@ -55,7 +55,7 @@
 //!
 
 #![cfg_attr(docsrs, feature(doc_cfg))]
-#![cfg_attr(docsrs, feature(doc_auto_cfg))]
+#![cfg_attr(docsrs, doc(auto_cfg))]
 // Catch documentation errors caused by code changes.
 #![deny(rustdoc::broken_intra_doc_links)]
 // Temporary until we have addressed all Result<T, ()> cases.
@@ -79,7 +79,10 @@ pub mod serialization;
 #[cfg(feature = "tor")]
 pub mod tor;
 
-pub use decrypt::{decrypt_transaction, DecryptedOutput, TransferType};
+pub use decrypt::{DecryptedOutput, TransferType, decrypt_transaction};
+
+#[cfg(zcash_unstable = "nu7")]
+use orchard::note::AssetBase;
 
 #[deprecated(note = "This module is deprecated; use `::zcash_keys::address` instead.")]
 pub mod address {
@@ -105,3 +108,9 @@ pub mod zip321 {
 #[cfg(test)]
 #[macro_use]
 extern crate assert_matches;
+
+/// This is a helper function that indicates no assets are newly created.
+#[cfg(zcash_unstable = "nu7")]
+fn no_new_assets(_: &AssetBase) -> bool {
+    false
+}
