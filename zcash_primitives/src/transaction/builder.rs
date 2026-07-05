@@ -67,7 +67,8 @@ use crate::{
 #[cfg(zcash_unstable = "nu7" /* TODO swap */ )]
 use orchard::{
     primitives::redpallas::{Binding, SigningKey},
-    swap_bundle::{ActionGroupAuthorized, SwapBundle},
+    swap_bundle::ActionGroupAuthorized,
+    // swap_bundle::SwapBundle,
 };
 #[cfg(zcash_unstable = "nu7")]
 use {
@@ -1355,65 +1356,71 @@ impl<P: consensus::Parameters, U: sapling::builder::ProverProgress> Builder<'_, 
         if let Some(builder) = self.orchard_builder {
             #[cfg(zcash_unstable = "nu7")]
             if self.tx_version.has_orchard_zsa() {
-                if !builder.is_empty() || self.action_groups.is_empty() {
-                    // TODO should build empty too
-                    let timelimit: u32 = (self.target_height + 10).into(); // TODO default(?) timelimit
-
-                    let (main_action_group, meta) = builder
-                        .build_action_group(&mut rng, timelimit)
-                        .map_err(Error::OrchardBuild)?
-                        .ok_or(Error::OrchardBuild(BundleTypeNotSatisfiable))?;
+                if let Some((bundle, meta)) =
+                    builder.build(&mut rng).map_err(Error::OrchardBuild)?
+                {
+                    unproven_orchard_bundle = Some(OrchardBundle::OrchardZSA(bundle));
                     orchard_meta = meta;
-
-                    let pk = &orchard::circuit::ProvingKey::build::<OrchardZSA>();
-                    let commitment = main_action_group.action_group_commitment();
-                    let (proven_main_group, main_group_bsk) = main_action_group
-                        .create_proof(pk, &mut rng)
-                        .map_err(Error::OrchardBuild)?
-                        .apply_signatures_for_action_group(
-                            &mut rng,
-                            commitment.into(),
-                            orchard_saks,
-                        )
-                        .map_err(Error::OrchardBuild)?;
-                    self.action_groups.push((proven_main_group, main_group_bsk));
                 }
-
-                let (action_groups, bsks): (Vec<_>, Vec<_>) =
-                    self.action_groups.into_iter().unzip();
-
-                // Compute value_balance by summing the value balances of all action groups
-                let value_balance = action_groups
-                    .iter()
-                    .map(|a| *a.value_balance())
-                    .try_fold(ZatBalance::zero(), |acc, v| acc + v)
-                    .expect("value balance overflow");
-
-                // Convert action_groups to i64 for SwapBundle::new (which requires Add<Output=V>)
-                // ZatBalance's Add returns Option<ZatBalance>, so we use i64 intermediately
-                let action_groups_i64: Vec<_> = action_groups
-                    .iter()
-                    .map(|b| {
-                        b.clone()
-                            .try_map_value_balance(|v| {
-                                Ok::<i64, core::convert::Infallible>(v.into())
-                            })
-                            .unwrap()
-                    })
-                    .collect();
-
-                // Create a temporary SwapBundle<i64> to compute the binding signature
-                let temp_swap_bundle = SwapBundle::new(&mut rng, action_groups_i64, bsks);
-
-                // Extract the binding signature and use it with the original ZatBalance action_groups
-                let binding_signature = temp_swap_bundle.binding_signature().clone();
-
-                // In this case the bundle is, in fact, already authorized
-                unproven_orchard_bundle = Some(OrchardBundle::OrchardSwap(SwapBundle::from_parts(
-                    action_groups,
-                    value_balance,
-                    binding_signature,
-                )));
+                // if !builder.is_empty() || self.action_groups.is_empty() { //TODO: also handle this.
+                //     // TODO should build empty too
+                //     let timelimit: u32 = (self.target_height + 10).into(); // TODO default(?) timelimit
+                //
+                //     let (main_action_group, meta) = builder
+                //         .build_action_group(&mut rng, timelimit)
+                //         .map_err(Error::OrchardBuild)?
+                //         .ok_or(Error::OrchardBuild(BundleTypeNotSatisfiable))?;
+                //     orchard_meta = meta;
+                //
+                //     let pk = &orchard::circuit::ProvingKey::build::<OrchardZSA>();
+                //     let commitment = main_action_group.action_group_commitment();
+                //     let (proven_main_group, main_group_bsk) = main_action_group
+                //         .create_proof(pk, &mut rng)
+                //         .map_err(Error::OrchardBuild)?
+                //         .apply_signatures_for_action_group(
+                //             &mut rng,
+                //             commitment.into(),
+                //             orchard_saks,
+                //         )
+                //         .map_err(Error::OrchardBuild)?;
+                //     self.action_groups.push((proven_main_group, main_group_bsk));
+                // }
+                //
+                // let (action_groups, bsks): (Vec<_>, Vec<_>) =
+                //     self.action_groups.into_iter().unzip();
+                //
+                // // Compute value_balance by summing the value balances of all action groups
+                // let value_balance = action_groups
+                //     .iter()
+                //     .map(|a| *a.value_balance())
+                //     .try_fold(ZatBalance::zero(), |acc, v| acc + v)
+                //     .expect("value balance overflow");
+                //
+                // // Convert action_groups to i64 for SwapBundle::new (which requires Add<Output=V>)
+                // // ZatBalance's Add returns Option<ZatBalance>, so we use i64 intermediately
+                // let action_groups_i64: Vec<_> = action_groups
+                //     .iter()
+                //     .map(|b| {
+                //         b.clone()
+                //             .try_map_value_balance(|v| {
+                //                 Ok::<i64, core::convert::Infallible>(v.into())
+                //             })
+                //             .unwrap()
+                //     })
+                //     .collect();
+                //
+                // // Create a temporary SwapBundle<i64> to compute the binding signature
+                // let temp_swap_bundle = SwapBundle::new(&mut rng, action_groups_i64, bsks);
+                //
+                // // Extract the binding signature and use it with the original ZatBalance action_groups
+                // let binding_signature = temp_swap_bundle.binding_signature().clone();
+                //
+                // // In this case the bundle is, in fact, already authorized
+                // unproven_orchard_bundle = Some(OrchardBundle::OrchardSwap(SwapBundle::from_parts(
+                //     action_groups,
+                //     value_balance,
+                //     binding_signature,
+                // )));
             } else if let Some((bundle, meta)) =
                 builder.build(&mut rng).map_err(Error::OrchardBuild)?
             {
