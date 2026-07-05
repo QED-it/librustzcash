@@ -41,7 +41,7 @@ impl<'a, NoteRef, In: InputView<NoteRef>, Out: OutputView> BundleView<NoteRef>
     }
 }
 
-/// A [`BundleView`] for the empty bundle with [`BundleType::DEFAULT_VANILLA`] bundle type.
+/// A [`BundleView`] for the empty bundle with [`BundleType::DEFAULT`] bundle type.
 pub struct EmptyBundleView;
 
 impl<NoteRef> BundleView<NoteRef> for EmptyBundleView {
@@ -49,7 +49,7 @@ impl<NoteRef> BundleView<NoteRef> for EmptyBundleView {
     type Out = Infallible;
 
     fn bundle_type(&self) -> BundleType {
-        BundleType::DEFAULT_VANILLA
+        BundleType::DEFAULT
     }
 
     fn inputs(&self) -> &[Self::In] {

@@ -478,18 +478,18 @@ mod tests {
 
     use blake2b_simd::Params;
     use ff::Field;
-    use orchard::note::AssetBase;
     use rand_core::OsRng;
 
-    use sapling::{zip32::ExtendedSpendingKey, Node, Rseed};
+    use orchard::note::AssetBase;
+    use sapling::{Node, Rseed, zip32::ExtendedSpendingKey};
     use transparent::{address::TransparentAddress, builder::TransparentSigningSet};
     use zcash_primitives::{
         extensions::transparent::{self as tze, Extension, FromPayload, ToPayload},
         transaction::{
+            Transaction, TransactionData, TxVersion,
             builder::{BuildConfig, Builder},
             components::tze::{Authorized, Bundle, OutPoint, TzeIn, TzeOut},
             fees::{fixed, zip317::MINIMUM_FEE},
-            Transaction, TransactionData, TxVersion,
         },
     };
     use zcash_protocol::{
@@ -499,7 +499,7 @@ mod tests {
 
     use zcash_proofs::prover::LocalTxProver;
 
-    use super::{close, hash_1, open, Context, DemoBuilder, Precondition, Program, Witness};
+    use super::{Context, DemoBuilder, Precondition, Program, Witness, close, hash_1, open};
 
     #[derive(PartialEq, Copy, Clone, Debug)]
     struct FutureNetwork;
@@ -545,7 +545,7 @@ mod tests {
     }
 
     /// This is a helper function for testing that indicates no assets are newly created.
-    #[cfg(zcash_unstable = "nu7")]
+    #[cfg(all(test, zcash_unstable = "nu7"))]
     fn no_new_assets(_: &AssetBase) -> bool {
         false
     }
@@ -633,7 +633,7 @@ mod tests {
             txn_builder: Builder::new(
                 FutureNetwork,
                 height,
-                BuildConfig::TxV5 {
+                BuildConfig::Standard {
                     sapling_anchor: Some(sapling_anchor),
                     orchard_anchor: Some(orchard::Anchor::empty_tree()),
                 },
