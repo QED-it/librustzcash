@@ -231,7 +231,7 @@ unexpected_cfgs = { level = "warn", check-cfg = [
 
 [patch.crates-io]
 sapling = { package = "sapling-crypto", git = "https://github.com/QED-it/sapling-crypto", rev = "e785faaa5eaf67bd2cb328fdd82a345df44e5754" }
-orchard = { git = "https://github.com/QED-it/orchard", rev = "045ca8a2c46d4824c515f662827d75406f38a519" }
+orchard = { git = "https://github.com/QED-it/orchard", rev = "cf801a5d6701bc128e21678ba0034564af4a2aca" }
 zcash_note_encryption = { git = "https://github.com/zcash/zcash_note_encryption", rev = "9f7e93d42cef839d02b9d75918117941d453f8cb" }
 zcash_spec = { git = "https://github.com/QED-it/zcash_spec", rev = "d5e84264d2ad0646b587a837f4e2424ca64d3a05" }
 halo2_gadgets = { git = "https://github.com/QED-it/halo2", rev = "ef3d0ba2e9a513658f8d3d00294ddebd92cc649e" }
