@@ -234,14 +234,16 @@ impl Authorization for TestUnauthorized {
     type TzeAuth = tze::Authorized;
 }
 
-mod orchard_zsa_digests;
+#[cfg(all(zcash_unstable = "nu7", feature = "zip-233"))]
+pub mod orchard_zsa_digests;
+
 #[test]
 fn zip_0244() {
     fn to_test_txdata(
         tv: &self::data::zip_0244::TestVector,
     ) -> (TransactionData<TestUnauthorized>, TxDigests<Blake2bHash>) {
         let tx = Transaction::read(
-            tv.tx,
+            &tv.tx[..],
             #[cfg(not(zcash_unstable = "nu7"))]
             BranchId::Nu5,
             #[cfg(zcash_unstable = "nu7")]
@@ -408,14 +410,14 @@ fn zip_0244() {
         );
     }
 
-    for tv in self::data::zip_0244::TEST_VECTORS {
-        perform_digest_tests(tv);
+    for tv in self::data::zip_0244::make_test_vectors() {
+        perform_digest_tests(&tv);
     }
 
     // The orchard_zsa_digests test vectors include zip233_amount
     #[cfg(all(zcash_unstable = "nu7", feature = "zip-233"))]
-    for tv in self::orchard_zsa_digests::TEST_VECTORS {
-        perform_digest_tests(tv);
+    for tv in self::orchard_zsa_digests::make_test_vectors() {
+        perform_digest_tests(&tv);
     }
 }
 
