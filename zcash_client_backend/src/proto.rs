@@ -37,7 +37,7 @@ use transparent::bundle::OutPoint;
 #[cfg(feature = "orchard")]
 use {
     orchard::{flavor::OrchardVanilla, primitives::OrchardPrimitives, tree::MerkleHashOrchard},
-    zcash_note_encryption::note_bytes::{NoteBytes, NoteBytesData},
+    zcash_note_encryption::note_bytes::NoteBytesData,
 };
 
 #[rustfmt::skip]
@@ -221,9 +221,11 @@ impl TryFrom<&compact_formats::CompactOrchardAction>
                 value.nf()?,
                 value.cmx()?,
                 value.ephemeral_key()?,
-                NoteBytesData::from_slice(&value.ciphertext)
-                    // FIXME: Upstream uses CompactFormatError::InvalidLength - try to do the same
-                    .ok_or(CompactFormatError::InvalidValue)?,
+                NoteBytesData(
+                    value.ciphertext[..]
+                        .try_into()
+                        .map_err(CompactFormatError::InvalidLength)?,
+                ),
             ),
         )
     }
