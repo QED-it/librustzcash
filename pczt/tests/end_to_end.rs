@@ -22,7 +22,7 @@ use rand_core::OsRng;
 use shardtree::{ShardTree, store::memory::MemoryShardStore};
 use zcash_note_encryption::try_note_decryption;
 use zcash_primitives::transaction::{
-    builder::{BuildConfig, Builder, PcztResult},
+    builder::{BuildConfig, Builder, DEFAULT_TX_EXPIRY_DELTA, PcztResult},
     fees::zip317,
     sighash::SignableInput,
     sighash_v5::v5_signature_hash,
@@ -35,6 +35,9 @@ use zcash_protocol::{
     value::Zatoshis,
 };
 use zcash_script::script::{self, Evaluable};
+
+#[cfg(zcash_unstable = "nu7")]
+use zcash_protocol::consensus::{NetworkUpgrade, Parameters};
 
 static ORCHARD_PROVING_KEY: OnceLock<orchard::circuit::ProvingKey> = OnceLock::new();
 
@@ -86,10 +89,22 @@ fn transparent_to_orchard() {
         transparent_addr.script().into(),
     );
 
+    // Use a large target height when V6 support is disabled.
+    #[cfg(not(zcash_unstable = "nu7"))]
+    let target_height = 10_000_000u32;
+
+    // Use the last pre-V6 height when V6 support is enabled.
+    #[cfg(zcash_unstable = "nu7")]
+    let target_height = MainNetwork
+        .activation_height(NetworkUpgrade::Nu7)
+        .map(u32::from)
+        .and_then(|v6_height| v6_height.checked_sub(1))
+        .expect("valid V6 activation height must be configured");
+
     // Create the transaction's I/O.
     let mut builder = Builder::new(
         params,
-        10_000_000.into(),
+        target_height.into(),
         BuildConfig::Standard {
             sapling_anchor: None,
             orchard_anchor: Some(orchard::Anchor::empty_tree()),
@@ -157,7 +172,10 @@ fn transparent_to_orchard() {
     let tx = TransactionExtractor::new(pczt).extract().unwrap();
     let tx_digests = tx.digest(TxIdDigester);
 
-    assert_eq!(u32::from(tx.expiry_height()), 10_000_040);
+    assert_eq!(
+        u32::from(tx.expiry_height()),
+        target_height + DEFAULT_TX_EXPIRY_DELTA,
+    );
 
     // Validate the transaction.
     let bundle = tx.transparent_bundle().unwrap();
