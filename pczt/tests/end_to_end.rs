@@ -56,6 +56,24 @@ fn check_round_trip(pczt: &Pczt) {
     assert_eq!(encoded, Pczt::parse(&encoded).unwrap().serialize());
 }
 
+fn v5_target_height() -> u32 {
+    // Use a large target height when V6 support is disabled.
+    #[cfg(not(zcash_unstable = "nu7"))]
+    {
+        10_000_000
+    }
+
+    // Use the last pre-V6 height when V6 support is enabled.
+    #[cfg(zcash_unstable = "nu7")]
+    {
+        MainNetwork
+            .activation_height(NetworkUpgrade::Nu7)
+            .map(u32::from)
+            .and_then(|v6_height| v6_height.checked_sub(1))
+            .expect("valid V6 activation height must be configured")
+    }
+}
+
 #[test]
 fn transparent_to_orchard() {
     let params = MainNetwork;
@@ -89,17 +107,7 @@ fn transparent_to_orchard() {
         transparent_addr.script().into(),
     );
 
-    // Use a large target height when V6 support is disabled.
-    #[cfg(not(zcash_unstable = "nu7"))]
-    let target_height = 10_000_000u32;
-
-    // Use the last pre-V6 height when V6 support is enabled.
-    #[cfg(zcash_unstable = "nu7")]
-    let target_height = MainNetwork
-        .activation_height(NetworkUpgrade::Nu7)
-        .map(u32::from)
-        .and_then(|v6_height| v6_height.checked_sub(1))
-        .expect("valid V6 activation height must be configured");
+    let target_height = v5_target_height();
 
     // Create the transaction's I/O.
     let mut builder = Builder::new(
@@ -275,10 +283,12 @@ fn transparent_p2sh_multisig_to_orchard() {
     // generated from a redeem script that didn't contain bad opcodes.
     let redeem_script = redeem_script.weaken();
 
+    let target_height = v5_target_height();
+
     // Create the transaction's I/O.
     let mut builder = Builder::new(
         params,
-        10_000_000.into(),
+        target_height.into(),
         BuildConfig::Standard {
             sapling_anchor: None,
             orchard_anchor: Some(orchard::Anchor::empty_tree()),
@@ -360,7 +370,10 @@ fn transparent_p2sh_multisig_to_orchard() {
     let tx = TransactionExtractor::new(pczt).extract().unwrap();
     let tx_digests = tx.digest(TxIdDigester);
 
-    assert_eq!(u32::from(tx.expiry_height()), 10_000_040);
+    assert_eq!(
+        u32::from(tx.expiry_height()),
+        target_height + DEFAULT_TX_EXPIRY_DELTA,
+    );
 
     // Validate the transaction.
     let bundle = tx.transparent_bundle().unwrap();
@@ -490,10 +503,12 @@ fn sapling_to_orchard() {
         (anchor.into(), merkle_path)
     };
 
+    let target_height = v5_target_height();
+
     // Build the Orchard bundle we'll be using.
     let mut builder = Builder::new(
         MainNetwork,
-        10_000_000.into(),
+        target_height.into(),
         BuildConfig::Standard {
             sapling_anchor: Some(anchor),
             orchard_anchor: Some(orchard::Anchor::empty_tree()),
@@ -602,7 +617,10 @@ fn sapling_to_orchard() {
         .extract()
         .unwrap();
 
-    assert_eq!(u32::from(tx.expiry_height()), 10_000_040);
+    assert_eq!(
+        u32::from(tx.expiry_height()),
+        target_height + DEFAULT_TX_EXPIRY_DELTA,
+    );
 }
 
 #[test]
@@ -664,10 +682,12 @@ fn orchard_to_orchard() {
         (anchor.into(), merkle_path.into())
     };
 
+    let target_height = v5_target_height();
+
     // Build the Orchard bundle we'll be using.
     let mut builder = Builder::new(
         MainNetwork,
-        10_000_000.into(),
+        target_height.into(),
         BuildConfig::Standard {
             sapling_anchor: None,
             orchard_anchor: Some(anchor),
@@ -732,5 +752,8 @@ fn orchard_to_orchard() {
     // We should now be able to extract the fully authorized transaction.
     let tx = TransactionExtractor::new(pczt).extract().unwrap();
 
-    assert_eq!(u32::from(tx.expiry_height()), 10_000_040);
+    assert_eq!(
+        u32::from(tx.expiry_height()),
+        target_height + DEFAULT_TX_EXPIRY_DELTA,
+    );
 }
