@@ -1093,10 +1093,12 @@ mod tests {
             BranchId::for_height(&MAIN_NETWORK, BlockHeight(5_000_000)),
             BranchId::Nu6_2,
         );
+        #[cfg(zcash_unstable = "nu7")]
         assert_eq!(
             BranchId::for_height(&MAIN_NETWORK, BlockHeight(7_000_000)),
             BranchId::Nu7,
         );
+        #[cfg(zcash_unstable = "nu7")]
         assert_eq!(
             BranchId::for_height(&MAIN_NETWORK, BlockHeight(8_000_000)),
             BranchId::Nu7,
