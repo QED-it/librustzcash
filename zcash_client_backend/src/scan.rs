@@ -8,9 +8,7 @@ use std::sync::{
 };
 
 use memuse::DynamicUsage;
-use zcash_note_encryption::{
-    BatchDomain, COMPACT_NOTE_SIZE, Domain, ENC_CIPHERTEXT_SIZE, ShieldedOutput, batch,
-};
+use zcash_note_encryption::{BatchDomain, Domain, ShieldedOutput, batch};
 use zcash_primitives::{block::BlockHash, transaction::TxId};
 
 /// A decrypted transaction output.
@@ -58,9 +56,7 @@ pub(crate) trait Decryptor<D: BatchDomain, Output> {
 #[allow(dead_code)]
 pub(crate) struct FullDecryptor;
 
-impl<D: BatchDomain, Output: ShieldedOutput<D, ENC_CIPHERTEXT_SIZE>> Decryptor<D, Output>
-    for FullDecryptor
-{
+impl<D: BatchDomain, Output: ShieldedOutput<D>> Decryptor<D, Output> for FullDecryptor {
     type Memo = D::Memo;
 
     fn batch_decrypt<IvkTag: Clone>(
@@ -84,9 +80,7 @@ impl<D: BatchDomain, Output: ShieldedOutput<D, ENC_CIPHERTEXT_SIZE>> Decryptor<D
 /// A decryptor of outputs as encoded in compact blocks.
 pub(crate) struct CompactDecryptor;
 
-impl<D: BatchDomain, Output: ShieldedOutput<D, COMPACT_NOTE_SIZE>> Decryptor<D, Output>
-    for CompactDecryptor
-{
+impl<D: BatchDomain, Output: ShieldedOutput<D>> Decryptor<D, Output> for CompactDecryptor {
     type Memo = ();
 
     fn batch_decrypt<IvkTag: Clone>(
@@ -566,7 +560,7 @@ where
         &mut self,
         block_tag: BlockHash,
         txid: TxId,
-    ) -> HashMap<(TxId, usize), DecryptedOutput<IvkTag, D, Dec::Memo>> {
+    ) -> HashMap<usize, DecryptedOutput<IvkTag, D, Dec::Memo>> {
         self.pending_results
             .remove(&ResultKey(block_tag, txid))
             // We won't have a pending result if the transaction didn't have outputs of
@@ -583,7 +577,7 @@ where
                         |OutputIndex {
                              output_index,
                              value,
-                         }| { ((txid, output_index), value) },
+                         }| { (output_index, value) },
                     )
                     .collect()
             })

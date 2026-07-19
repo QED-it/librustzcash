@@ -35,7 +35,7 @@ use crate::{
 
 #[cfg(feature = "transparent-inputs")]
 use {
-    super::WalletUtxo,
+    crate::wallet::WalletTransparentOutput,
     transparent::{address::TransparentAddress, keys::TransparentKeyScope},
     zcash_keys::keys::{UnifiedAddressRequest, transparent::gap_limits::GapLimits},
 };
@@ -95,9 +95,13 @@ impl TxMeta for Transaction {
 
     #[cfg(feature = "orchard")]
     fn orchard_spent_note_nullifiers(&self) -> impl Iterator<Item = &::orchard::note::Nullifier> {
-        self.orchard_bundle()
-            .into_iter()
-            .flat_map(|bundle| bundle.actions().iter().map(|action| action.nullifier()))
+        self.orchard_bundle().into_iter().flat_map(|bundle| {
+            bundle
+                .as_vanilla_bundle()
+                .actions()
+                .iter()
+                .map(|action| action.nullifier())
+        })
     }
 
     fn fee_paid<E, F>(&self, get_prevout: F) -> Result<Option<Zatoshis>, E>
@@ -239,7 +243,7 @@ pub trait LowLevelWalletRead {
         &self,
         outpoint: &OutPoint,
         target_height: Option<TargetHeight>,
-    ) -> Result<Option<WalletUtxo>, Self::Error>;
+    ) -> Result<Option<WalletTransparentOutput<Self::AccountId>>, Self::Error>;
 
     /// Returns the vector of transactions in the wallet that spend the transparent outputs of the
     /// referenced transaction, but for which the amount of fee paid is unknown. This should
@@ -487,7 +491,7 @@ pub trait LowLevelWalletWrite: LowLevelWalletRead {
     #[cfg(feature = "transparent-inputs")]
     fn put_transparent_output(
         &mut self,
-        output: &crate::wallet::WalletTransparentOutput,
+        output: &crate::wallet::WalletTransparentOutput<Self::AccountId>,
         observation_height: BlockHeight,
         known_unspent: bool,
     ) -> Result<(Self::AccountId, Option<TransparentKeyScope>), Self::Error>;
@@ -653,7 +657,7 @@ impl<AccountId: Copy> ReceivedShieldedOutput for WalletSaplingOutput<AccountId> 
     }
     fn transfer_type(&self) -> TransferType {
         if self.is_change() {
-            TransferType::WalletInternal
+            TransferType::AccountInternal
         } else {
             TransferType::Incoming
         }
@@ -694,7 +698,7 @@ impl<AccountId: Copy> ReceivedShieldedOutput for DecryptedOutput<::sapling::Note
         self.transfer_type()
     }
     fn is_change(&self) -> bool {
-        self.transfer_type() == TransferType::WalletInternal
+        self.transfer_type() == TransferType::AccountInternal
     }
     fn nullifier(&self) -> Option<&::sapling::Nullifier> {
         None
@@ -703,7 +707,7 @@ impl<AccountId: Copy> ReceivedShieldedOutput for DecryptedOutput<::sapling::Note
         None
     }
     fn recipient_key_scope(&self) -> Option<Scope> {
-        if self.transfer_type() == TransferType::WalletInternal {
+        if self.transfer_type() == TransferType::AccountInternal {
             Some(Scope::Internal)
         } else {
             Some(Scope::External)
@@ -744,7 +748,7 @@ impl<AccountId: Copy> ReceivedShieldedOutput for WalletOrchardOutput<AccountId> 
     }
     fn transfer_type(&self) -> TransferType {
         if self.is_change() {
-            TransferType::WalletInternal
+            TransferType::AccountInternal
         } else {
             TransferType::Incoming
         }
@@ -786,7 +790,7 @@ impl<AccountId: Copy> ReceivedShieldedOutput for DecryptedOutput<::orchard::Note
         self.transfer_type()
     }
     fn is_change(&self) -> bool {
-        self.transfer_type() == TransferType::WalletInternal
+        self.transfer_type() == TransferType::AccountInternal
     }
     fn nullifier(&self) -> Option<&::orchard::note::Nullifier> {
         None
@@ -795,7 +799,7 @@ impl<AccountId: Copy> ReceivedShieldedOutput for DecryptedOutput<::orchard::Note
         None
     }
     fn recipient_key_scope(&self) -> Option<Scope> {
-        if self.transfer_type() == TransferType::WalletInternal {
+        if self.transfer_type() == TransferType::AccountInternal {
             Some(Scope::Internal)
         } else {
             Some(Scope::External)

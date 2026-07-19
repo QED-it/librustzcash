@@ -2,7 +2,7 @@ use std::hash::Hash;
 
 use ::orchard::{
     keys::{FullViewingKey, SpendingKey},
-    note_encryption::OrchardDomain,
+    primitives::OrchardDomain,
     tree::MerkleHashOrchard,
 };
 use incrementalmerkletree::{Hashable, Level};
@@ -102,6 +102,18 @@ impl ShieldedPoolTester for OrchardPoolTester {
             .put_orchard_subtree_roots(start_index, roots)
     }
 
+    fn shard_root<Cache, DbT: WalletTest + WalletCommitmentTrees, P>(
+        st: &mut TestState<Cache, DbT, P>,
+        shard_index: u64,
+    ) -> Result<Self::MerkleTreeHash, ShardTreeError<<DbT as WalletCommitmentTrees>::Error>> {
+        use incrementalmerkletree::{Address, Position};
+        let shard_height = crate::data_api::ORCHARD_SHARD_HEIGHT;
+        let addr = Address::from_parts(Level::from(shard_height), shard_index);
+        let end_position = Position::from((shard_index + 1) << shard_height);
+        st.wallet_mut()
+            .with_orchard_tree_mut(|tree| tree.root(addr, end_position))
+    }
+
     fn next_subtree_index<A: Hash + Eq>(s: &WalletSummary<A>) -> u64 {
         s.next_orchard_subtree_index()
     }
@@ -165,7 +177,7 @@ impl ShieldedPoolTester for OrchardPoolTester {
         tx: &Transaction,
         fvk: &Self::Fvk,
     ) -> Option<(Note, Address, MemoBytes)> {
-        for action in tx.orchard_bundle().unwrap().actions() {
+        for action in tx.orchard_bundle().unwrap().as_vanilla_bundle().actions() {
             // Find the output that decrypts with the external OVK
             let result = try_output_recovery_with_ovk(
                 &OrchardDomain::for_action(action),

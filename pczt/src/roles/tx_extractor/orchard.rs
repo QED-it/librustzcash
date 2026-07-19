@@ -1,19 +1,9 @@
-use orchard::{Bundle, bundle::Authorized, circuit::VerifyingKey, pczt::Unbound};
+use orchard::{Bundle, bundle::Authorized, circuit::VerifyingKey, flavor::OrchardVanilla};
 use rand_core::OsRng;
 use zcash_protocol::value::ZatBalance;
 
-pub(super) fn extract_bundle(
-    bundle: crate::orchard::Bundle,
-) -> Result<Option<Bundle<Unbound, ZatBalance>>, OrchardError> {
-    bundle
-        .into_parsed()
-        .map_err(OrchardError::Parse)?
-        .extract()
-        .map_err(OrchardError::Extract)
-}
-
 pub(super) fn verify_bundle(
-    bundle: &Bundle<Authorized, ZatBalance>,
+    bundle: &Bundle<Authorized, ZatBalance, OrchardVanilla>,
     orchard_vk: Option<&VerifyingKey>,
     sighash: [u8; 32],
 ) -> Result<(), OrchardError> {
@@ -29,7 +19,8 @@ pub(super) fn verify_bundle(
             Err(OrchardError::InvalidProof)
         }
     } else {
-        let vk = VerifyingKey::build();
+        // PCZT extraction produces new transactions, which use the NU6.2 (fixed) circuit.
+        let vk = VerifyingKey::build::<OrchardVanilla>();
         if validator.validate(&vk, rng) {
             Ok(())
         } else {
@@ -42,5 +33,4 @@ pub(super) fn verify_bundle(
 pub enum OrchardError {
     Extract(orchard::pczt::TxExtractorError),
     InvalidProof,
-    Parse(orchard::pczt::ParseError),
 }
