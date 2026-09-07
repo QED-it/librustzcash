@@ -34,8 +34,16 @@ audit-as-crates-io = true
 [policy.f4jumble]
 audit-as-crates-io = true
 
+[policy.incrementalmerkletree]
+
+[policy.incrementalmerkletree-testing]
+
+[policy.orchard]
+
 [policy.pczt]
 audit-as-crates-io = true
+
+[policy.shardtree]
 
 [policy.zcash]
 audit-as-crates-io = true
@@ -50,9 +58,6 @@ audit-as-crates-io = true
 audit-as-crates-io = true
 
 [policy.zcash_encoding]
-audit-as-crates-io = true
-
-[policy.zcash_extensions]
 audit-as-crates-io = true
 
 [policy.zcash_history]
@@ -74,6 +79,9 @@ audit-as-crates-io = true
 
 [policy.zcash_transparent]
 audit-as-crates-io = true
+
+[policy.zewif]
+audit-as-crates-io = false
 
 [policy.zip321]
 audit-as-crates-io = true
@@ -514,14 +522,6 @@ criteria = "safe-to-run"
 version = "5.3.1"
 criteria = "safe-to-deploy"
 
-[[exemptions.fallible-iterator]]
-version = "0.2.0"
-criteria = "safe-to-deploy"
-
-[[exemptions.fallible-streaming-iterator]]
-version = "0.1.9"
-criteria = "safe-to-deploy"
-
 [[exemptions.ff]]
 version = "0.13.0"
 criteria = "safe-to-deploy"
@@ -544,6 +544,10 @@ criteria = "safe-to-deploy"
 
 [[exemptions.fluid-let]]
 version = "1.0.0"
+criteria = "safe-to-deploy"
+
+[[exemptions.flume]]
+version = "0.11.1"
 criteria = "safe-to-deploy"
 
 [[exemptions.fpe]]
@@ -770,6 +774,14 @@ criteria = "safe-to-deploy"
 version = "3.0.0"
 criteria = "safe-to-deploy"
 
+[[exemptions.minicbor]]
+version = "1.1.0"
+criteria = "safe-to-deploy"
+
+[[exemptions.minicbor-derive]]
+version = "0.17.0"
+criteria = "safe-to-deploy"
+
 [[exemptions.minimal-lexical]]
 version = "0.2.1"
 criteria = "safe-to-deploy"
@@ -788,6 +800,10 @@ criteria = "safe-to-deploy"
 
 [[exemptions.multimap]]
 version = "0.8.3"
+criteria = "safe-to-deploy"
+
+[[exemptions.nanorand]]
+version = "0.7.0"
 criteria = "safe-to-deploy"
 
 [[exemptions.nonany]]
@@ -1059,15 +1075,7 @@ version = "1.11.1"
 criteria = "safe-to-deploy"
 
 [[exemptions.regex-automata]]
-version = "0.1.10"
-criteria = "safe-to-deploy"
-
-[[exemptions.regex-automata]]
 version = "0.4.3"
-criteria = "safe-to-deploy"
-
-[[exemptions.regex-syntax]]
-version = "0.6.26"
 criteria = "safe-to-deploy"
 
 [[exemptions.retry-error]]
@@ -1135,7 +1143,7 @@ version = "0.101.7"
 criteria = "safe-to-deploy"
 
 [[exemptions.rustls-webpki]]
-version = "0.103.1"
+version = "0.103.3"
 criteria = "safe-to-deploy"
 
 [[exemptions.rusty-fork]]
@@ -1315,7 +1323,11 @@ version = "2.0.12"
 criteria = "safe-to-deploy"
 
 [[exemptions.time]]
-version = "0.3.23"
+version = "0.3.53"
+criteria = "safe-to-deploy"
+
+[[exemptions.time-macros]]
+version = "0.2.31"
 criteria = "safe-to-deploy"
 
 [[exemptions.tinytemplate]]
@@ -1600,10 +1612,6 @@ criteria = "safe-to-deploy"
 
 [[exemptions.wasm-bindgen-macro]]
 version = "0.2.88"
-criteria = "safe-to-deploy"
-
-[[exemptions.wasm_sync]]
-version = "0.1.2"
 criteria = "safe-to-deploy"
 
 [[exemptions.weak-table]]
