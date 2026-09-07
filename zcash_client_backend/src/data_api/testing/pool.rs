@@ -22,8 +22,8 @@ use zcash_primitives::{
     },
 };
 use zcash_protocol::{
-    ShieldedProtocol,
-    consensus::{self, BlockHeight, COINBASE_MATURITY_BLOCKS, NetworkUpgrade, Parameters},
+    ShieldedPool,
+    consensus::{self, BlockHeight, NetworkUpgrade, Parameters},
     local_consensus::LocalNetwork,
     memo::{Memo, MemoBytes},
     value::Zatoshis,
@@ -61,7 +61,7 @@ use super::{DataStoreFactory, Reset, TestCache, TestFvk, TestState};
 #[cfg(feature = "transparent-inputs")]
 use {
     crate::{
-        data_api::{TransactionDataRequest, TransparentOutputFilter},
+        data_api::{CoinbaseFilter, TransactionDataRequest},
         fees::ChangeValue,
         proposal::{Proposal, ProposalError, StepOutput, StepOutputIndex},
         wallet::WalletTransparentOutput,
@@ -109,7 +109,7 @@ use dsl::{TestDsl, TestNoteConfig};
     doc = "[`OrchardPoolTester`]: https://github.com/zcash/librustzcash/blob/0777cbc2def6ba6b99f96333eaf96c314c1f3a37/zcash_client_backend/src/data_api/testing/orchard.rs#L33"
 )]
 pub trait ShieldedPoolTester {
-    const SHIELDED_PROTOCOL: ShieldedProtocol;
+    const SHIELDED_PROTOCOL: ShieldedPool;
 
     type Sk;
     type Fvk: TestFvk;
@@ -348,6 +348,185 @@ pub fn send_single_step_proposed_transfer<T: ShieldedPoolTester>(
     assert_matches!(
         decrypt_and_store_transaction(&network, st.wallet_mut(), &tx, None),
         Ok(_)
+    );
+}
+
+/// Builds a real transaction via the proposal/creation path, assembles it into a full
+/// block, and verifies that [`decrypt_block`] followed by [`scan_block`] detects the
+/// wallet output (the change note) that it contains.
+///
+/// [`decrypt_block`]: crate::scanning::full::decrypt_block
+/// [`scan_block`]: crate::scanning::full::scan_block
+pub fn scan_full_block_detects_outputs<T: ShieldedPoolTester>(
+    dsf: impl DataStoreFactory,
+    cache: impl TestCache,
+) {
+    use incrementalmerkletree::Retention;
+    use nonempty::NonEmpty;
+    use zcash_primitives::block::{Block, BlockHeaderData};
+
+    use crate::{
+        data_api::BlockMetadata,
+        scanning::{
+            Nullifiers, ScanningKeys,
+            full::{decrypt_block, scan_block},
+        },
+    };
+
+    let mut st = TestDsl::with_sapling_birthday_account(dsf, cache).build::<T>();
+
+    // Add funds to the wallet in a single note.
+    let (h, _, _) = st.add_a_single_note_checking_balance(Zatoshis::const_from_u64(60000));
+
+    // Propose and create a transfer to an external recipient. The resulting transaction
+    // has two shielded outputs: the payment, and the change returned to the wallet.
+    let to_extsk = T::sk(&[0xf5; 32]);
+    let to: Address = T::sk_default_address(&to_extsk);
+    let request = TransactionRequest::new(vec![Payment::without_memo(
+        to.to_zcash_address(st.network()),
+        Zatoshis::const_from_u64(10000),
+    )])
+    .unwrap();
+
+    let change_strategy = standard::SingleOutputChangeStrategy::new(
+        StandardFeeRule::Zip317,
+        None,
+        T::SHIELDED_PROTOCOL,
+        DustOutputPolicy::default(),
+    );
+    let input_selector = GreedyInputSelector::new();
+
+    let account = st.get_account();
+    let proposal = st
+        .propose_transfer(
+            account.id(),
+            &input_selector,
+            &change_strategy,
+            request,
+            ConfirmationsPolicy::MIN,
+        )
+        .unwrap();
+
+    let txids = st
+        .create_proposed_transactions::<Infallible, _, Infallible, _>(
+            account.usk(),
+            OvkPolicy::Sender,
+            &proposal,
+        )
+        .unwrap();
+    assert_eq!(txids.len(), 1);
+
+    let tx = st
+        .wallet()
+        .get_transaction(*txids.first())
+        .unwrap()
+        .expect("the created transaction was stored");
+
+    // Build a `ScanningKeys` set for the wallet account. The account identifier used for
+    // scanning is independent of the wallet database's account identifier.
+    let ufvk = account.usk().to_unified_full_viewing_key();
+    let scanning_keys = ScanningKeys::from_account_ufvks([(zip32::AccountId::ZERO, ufvk)]);
+
+    // Assemble a single-transaction block containing the created transaction. The block
+    // is scanned in isolation, so we treat the note commitment trees as empty as of the
+    // immediately preceding block.
+    let network = *st.network();
+    let header = BlockHeaderData {
+        version: 4,
+        prev_block: BlockHash([0; 32]),
+        merkle_root: [0; 32],
+        final_sapling_root: [0; 32],
+        time: 0,
+        bits: 0,
+        nonce: [0; 32],
+        solution: vec![],
+    }
+    .freeze()
+    .unwrap();
+    let block = Block::from_parts(header, NonEmpty::singleton(tx), h);
+
+    let prior_block_metadata = BlockMetadata::from_parts(
+        h - 1,
+        BlockHash([0; 32]),
+        Some(0),
+        #[cfg(feature = "orchard")]
+        Some(0),
+        #[cfg(feature = "orchard")]
+        Some(0),
+    );
+
+    // Phase 1: decrypt the block's shielded outputs.
+    let (header, vtx) = decrypt_block(&network, block, &scanning_keys);
+
+    // Phase 2: scan the decrypted block.
+    #[cfg(feature = "transparent-inputs")]
+    let scanned = scan_block(
+        &network,
+        h,
+        &header,
+        vtx,
+        &scanning_keys,
+        &Nullifiers::empty(),
+        Some(&prior_block_metadata),
+        |_addr| Ok::<_, Infallible>(None),
+    )
+    .expect("scanning the block succeeds");
+    #[cfg(not(feature = "transparent-inputs"))]
+    let scanned = scan_block::<_, _, _, Infallible>(
+        &network,
+        h,
+        &header,
+        vtx,
+        &scanning_keys,
+        &Nullifiers::empty(),
+        Some(&prior_block_metadata),
+    )
+    .expect("scanning the block succeeds");
+
+    // The wallet should have detected exactly the change output returned to its internal
+    // address; the payment output was sent to a recipient outside the wallet.
+    assert_eq!(scanned.transactions().len(), 1);
+    let received_outputs: usize = scanned
+        .transactions()
+        .iter()
+        .map(|wtx| {
+            let n = wtx.sapling_outputs().len();
+            #[cfg(feature = "orchard")]
+            let n = n + wtx.orchard_outputs().len();
+            n
+        })
+        .sum();
+    assert_eq!(received_outputs, 1);
+
+    // The note commitment tree should have grown by exactly the two shielded outputs in
+    // the block's single transaction (the payment and the change), starting from the
+    // empty prior tree. The outputs all belong to the pool under test; the other pool (if
+    // compiled in) sees no outputs.
+    let total_commitments = scanned.sapling().commitments().len();
+    #[cfg(feature = "orchard")]
+    let total_commitments = total_commitments + scanned.orchard().commitments().len();
+    assert_eq!(total_commitments, 2);
+
+    let total_final_tree_size = scanned.sapling().final_tree_size();
+    #[cfg(feature = "orchard")]
+    let total_final_tree_size = total_final_tree_size + scanned.orchard().final_tree_size();
+    assert_eq!(total_final_tree_size, 2);
+
+    // The final note added in the block must be marked as a checkpoint at this block
+    // height; this is what lets the wallet anchor witnesses to the block. Getting the
+    // "last outputs in the block" boundary wrong is the most error-prone part of position
+    // tracking, so we assert it explicitly.
+    let last_retention = scanned.sapling().commitments().last().map(|(_, r)| *r);
+    #[cfg(feature = "orchard")]
+    let last_retention = scanned
+        .orchard()
+        .commitments()
+        .last()
+        .map(|(_, r)| *r)
+        .or(last_retention);
+    assert!(
+        matches!(last_retention, Some(Retention::Checkpoint { id, .. }) if id == h),
+        "final note commitment should be a checkpoint at height {h:?}, got {last_retention:?}",
     );
 }
 
@@ -2115,7 +2294,7 @@ pub fn spend_all_funds_single_step_proposed_transfer<T: ShieldedPoolTester>(
             Some(m) if m == &Memo::Empty => {
                 found_sent_empty_memo = true;
             }
-            Some(other) => panic!("Unexpected memo value: {:?}", other),
+            Some(other) => panic!("Unexpected memo value: {other:?}"),
             None => panic!("Memo should not be stored as NULL"),
         }
     }
@@ -2380,6 +2559,7 @@ pub fn proposal_fails_if_not_all_ephemeral_outputs_consumed<T: ShieldedPoolTeste
     let frobbed_proposal = Proposal::multi_step(
         *proposal.fee_rule(),
         proposal.min_target_height(),
+        proposal.confirmations_policy(),
         NonEmpty::singleton(proposal.steps().first().clone()),
     )
     .unwrap();
@@ -3119,6 +3299,110 @@ where
     );
 }
 
+/// Regression test for a bug in which [`WalletWrite::delete_account`] failed with a
+/// `rusqlite::Error::InvalidParameterName(":address")` panic when the account being
+/// deleted was referenced by a `sent_notes` row via its `to_account_id` column.
+///
+/// The triggering state is reached when a transaction is sent from one account in the
+/// wallet to an address belonging to a second account in the same wallet, and the
+/// transaction is then decrypted via [`decrypt_and_store_transaction`] so that the
+/// cross-account transfer is recorded with a non-null `to_account_id` and a received
+/// output that has an associated address. Deleting the recipient account then exercises
+/// the `sent_notes` update path inside `delete_account`.
+///
+/// [`WalletWrite::delete_account`]: crate::data_api::WalletWrite::delete_account
+pub fn account_deletion_with_internal_transfer<T: ShieldedPoolTester, DSF>(
+    ds_factory: DSF,
+    cache: impl TestCache,
+) where
+    DSF: DataStoreFactory,
+    <DSF as DataStoreFactory>::DataStore: Reset,
+{
+    let mut st = TestBuilder::new()
+        .with_data_store_factory(ds_factory)
+        .with_block_cache(cache)
+        .build();
+
+    // Add two accounts to the wallet, derived from the same seed.
+    let seed = Secret::new([0u8; 32].to_vec());
+    let birthday = AccountBirthday::from_sapling_activation(st.network(), BlockHash([0; 32]));
+    let (account1, usk1) = st
+        .wallet_mut()
+        .create_account("account1", &seed, &birthday, None)
+        .unwrap();
+    let dfvk1 = T::sk_to_fvk(T::usk_to_sk(&usk1));
+
+    let (account2, usk2) = st
+        .wallet_mut()
+        .create_account("account2", &seed, &birthday, None)
+        .unwrap();
+    let dfvk2 = T::sk_to_fvk(T::usk_to_sk(&usk2));
+
+    // Add funds to account 1 in a single note.
+    let value = Zatoshis::from_u64(100000).unwrap();
+    let (h, _, _) = st.generate_next_block(&dfvk1, AddressType::DefaultExternal, value);
+    st.scan_cached_blocks(h, 1);
+
+    assert_eq!(st.get_total_balance(account1), value);
+    assert_eq!(st.get_total_balance(account2), Zatoshis::ZERO);
+
+    // Send funds from account 1 to an address belonging to account 2.
+    let bal_2 = Zatoshis::from_u64(50000).unwrap();
+    let addr2 = T::fvk_default_address(&dfvk2);
+    let req = TransactionRequest::new(vec![Payment::without_memo(
+        addr2.to_zcash_address(st.network()),
+        bal_2,
+    )])
+    .unwrap();
+
+    let change_strategy = fees::standard::SingleOutputChangeStrategy::new(
+        StandardFeeRule::Zip317,
+        None,
+        T::SHIELDED_PROTOCOL,
+        DustOutputPolicy::default(),
+    );
+    let input_selector = GreedyInputSelector::new();
+
+    let txid = st
+        .spend(
+            &input_selector,
+            &change_strategy,
+            &usk1,
+            req,
+            OvkPolicy::Sender,
+            ConfirmationsPolicy::MIN,
+        )
+        .unwrap()[0];
+
+    let (h, _) = st.generate_next_block_including(txid);
+    st.scan_cached_blocks(h, 1);
+
+    assert_eq!(st.get_total_balance(account2), bal_2);
+
+    // Decrypt and store the transaction. Because the wallet owns the funding inputs
+    // (account 1) and the output is received by account 2, this records the send as an
+    // internal cross-account transfer, setting `sent_notes.to_account_id` to account 2
+    // and associating the received output with account 2's address. This is the state
+    // that triggers the `delete_account` bug.
+    let tx = st.wallet().get_transaction(txid).unwrap().unwrap();
+    let params = *st.network();
+    decrypt_and_store_transaction(&params, st.wallet_mut(), &tx, Some(h)).unwrap();
+
+    // Deleting account 2, the recipient of the internal transfer, must succeed. Prior to
+    // the fix this failed with `rusqlite::Error::InvalidParameterName(":address")` because
+    // the `sent_notes` update statement bound the wrong parameter name.
+    assert_matches!(st.wallet_mut().delete_account(account2), Ok(_));
+
+    // account 1 should still exist and retain its change balance.
+    let summary = st
+        .wallet()
+        .get_wallet_summary(ConfirmationsPolicy::MIN)
+        .unwrap()
+        .unwrap();
+    assert!(summary.account_balances().get(&account2).is_none());
+    assert!(summary.account_balances().contains_key(&account1));
+}
+
 pub fn external_address_change_spends_detected_in_restore_from_seed<T: ShieldedPoolTester, Dsf>(
     ds_factory: Dsf,
     cache: impl TestCache,
@@ -3503,6 +3787,10 @@ pub fn birthday_in_anchor_shard<T: ShieldedPoolTester>(
                 .map(|root| CommitmentTreeRoot::from_parts(birthday_height - 500, root))
                 .collect::<Vec<_>>();
 
+            // Ironwood is not active at these test heights, so its tree is empty.
+            #[cfg(feature = "orchard")]
+            let ironwood_initial_tree = Frontier::empty();
+
             InitialChainState {
                 chain_state: ChainState::new(
                     birthday_height - 1,
@@ -3510,6 +3798,8 @@ pub fn birthday_in_anchor_shard<T: ShieldedPoolTester>(
                     sapling_initial_tree,
                     #[cfg(feature = "orchard")]
                     orchard_initial_tree,
+                    #[cfg(feature = "orchard")]
+                    ironwood_initial_tree,
                 ),
                 prior_sapling_roots,
                 #[cfg(feature = "orchard")]
@@ -3592,6 +3882,7 @@ pub fn checkpoint_gaps<T: ShieldedPoolTester, Dsf: DataStoreFactory>(
     let not_our_value = Zatoshis::const_from_u64(10000);
     let sapling_end_size = st.latest_cached_block().unwrap().sapling_end_size();
     let orchard_end_size = st.latest_cached_block().unwrap().orchard_end_size();
+    let ironwood_end_size = st.latest_cached_block().unwrap().ironwood_end_size();
     st.generate_block_at(
         account.birthday().height() + 10,
         BlockHash([0; 32]),
@@ -3602,6 +3893,7 @@ pub fn checkpoint_gaps<T: ShieldedPoolTester, Dsf: DataStoreFactory>(
         )],
         sapling_end_size,
         orchard_end_size,
+        ironwood_end_size,
         false,
     );
 
@@ -3717,10 +4009,7 @@ pub fn pool_crossing_required<P0: ShieldedPoolTester, P1: ShieldedPoolTester>(
     // Since this is a cross-pool transfer, change will be sent to the preferred pool.
     assert_eq!(
         change_output.output_pool(),
-        PoolType::Shielded(std::cmp::max(
-            ShieldedProtocol::Sapling,
-            ShieldedProtocol::Orchard
-        ))
+        PoolType::Shielded(std::cmp::max(ShieldedPool::Sapling, ShieldedPool::Orchard))
     );
     assert_eq!(change_output.value(), expected_change);
 
@@ -4193,6 +4482,7 @@ pub fn invalid_chain_cache_disconnected<T: ShieldedPoolTester>(
         )],
         2,
         2,
+        0,
         true,
     );
     st.generate_next_block(
@@ -4421,6 +4711,10 @@ pub fn truncate_to_chain_state_below_birthday<T: ShieldedPoolTester, Dsf>(
                 .map(|root| CommitmentTreeRoot::from_parts(birthday_height - 100, root))
                 .collect::<Vec<_>>();
 
+            // Ironwood is not active at these test heights, so its tree is empty.
+            #[cfg(feature = "orchard")]
+            let ironwood_initial_tree = Frontier::empty();
+
             InitialChainState {
                 chain_state: ChainState::new(
                     birthday_height - 1,
@@ -4428,6 +4722,8 @@ pub fn truncate_to_chain_state_below_birthday<T: ShieldedPoolTester, Dsf>(
                     sapling_initial_tree,
                     #[cfg(feature = "orchard")]
                     orchard_initial_tree,
+                    #[cfg(feature = "orchard")]
+                    ironwood_initial_tree,
                 ),
                 prior_sapling_roots,
                 #[cfg(feature = "orchard")]
@@ -4565,6 +4861,9 @@ pub fn truncate_to_chain_state_above_scanned<T: ShieldedPoolTester, Dsf>(
         shard_2_tree_size,
         NonZeroU8::new(16).unwrap(),
     );
+    // Ironwood is not active at these test heights, so its tree is empty.
+    #[cfg(feature = "orchard")]
+    let shard2_ironwood_frontier = Frontier::empty();
 
     let target_chain_state = ChainState::new(
         target_height,
@@ -4572,6 +4871,8 @@ pub fn truncate_to_chain_state_above_scanned<T: ShieldedPoolTester, Dsf>(
         shard2_sapling_frontier,
         #[cfg(feature = "orchard")]
         shard2_orchard_frontier,
+        #[cfg(feature = "orchard")]
+        shard2_ironwood_frontier,
     );
 
     // Verify the scan queue extends beyond the target.
@@ -5004,6 +5305,10 @@ where
                 .map(|root| CommitmentTreeRoot::from_parts(birthday_height - 500, root))
                 .collect::<Vec<_>>();
 
+            // Ironwood is not active at these test heights, so its tree is empty.
+            #[cfg(feature = "orchard")]
+            let ironwood_initial_tree = Frontier::empty();
+
             InitialChainState {
                 chain_state: ChainState::new(
                     birthday_height - 1,
@@ -5011,6 +5316,8 @@ where
                     sapling_initial_tree,
                     #[cfg(feature = "orchard")]
                     orchard_initial_tree,
+                    #[cfg(feature = "orchard")]
+                    ironwood_initial_tree,
                 ),
                 prior_sapling_roots,
                 #[cfg(feature = "orchard")]
@@ -5266,6 +5573,10 @@ where
                 .map(|root| CommitmentTreeRoot::from_parts(birthday_height - 500, root))
                 .collect::<Vec<_>>();
 
+            // Ironwood is not active at these test heights, so its tree is empty.
+            #[cfg(feature = "orchard")]
+            let ironwood_initial_tree = Frontier::empty();
+
             InitialChainState {
                 chain_state: ChainState::new(
                     birthday_height - 1,
@@ -5273,6 +5584,8 @@ where
                     sapling_initial_tree,
                     #[cfg(feature = "orchard")]
                     orchard_initial_tree,
+                    #[cfg(feature = "orchard")]
+                    ironwood_initial_tree,
                 ),
                 prior_sapling_roots,
                 #[cfg(feature = "orchard")]
@@ -5829,6 +6142,7 @@ pub fn metadata_queries_exclude_unwanted_notes<T: ShieldedPoolTester, Dsf, TC>(
 pub fn pczt_single_step<P0: ShieldedPoolTester, P1: ShieldedPoolTester, Dsf>(
     ds_factory: Dsf,
     cache: impl TestCache,
+    pin_expiry_above_target: Option<u32>,
 ) where
     Dsf: DataStoreFactory,
     <Dsf as DataStoreFactory>::AccountId: serde::Serialize + serde::de::DeserializeOwned,
@@ -5845,6 +6159,10 @@ pub fn pczt_single_step<P0: ShieldedPoolTester, P1: ShieldedPoolTester, Dsf>(
                 network.activation_height(NetworkUpgrade::Canopy).unwrap() + ZIP212_GRACE_PERIOD,
             );
 
+            // Ironwood is not active at these test heights, so its tree is empty.
+            #[cfg(feature = "orchard")]
+            let ironwood_initial_tree = Frontier::empty();
+
             InitialChainState {
                 chain_state: ChainState::new(
                     birthday_height - 1,
@@ -5852,6 +6170,8 @@ pub fn pczt_single_step<P0: ShieldedPoolTester, P1: ShieldedPoolTester, Dsf>(
                     Frontier::empty(),
                     #[cfg(feature = "orchard")]
                     Frontier::empty(),
+                    #[cfg(feature = "orchard")]
+                    ironwood_initial_tree,
                 ),
                 prior_sapling_roots: vec![],
                 #[cfg(feature = "orchard")]
@@ -5899,16 +6219,37 @@ pub fn pczt_single_step<P0: ShieldedPoolTester, P1: ShieldedPoolTester, Dsf>(
         )
         .unwrap();
 
-    let _min_target_height = proposal0.min_target_height();
+    let min_target_height = proposal0.min_target_height();
     assert_eq!(proposal0.steps().len(), 1);
+
+    let target_expiry_height =
+        pin_expiry_above_target.map(|delta| BlockHeight::from(min_target_height) + delta);
+
+    if target_expiry_height.is_some() {
+        // This is rejected before transaction building, so the successful call below
+        // can reuse the same proposal.
+        assert_matches!(
+            st.create_pczt_from_proposal::<Infallible, _, Infallible>(
+                account.id(),
+                OvkPolicy::Sender,
+                &proposal0,
+                Some(min_target_height.saturating_sub(1)),
+            ),
+            Err(Error::ExpiryHeightBelowTargetHeight { .. })
+        );
+    }
 
     let create_proposed_result = st.create_pczt_from_proposal::<Infallible, _, Infallible>(
         account.id(),
         OvkPolicy::Sender,
         &proposal0,
+        target_expiry_height,
     );
     assert_matches!(&create_proposed_result, Ok(_));
     let pczt_created = create_proposed_result.unwrap();
+    let pczt_branch_id =
+        consensus::BranchId::try_from(*pczt_created.global().consensus_branch_id())
+            .expect("the PCZT carries a valid consensus branch ID");
 
     // If we don't create proofs or signatures, we will fail to extract a transaction.
     assert_matches!(
@@ -5919,9 +6260,20 @@ pub fn pczt_single_step<P0: ShieldedPoolTester, P1: ShieldedPoolTester, Dsf>(
     // Add proof generation keys to Sapling spends.
     let pczt_updated = P0::add_proof_generation_keys(pczt_created, account.usk()).unwrap();
 
-    // Create proofs.
+    // Create proofs, using the circuit that governs the Orchard pool under the
+    // consensus branch the PCZT was created for. (The test network's most recent
+    // upgrade is NU5, so this is currently the historical pre-NU6.2 circuit;
+    // modernizing the test network fixture is part of the broader Ironwood test
+    // coverage work.)
     let sapling_prover = LocalTxProver::bundled();
-    let orchard_pk = ::orchard::circuit::ProvingKey::build::<OrchardVanilla>();
+    let orchard_pk = ::orchard::circuit::ProvingKey::build(
+        zcash_primitives::transaction::components::orchard::bundle_version_for_branch(
+            pczt_branch_id,
+            ::orchard::ValuePool::Orchard,
+        )
+        .expect("the PCZT's consensus branch supports the Orchard pool")
+        .circuit_version(),
+    );
     let pczt_proven = Prover::new(pczt_updated)
         .create_orchard_proof(&orchard_pk)
         .unwrap()
@@ -5938,6 +6290,11 @@ pub fn pczt_single_step<P0: ShieldedPoolTester, P1: ShieldedPoolTester, Dsf>(
     let extract_and_store_result = st.extract_and_store_transaction_from_pczt(pczt_authorized);
     assert_matches!(&extract_and_store_result, Ok(_));
     let txid = extract_and_store_result.unwrap();
+
+    if let Some(expiry_height) = target_expiry_height {
+        let tx = st.wallet().get_transaction(txid).unwrap().unwrap();
+        assert_eq!(tx.expiry_height(), expiry_height);
+    }
 
     let (h, _) = st.generate_next_block_including(txid);
     st.scan_cached_blocks(h, 1);
@@ -6044,7 +6401,7 @@ pub fn wallet_recovery_computes_fees<T: ShieldedPoolTester, DsF: DataStoreFactor
             &[to],
             dest_account_id,
             ConfirmationsPolicy::MIN,
-            TransparentOutputFilter::All,
+            CoinbaseFilter::AllTransparentOutputs,
         )
         .unwrap();
     let result1 = st
@@ -6227,7 +6584,7 @@ pub fn immature_coinbase_outputs_are_excluded_from_note_selection<T: ShieldedPoo
                 &t_addr,
                 TargetHeight::from(h + i),
                 ConfirmationsPolicy::default(),
-                TransparentOutputFilter::All,
+                CoinbaseFilter::AllTransparentOutputs,
             )
             .unwrap();
         let confirmations = latest_block_height - h;
@@ -6250,7 +6607,7 @@ pub fn immature_coinbase_outputs_are_excluded_from_note_selection<T: ShieldedPoo
             &t_addr,
             target_height,
             ConfirmationsPolicy::default(),
-            TransparentOutputFilter::All,
+            CoinbaseFilter::AllTransparentOutputs,
         )
         .unwrap();
     assert!(
@@ -6271,20 +6628,23 @@ pub fn immature_coinbase_outputs_are_excluded_from_note_selection<T: ShieldedPoo
             &[t_addr],
             account,
             ConfirmationsPolicy::default(),
-            TransparentOutputFilter::All,
+            CoinbaseFilter::AllTransparentOutputs,
         )
         .unwrap();
 }
 
 #[cfg(all(feature = "pczt", feature = "transparent-inputs"))]
-/// Tests that `TransparentOutputFilter::CoinbaseOnly` excludes non-coinbase outputs from
-/// UTXO selection and shielding proposals, and that `CoinbaseOnly` still allows proposing
-/// shielding when only coinbase UTXOs are available.
+/// Tests that `CoinbaseFilter::CoinbaseOnly` excludes non-coinbase outputs and
+/// `CoinbaseFilter::NonCoinbaseOnly` excludes coinbase outputs from UTXO selection and
+/// shielding proposals, and that `CoinbaseOnly` still allows proposing shielding when only
+/// coinbase UTXOs are available.
 pub fn coinbase_only_filtering<T: ShieldedPoolTester, Dsf>(ds_factory: Dsf, cache: impl TestCache)
 where
     Dsf: DataStoreFactory,
     <<Dsf as DataStoreFactory>::DataStore as WalletWrite>::UtxoRef: std::fmt::Debug,
 {
+    use std::collections::BTreeSet;
+
     let mut st = TestDsl::with_sapling_birthday_account(ds_factory, cache).build::<T>();
     let (t_addr, _) = st.get_account().usk().default_transparent_address();
     let account = st.get_account().id();
@@ -6300,6 +6660,8 @@ where
         None,
     );
     let coinbase_tx = coinbase_build_result.transaction();
+    // The coinbase transaction has a single transparent output at index 0.
+    let coinbase_outpoint = OutPoint::new(coinbase_tx.txid().into(), 0);
     let (h, _) = st.generate_next_block_from_tx(0, coinbase_tx);
     st.scan_cached_blocks(h, 1);
     let params = *st.network();
@@ -6309,8 +6671,9 @@ where
     // Inserted via put_received_transparent_utxo, which sets tx_index = NULL.
     // NULL tx_index is treated as non-coinbase by the filter.
     let non_coinbase_value = Zatoshis::const_from_u64(60000);
+    let non_coinbase_outpoint = OutPoint::fake();
     let utxo = WalletTransparentOutput::from_parts(
-        OutPoint::fake(),
+        non_coinbase_outpoint.clone(),
         TxOut::new(non_coinbase_value, t_addr.script().into()),
         Some(h),
         Some(account),
@@ -6326,20 +6689,20 @@ where
     st.add_empty_blocks(100);
     let target_height = TargetHeight::from(h + 101);
 
-    // 4. TransparentOutputFilter::All returns both UTXOs
+    // 4. CoinbaseFilter::All returns both UTXOs
     let all_utxos = st
         .wallet()
         .get_spendable_transparent_outputs(
             &t_addr,
             target_height,
             ConfirmationsPolicy::default(),
-            TransparentOutputFilter::All,
+            CoinbaseFilter::AllTransparentOutputs,
         )
         .unwrap();
     assert_eq!(
         all_utxos.len(),
         2,
-        "Expected both coinbase and non-coinbase UTXOs with TransparentOutputFilter::All"
+        "Expected both coinbase and non-coinbase UTXOs with CoinbaseFilter::AllTransparentOutputs"
     );
     let all_utxos_value = all_utxos
         .iter()
@@ -6351,22 +6714,43 @@ where
         "Unexpected total UTXO value when querying for all transparent transactions"
     );
 
-    // 5. TransparentOutputFilter::CoinbaseOnly returns only the coinbase UTXO
+    // 5. CoinbaseFilter::CoinbaseOnly returns only the coinbase UTXO
     let coinbase_utxos = st
         .wallet()
         .get_spendable_transparent_outputs(
             &t_addr,
             target_height,
             ConfirmationsPolicy::default(),
-            TransparentOutputFilter::CoinbaseOnly,
+            CoinbaseFilter::CoinbaseOnly,
         )
         .unwrap();
     assert_eq!(
         coinbase_utxos.len(),
         1,
-        "Expected only the coinbase UTXO with TransparentOutputFilter::CoinbaseOnly"
+        "Expected only the coinbase UTXO with CoinbaseFilter::CoinbaseOnly"
     );
     assert_eq!(coinbase_utxos[0].value(), coinbase_value);
+    assert_eq!(coinbase_utxos[0].outpoint(), &coinbase_outpoint);
+
+    // 5b. CoinbaseFilter::NonCoinbaseOnly returns only the non-coinbase UTXO.
+    // The non-coinbase UTXO was inserted with tx_index = NULL, which the filter treats as
+    // non-coinbase, so it must be included here.
+    let non_coinbase_utxos = st
+        .wallet()
+        .get_spendable_transparent_outputs(
+            &t_addr,
+            target_height,
+            ConfirmationsPolicy::default(),
+            CoinbaseFilter::NonCoinbaseOnly,
+        )
+        .unwrap();
+    assert_eq!(
+        non_coinbase_utxos.len(),
+        1,
+        "Expected only the non-coinbase UTXO with CoinbaseFilter::NonCoinbaseOnly"
+    );
+    assert_eq!(non_coinbase_utxos[0].value(), non_coinbase_value);
+    assert_eq!(non_coinbase_utxos[0].outpoint(), &non_coinbase_outpoint);
 
     // 6. propose_shielding with CoinbaseOnly includes only the coinbase input
     let proposal = st
@@ -6377,7 +6761,7 @@ where
             &[t_addr],
             account,
             ConfirmationsPolicy::default(),
-            TransparentOutputFilter::CoinbaseOnly,
+            CoinbaseFilter::CoinbaseOnly,
         )
         .unwrap();
     let coinbase_inputs = proposal.steps().first().transparent_inputs();
@@ -6387,6 +6771,28 @@ where
         "CoinbaseOnly proposal should contain exactly one transparent input"
     );
     assert_eq!(coinbase_inputs[0].value(), coinbase_value);
+    assert_eq!(coinbase_inputs[0].outpoint(), &coinbase_outpoint);
+
+    // 6b. propose_shielding with NonCoinbaseOnly includes only the non-coinbase input
+    let proposal_non_coinbase = st
+        .propose_shielding(
+            &GreedyInputSelector::new(),
+            &single_output_change_strategy(StandardFeeRule::Zip317, None, T::SHIELDED_PROTOCOL),
+            Zatoshis::from_u64(10000).unwrap(),
+            &[t_addr],
+            account,
+            ConfirmationsPolicy::default(),
+            CoinbaseFilter::NonCoinbaseOnly,
+        )
+        .unwrap();
+    let non_coinbase_inputs = proposal_non_coinbase.steps().first().transparent_inputs();
+    assert_eq!(
+        non_coinbase_inputs.len(),
+        1,
+        "NonCoinbaseOnly proposal should contain exactly one transparent input"
+    );
+    assert_eq!(non_coinbase_inputs[0].value(), non_coinbase_value);
+    assert_eq!(non_coinbase_inputs[0].outpoint(), &non_coinbase_outpoint);
 
     // 7. propose_shielding with All includes both inputs
     let proposal_all = st
@@ -6397,7 +6803,7 @@ where
             &[t_addr],
             account,
             ConfirmationsPolicy::default(),
-            TransparentOutputFilter::All,
+            CoinbaseFilter::AllTransparentOutputs,
         )
         .unwrap();
     let all_inputs = proposal_all.steps().first().transparent_inputs();
@@ -6405,6 +6811,16 @@ where
         all_inputs.len(),
         2,
         "All proposal should contain both transparent inputs"
+    );
+    // Input ordering is not guaranteed, so compare the set of outpoints.
+    let all_outpoints = all_inputs
+        .iter()
+        .map(|input| input.outpoint().clone())
+        .collect::<BTreeSet<_>>();
+    assert_eq!(
+        all_outpoints,
+        BTreeSet::from([coinbase_outpoint, non_coinbase_outpoint]),
+        "All proposal should contain both the coinbase and non-coinbase outpoints"
     );
 }
 
@@ -6482,6 +6898,90 @@ pub fn propose_shielding_coinbase_succeeds<T: ShieldedPoolTester, Dsf>(
         coinbase_value,
         "payment_amount + fee must equal coinbase input value"
     );
+}
+
+/// A shielding proposal spends no shielded notes, so its step defers the choice of anchor and
+/// serializes it as the zero sentinel. A proposal produced by an older library version also omits
+/// the confirmations policy field entirely. Decoding such a proposal must interpret the zero anchor
+/// as deferred and fall back to the default confirmations policy, and building it must resolve the
+/// anchor from that policy rather than failing with `AnchorNotFound(0)`.
+#[cfg(all(feature = "pczt", feature = "transparent-inputs"))]
+pub fn legacy_proposal_without_confirmations_policy_builds<T: ShieldedPoolTester, Dsf>(
+    ds_factory: Dsf,
+    cache: impl TestCache,
+) where
+    Dsf: DataStoreFactory,
+    <<Dsf as DataStoreFactory>::DataStore as WalletWrite>::UtxoRef: std::fmt::Debug,
+{
+    let mut st = TestDsl::with_sapling_birthday_account(ds_factory, cache).build::<T>();
+    let (t_addr, _) = st.get_account().usk().default_transparent_address();
+    let coinbase_value = Zatoshis::const_from_u64(50000);
+    let coinbase_build_result = build_transparent_coinbase_tx(
+        st.network(),
+        TargetHeight::from(st.sapling_activation_height()),
+        coinbase_value,
+        t_addr,
+        None,
+    );
+    let coinbase_tx = coinbase_build_result.transaction();
+    let (h, _) = st.generate_next_block_from_tx(0, coinbase_tx);
+    st.scan_cached_blocks(h, 1);
+    let params = *st.network();
+    decrypt_and_store_transaction(&params, st.wallet_mut(), coinbase_tx, Some(h)).unwrap();
+    // Coinbase outputs require 100 confirmations.
+    st.add_empty_blocks(100);
+
+    let to_extsk = T::sk(&[0xab; 32]);
+    let to_address = T::sk_default_address(&to_extsk).to_zcash_address(st.network());
+
+    let proposal = st
+        .propose_shielding_coinbase(
+            &GreedyInputSelector::new(),
+            &StandardFeeRule::Zip317,
+            Zatoshis::ZERO,
+            &[t_addr],
+            to_address,
+            None,
+            None,
+        )
+        .expect("coinbase shielding proposal should succeed");
+
+    // The shielding step spends no shielded notes, so it carries no explicit anchor.
+    assert_eq!(
+        proposal.steps().first().anchor_height(),
+        None,
+        "an input-less shielding step must defer its anchor",
+    );
+
+    // Serialize, then downgrade to a proposal as an older version would have produced it: drop the
+    // confirmations policy field, and confirm the deferred anchor encodes as the zero sentinel.
+    let mut proto = crate::proto::proposal::Proposal::from_standard_proposal(&proposal);
+    proto.confirmations_policy = None;
+    assert_eq!(
+        proto.steps[0].anchor_height, 0,
+        "a deferred anchor must encode as the zero sentinel",
+    );
+
+    // Decoding must fall back to the default policy and keep the anchor deferred.
+    let decoded = proto
+        .try_into_standard_proposal(&params, st.wallet())
+        .expect("a legacy proposal without a confirmations policy must decode");
+    assert_eq!(
+        decoded.confirmations_policy(),
+        ConfirmationsPolicy::default(),
+        "a missing confirmations policy must decode as the default",
+    );
+    assert_eq!(decoded.steps().first().anchor_height(), None);
+
+    // Building must resolve the deferred anchor from the default policy and target height rather
+    // than looking up a checkpoint at height zero.
+    let usk = st.get_account().usk().clone();
+    st.create_proposed_transactions::<Infallible, _, Infallible, _>(
+        &usk,
+        OvkPolicy::Sender,
+        &decoded,
+    )
+    .expect("a legacy input-less proposal must build via the resolved anchor");
 }
 
 /// Verifies that `propose_shielding_coinbase` rejects a transparent destination
@@ -6726,6 +7226,8 @@ pub fn propose_and_build_shielding_coinbase_succeeds<T: ShieldedPoolTester, Dsf>
     Dsf: DataStoreFactory,
     <<Dsf as DataStoreFactory>::DataStore as WalletWrite>::UtxoRef: std::fmt::Debug,
 {
+    use zcash_protocol::consensus::COINBASE_MATURITY_BLOCKS;
+
     let mut st = TestDsl::with_sapling_birthday_account(ds_factory, cache).build::<T>();
     let account = st.get_account();
     let (t_addr, _) = account.usk().default_transparent_address();
@@ -6776,4 +7278,352 @@ pub fn propose_and_build_shielding_coinbase_succeeds<T: ShieldedPoolTester, Dsf>
         "create_proposed_transactions must succeed for proposal {:?}",
         proposal,
     );
+}
+
+/// Verifies that once Ironwood is active, `propose_shielding_coinbase` resolves a destination
+/// with an Orchard receiver to the Ironwood pool — the payment is delivered to the Orchard
+/// receiver via the Ironwood bundle — and that the proposed transaction builds.
+#[cfg(all(feature = "orchard", feature = "pczt", feature = "transparent-inputs"))]
+pub fn shielding_coinbase_to_orchard_receiver_delivers_via_ironwood<Dsf>(
+    ds_factory: Dsf,
+    cache: impl TestCache,
+) where
+    Dsf: DataStoreFactory,
+    <<Dsf as DataStoreFactory>::DataStore as WalletWrite>::UtxoRef: std::fmt::Debug,
+{
+    use super::orchard::OrchardPoolTester;
+    use zcash_protocol::consensus::COINBASE_MATURITY_BLOCKS;
+
+    // A network on which Ironwood (NU6.3) is active from the Sapling activation height.
+    let ironwood_active_network = {
+        let activation = BlockHeight::from_u32(100_000);
+        LocalNetwork {
+            nu6: Some(activation),
+            nu6_1: Some(activation),
+            nu6_2: Some(activation),
+            nu6_3: Some(activation),
+            ..TestBuilder::<(), ()>::DEFAULT_NETWORK
+        }
+    };
+
+    let mut st = TestDsl::from(
+        TestBuilder::new()
+            .with_network(ironwood_active_network)
+            .with_data_store_factory(ds_factory)
+            .with_block_cache(cache)
+            .with_account_from_sapling_activation(BlockHash([0; 32])),
+    )
+    .build::<OrchardPoolTester>();
+    let account = st.get_account();
+    let (t_addr, _) = account.usk().default_transparent_address();
+    let coinbase_value = Zatoshis::const_from_u64(100000);
+    let coinbase_build_result = build_transparent_coinbase_tx(
+        st.network(),
+        TargetHeight::from(st.sapling_activation_height()),
+        coinbase_value,
+        t_addr,
+        None,
+    );
+    let coinbase_tx = coinbase_build_result.transaction();
+    let (h, _) = st.generate_next_block_from_tx(0, coinbase_tx);
+    st.scan_cached_blocks(h, 1);
+    let params = *st.network();
+    decrypt_and_store_transaction(&params, st.wallet_mut(), coinbase_tx, Some(h)).unwrap();
+    // Coinbase outputs require 100 confirmations.
+    st.add_empty_blocks(COINBASE_MATURITY_BLOCKS as usize);
+
+    // The destination has an Orchard receiver controlled by a separate spending key.
+    let to_extsk = OrchardPoolTester::sk(&[0xcd; 32]);
+    let to_address =
+        OrchardPoolTester::sk_default_address(&to_extsk).to_zcash_address(st.network());
+
+    let proposal = st
+        .propose_shielding_coinbase(
+            &GreedyInputSelector::new(),
+            &StandardFeeRule::Zip317,
+            Zatoshis::ZERO,
+            &[t_addr],
+            to_address,
+            None,
+            None,
+        )
+        .expect("propose_shielding_coinbase to an Orchard receiver should succeed post-NU6.3");
+
+    // The Orchard-receiver payment is represented as an Ironwood-pool output, matching the
+    // bundle the builder will deliver it through; an Orchard-pool payment would violate the
+    // Orchard turnstile.
+    assert_eq!(
+        proposal.steps().head.payment_pools().get(&0),
+        Some(&PoolType::IRONWOOD),
+    );
+
+    let build_result = st.create_proposed_transactions::<Infallible, _, Infallible, _>(
+        account.usk(),
+        OvkPolicy::Sender,
+        &proposal,
+    );
+    assert_matches!(
+        &build_result,
+        Ok(txids) if txids.len() == 1,
+        "create_proposed_transactions must succeed for proposal {:?}",
+        proposal,
+    );
+}
+
+/// After NU6.3 activation, a payment to an Orchard receiver must be delivered through the
+/// Ironwood pool, which requires a version 6 transaction. Explicitly requesting a version 5
+/// transaction — which has no Ironwood bundle — for such a payment must be rejected at proposal
+/// time with [`ProposalError::OrchardReceiverRequiresIronwood`], rather than producing a proposal
+/// that could only fail later at build time.
+#[cfg(feature = "orchard")]
+pub fn propose_v5_payment_to_orchard_receiver_is_rejected<Dsf>(
+    ds_factory: Dsf,
+    cache: impl TestCache,
+) where
+    Dsf: DataStoreFactory,
+{
+    use super::orchard::OrchardPoolTester;
+    use crate::data_api::wallet::{input_selection::SpendPolicy, propose_transfer};
+    use crate::proposal::ProposalError;
+    use zcash_primitives::transaction::TxVersion;
+
+    // A network on which Ironwood (NU6.3) is active from the Sapling activation height.
+    let ironwood_active_network = {
+        let activation = BlockHeight::from_u32(100_000);
+        LocalNetwork {
+            nu6: Some(activation),
+            nu6_1: Some(activation),
+            nu6_2: Some(activation),
+            nu6_3: Some(activation),
+            ..TestBuilder::<(), ()>::DEFAULT_NETWORK
+        }
+    };
+
+    let mut st = TestDsl::from(
+        TestBuilder::new()
+            .with_network(ironwood_active_network)
+            .with_data_store_factory(ds_factory)
+            .with_block_cache(cache)
+            .with_account_from_sapling_activation(BlockHash([0; 32])),
+    )
+    .build::<OrchardPoolTester>();
+
+    // Fund the wallet with a single spendable Orchard note.
+    st.add_a_single_note_checking_balance(Zatoshis::const_from_u64(60_000));
+
+    // The destination has an Orchard receiver controlled by a separate spending key.
+    let to_extsk = OrchardPoolTester::sk(&[0xf5; 32]);
+    let to = OrchardPoolTester::sk_default_address(&to_extsk);
+    let request = zip321::TransactionRequest::new(vec![Payment::without_memo(
+        to.to_zcash_address(st.network()),
+        Zatoshis::const_from_u64(10_000),
+    )])
+    .unwrap();
+
+    let change_strategy = standard::SingleOutputChangeStrategy::new(
+        StandardFeeRule::Zip317,
+        None,
+        ShieldedPool::Orchard,
+        DustOutputPolicy::default(),
+    );
+    let input_selector = GreedyInputSelector::new();
+
+    let account = st.get_account();
+    let network = *st.network();
+    let result = propose_transfer::<_, _, _, _, Infallible>(
+        st.wallet_mut(),
+        &network,
+        account.id(),
+        &input_selector,
+        &change_strategy,
+        request,
+        ConfirmationsPolicy::MIN,
+        &SpendPolicy::default(),
+        Some(TxVersion::V5),
+    );
+
+    assert_matches!(
+        result,
+        Err(Error::Proposal(
+            ProposalError::OrchardReceiverRequiresIronwood(TxVersion::V5)
+        ))
+    );
+}
+
+/// PCZT construction supports the version 6 transaction format, including its Ironwood bundle.
+/// After NU6.3 a payment to an Orchard receiver is delivered through the Ironwood pool, so
+/// `create_pczt_from_proposal` realizes such a proposal as a version 6 PCZT that carries a
+/// populated Ironwood bundle.
+#[cfg(all(feature = "orchard", feature = "pczt"))]
+pub fn create_pczt_supports_ironwood_output<Dsf>(ds_factory: Dsf, cache: impl TestCache)
+where
+    Dsf: DataStoreFactory,
+    <Dsf as DataStoreFactory>::AccountId: serde::Serialize,
+{
+    use super::orchard::OrchardPoolTester;
+
+    // A network on which NU6.3 — the version 6 transaction format — is active from height 100_000.
+    let ironwood_active_network = {
+        let activation = BlockHeight::from_u32(100_000);
+        LocalNetwork {
+            nu6: Some(activation),
+            nu6_1: Some(activation),
+            nu6_2: Some(activation),
+            nu6_3: Some(activation),
+            ..TestBuilder::<(), ()>::DEFAULT_NETWORK
+        }
+    };
+
+    let mut st = TestDsl::from(
+        TestBuilder::new()
+            .with_network(ironwood_active_network)
+            .with_data_store_factory(ds_factory)
+            .with_block_cache(cache)
+            .with_account_from_sapling_activation(BlockHash([0; 32])),
+    )
+    .build::<OrchardPoolTester>();
+
+    // Fund the wallet with a single spendable Orchard note.
+    st.add_a_single_note_checking_balance(Zatoshis::const_from_u64(60_000));
+
+    // The destination has an Orchard receiver controlled by a separate spending key; post-NU6.3 the
+    // payment is routed through the Ironwood pool.
+    let to_extsk = OrchardPoolTester::sk(&[0xf5; 32]);
+    let to = OrchardPoolTester::sk_default_address(&to_extsk);
+    let request = zip321::TransactionRequest::new(vec![Payment::without_memo(
+        to.to_zcash_address(st.network()),
+        Zatoshis::const_from_u64(10_000),
+    )])
+    .unwrap();
+
+    let change_strategy = standard::SingleOutputChangeStrategy::new(
+        StandardFeeRule::Zip317,
+        None,
+        ShieldedPool::Orchard,
+        DustOutputPolicy::default(),
+    );
+    let input_selector = GreedyInputSelector::new();
+
+    let account_id = st.get_account().id();
+    let proposal = st
+        .propose_transfer(
+            account_id,
+            &input_selector,
+            &change_strategy,
+            request,
+            ConfirmationsPolicy::MIN,
+        )
+        .expect("proposal construction succeeds; the Orchard-receiver payment routes to Ironwood");
+
+    // The payment routes to the Ironwood pool, so the resulting PCZT must carry an Ironwood bundle.
+    assert_eq!(
+        proposal.steps().head.payment_pools().get(&0),
+        Some(&PoolType::IRONWOOD),
+    );
+
+    let pczt = st
+        .create_pczt_from_proposal::<Infallible, _, Infallible>(
+            account_id,
+            OvkPolicy::Sender,
+            &proposal,
+            None,
+        )
+        .expect("an Ironwood-routed payment builds as a version 6 PCZT");
+
+    // The PCZT is a version 6 transaction carrying a populated Ironwood bundle.
+    assert_eq!(
+        *pczt.global().tx_version(),
+        zcash_protocol::constants::V6_TX_VERSION,
+    );
+    assert!(
+        !pczt.ironwood().actions().is_empty(),
+        "the PCZT carries an Ironwood bundle for the Ironwood-routed payment",
+    );
+
+    // The Ironwood output carries the wallet's recipient metadata (the only proprietary field set
+    // on Ironwood outputs), confirming the bundle is populated during construction rather than left
+    // as an empty shell.
+    assert!(
+        pczt.ironwood()
+            .actions()
+            .iter()
+            .any(|action| !action.output().proprietary().is_empty()),
+        "the Ironwood output carries recipient metadata",
+    );
+}
+
+/// The transaction version requested at proposal time is recorded on the proposal and preserved
+/// across serialization, so that transaction building honors it. A proposal serialized without a
+/// version request (as older serializers produced) decodes with no requested version and falls
+/// back to the target-height version at build time.
+#[cfg(feature = "orchard")]
+pub fn proposal_records_and_serializes_proposed_version<Dsf>(ds_factory: Dsf, cache: impl TestCache)
+where
+    Dsf: DataStoreFactory,
+{
+    use super::orchard::OrchardPoolTester;
+    use crate::data_api::wallet::{input_selection::SpendPolicy, propose_transfer};
+    use zcash_primitives::transaction::TxVersion;
+
+    let mut st = TestDsl::from(
+        TestBuilder::new()
+            .with_data_store_factory(ds_factory)
+            .with_block_cache(cache)
+            .with_account_from_sapling_activation(BlockHash([0; 32])),
+    )
+    .build::<OrchardPoolTester>();
+
+    // Fund the wallet with a single spendable Orchard note.
+    st.add_a_single_note_checking_balance(Zatoshis::const_from_u64(60_000));
+
+    let to_extsk = OrchardPoolTester::sk(&[0xf5; 32]);
+    let to = OrchardPoolTester::sk_default_address(&to_extsk);
+    let request = zip321::TransactionRequest::new(vec![Payment::without_memo(
+        to.to_zcash_address(st.network()),
+        Zatoshis::const_from_u64(10_000),
+    )])
+    .unwrap();
+
+    let change_strategy = standard::SingleOutputChangeStrategy::new(
+        StandardFeeRule::Zip317,
+        None,
+        ShieldedPool::Orchard,
+        DustOutputPolicy::default(),
+    );
+    let input_selector = GreedyInputSelector::new();
+
+    let account_id = st.get_account().id();
+    let network = *st.network();
+    // The test network's most recent upgrade is NU5, so version 5 is a valid explicit request.
+    let proposal = propose_transfer::<_, _, _, _, Infallible>(
+        st.wallet_mut(),
+        &network,
+        account_id,
+        &input_selector,
+        &change_strategy,
+        request,
+        ConfirmationsPolicy::MIN,
+        &SpendPolicy::default(),
+        Some(TxVersion::V5),
+    )
+    .expect("proposal construction succeeds");
+
+    // The requested version is recorded on the proposal.
+    assert_eq!(proposal.proposed_version(), Some(TxVersion::V5));
+
+    // ... and is preserved across a round-trip through the proposal's serialized (proto) form.
+    let proto = crate::proto::proposal::Proposal::from_standard_proposal(&proposal);
+    let decoded = proto
+        .try_into_standard_proposal(&network, st.wallet())
+        .expect("the serialized proposal decodes");
+    assert_eq!(decoded.proposed_version(), Some(TxVersion::V5));
+
+    // A proposal serialized without the field (as an older serializer produced) decodes with no
+    // requested version.
+    let mut legacy_proto = crate::proto::proposal::Proposal::from_standard_proposal(&proposal);
+    legacy_proto.proposed_version = None;
+    let decoded_legacy = legacy_proto
+        .try_into_standard_proposal(&network, st.wallet())
+        .expect("a legacy proposal without a requested version must decode");
+    assert_eq!(decoded_legacy.proposed_version(), None);
 }
