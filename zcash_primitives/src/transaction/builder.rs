@@ -941,8 +941,9 @@ impl<P: consensus::Parameters, U> Builder<P, U> {
 
     /// Adds an Ironwood note to be spent in this bundle.
     ///
-    /// The note must use [`orchard::note::NoteVersion::V3`], the Ironwood
-    /// note plaintext format.
+    /// The note must use the plaintext version of the transaction's Ironwood slot:
+    /// [`orchard::note::NoteVersion::ZSA`] in a v7 transaction, and
+    /// [`orchard::note::NoteVersion::V3`] otherwise.
     ///
     /// Returns an error if the given note has an unsupported version, or if
     /// the given Merkle path does not have the required Ironwood anchor for the
@@ -953,12 +954,19 @@ impl<P: consensus::Parameters, U> Builder<P, U> {
         note: orchard::Note,
         merkle_path: orchard::tree::MerklePath,
     ) -> Result<(), Error<FE>> {
+        // In a v7 transaction the Ironwood slot carries ZSA notes instead of Ironwood v3 ones.
+        let expected_version = if self.tx_version.has_orchard_zsa() {
+            orchard::note::NoteVersion::ZSA
+        } else {
+            orchard::note::NoteVersion::V3
+        };
+
         let builder = self
             .ironwood_builder
             .as_mut()
             .ok_or(Error::IronwoodBuilderNotAvailable)?;
 
-        if note.version() != orchard::note::NoteVersion::V3 {
+        if note.version() != expected_version {
             return Err(Error::IronwoodSpendUnsupportedNoteVersion(note.version()));
         }
 
@@ -970,8 +978,9 @@ impl<P: consensus::Parameters, U> Builder<P, U> {
 
     /// Adds an Ironwood recipient to the transaction.
     ///
-    /// This uses [`orchard::note::NoteVersion::V3`], the Ironwood note
-    /// plaintext format.
+    /// The note uses the plaintext version of the transaction's Ironwood slot:
+    /// [`orchard::note::NoteVersion::ZSA`] in a v7 transaction, and
+    /// [`orchard::note::NoteVersion::V3`] otherwise.
     pub fn add_ironwood_output<FE>(
         &mut self,
         ovk: Option<orchard::keys::OutgoingViewingKey>,
