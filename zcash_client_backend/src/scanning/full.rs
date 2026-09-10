@@ -28,7 +28,9 @@ use crate::{
 };
 
 #[cfg(feature = "orchard")]
-use orchard::{note_encryption::OrchardDomain, primitives::redpallas, tree::MerkleHashOrchard};
+use orchard::{
+    note_encryption::OrchardDomain, sighash_kind::OrchardSpendAuthSig, tree::MerkleHashOrchard,
+};
 
 #[cfg(feature = "orchard")]
 use super::IronwoodDomain;
@@ -57,39 +59,21 @@ type TaggedSaplingBatchRunner<IvkTag, Tasks> = BatchRunner<
 >;
 
 #[cfg(feature = "orchard")]
-type TaggedOrchardBatch<IvkTag> = Batch<
-    IvkTag,
-    OrchardDomain,
-    orchard::Action<redpallas::Signature<redpallas::SpendAuth>>,
-    FullDecryptor,
->;
+type TaggedOrchardBatch<IvkTag> =
+    Batch<IvkTag, OrchardDomain, orchard::Action<OrchardSpendAuthSig>, FullDecryptor>;
 #[cfg(feature = "orchard")]
-type TaggedOrchardBatchRunner<IvkTag, Tasks> = BatchRunner<
-    IvkTag,
-    OrchardDomain,
-    orchard::Action<redpallas::Signature<redpallas::SpendAuth>>,
-    FullDecryptor,
-    Tasks,
->;
+type TaggedOrchardBatchRunner<IvkTag, Tasks> =
+    BatchRunner<IvkTag, OrchardDomain, orchard::Action<OrchardSpendAuthSig>, FullDecryptor, Tasks>;
 
 // Ironwood outputs are decrypted under the Ironwood note-encryption domain, which is distinct from
 // the Orchard domain (it accepts version 3 note plaintexts), so an Ironwood batch is a distinct
 // type from an Orchard batch and requires its own task type.
 #[cfg(feature = "orchard")]
-type TaggedIronwoodBatch<IvkTag> = Batch<
-    IvkTag,
-    IronwoodDomain,
-    orchard::Action<redpallas::Signature<redpallas::SpendAuth>>,
-    FullDecryptor,
->;
+type TaggedIronwoodBatch<IvkTag> =
+    Batch<IvkTag, IronwoodDomain, orchard::Action<OrchardSpendAuthSig>, FullDecryptor>;
 #[cfg(feature = "orchard")]
-type TaggedIronwoodBatchRunner<IvkTag, Tasks> = BatchRunner<
-    IvkTag,
-    IronwoodDomain,
-    orchard::Action<redpallas::Signature<redpallas::SpendAuth>>,
-    FullDecryptor,
-    Tasks,
->;
+type TaggedIronwoodBatchRunner<IvkTag, Tasks> =
+    BatchRunner<IvkTag, IronwoodDomain, orchard::Action<OrchardSpendAuthSig>, FullDecryptor, Tasks>;
 
 pub(crate) trait SaplingTasks<IvkTag>: Tasks<TaggedSaplingBatch<IvkTag>> {}
 impl<IvkTag, T: Tasks<TaggedSaplingBatch<IvkTag>>> SaplingTasks<IvkTag> for T {}

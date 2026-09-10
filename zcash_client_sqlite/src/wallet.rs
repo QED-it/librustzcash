@@ -3395,7 +3395,7 @@ pub(crate) fn store_transaction_to_be_sent<P: consensus::Parameters>(
         #[cfg(feature = "orchard")]
         {
             detectable_via_scanning = true;
-            for action in _bundle.as_vanilla_bundle().actions() {
+            for action in _bundle.actions() {
                 orchard::mark_orchard_note_spent(conn, tx_ref, action.nullifier())?;
             }
         }

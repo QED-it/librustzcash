@@ -15,7 +15,7 @@ use orchard::bundle::BundleVersion;
 pub(crate) use orchard::note::NoteVersion;
 use serde::{Deserialize, Deserializer, Serialize, Serializer, de};
 #[cfg(feature = "orchard")]
-use zcash_note_encryption::{Domain, ENC_CIPHERTEXT_SIZE, EphemeralKeyBytes, ShieldedOutput};
+use zcash_note_encryption::{Domain, EphemeralKeyBytes, ShieldedOutput};
 
 use crate::{
     common::{Global, Zip32Derivation},
@@ -237,32 +237,50 @@ fn recover_memo_plaintext_from_ciphertext_and_action(
 ) -> Option<MemoPlaintext> {
     use ::orchard::{
         Address, Note,
-        note::{ExtractedNoteCommitment, Nullifier, RandomSeed, Rho},
-        note_encryption::{CompactAction, IronwoodDomain, OrchardDomain},
+        note::{AssetBase, ExtractedNoteCommitment, Nullifier, RandomSeed, Rho},
+        note_encryption::{
+            COMPACT_NOTE_SIZE_VANILLA, COMPACT_NOTE_SIZE_ZSA, CompactAction,
+            CompactNoteCiphertextBytes, IronwoodDomain, NoteCiphertextBytes, OrchardDomain,
+        },
         value::NoteValue,
     };
-    use zcash_note_encryption::{COMPACT_NOTE_SIZE, try_output_recovery_with_pkd_esk};
+    use zcash_note_encryption::{note_bytes::NoteBytes, try_output_recovery_with_pkd_esk};
 
     struct OutputRecoveryData {
-        cmx: [u8; 32],
+        cmx: ExtractedNoteCommitment,
         ephemeral_key: [u8; 32],
-        enc_ciphertext: [u8; ENC_CIPHERTEXT_SIZE],
+        enc_ciphertext: NoteCiphertextBytes,
     }
 
-    impl<D> ShieldedOutput<D, ENC_CIPHERTEXT_SIZE> for OutputRecoveryData
+    // Generic over the domain, but pinned to the note-byte types every orchard domain shares.
+    impl<D> ShieldedOutput<D> for OutputRecoveryData
     where
-        D: Domain<ExtractedCommitmentBytes = [u8; 32]>,
+        D: Domain<
+                ExtractedCommitment = ExtractedNoteCommitment,
+                NoteCiphertextBytes = NoteCiphertextBytes,
+                CompactNoteCiphertextBytes = CompactNoteCiphertextBytes,
+            >,
     {
         fn ephemeral_key(&self) -> EphemeralKeyBytes {
             EphemeralKeyBytes(self.ephemeral_key)
         }
 
-        fn cmstar_bytes(&self) -> [u8; 32] {
-            self.cmx
+        fn cmstar(&self) -> &ExtractedNoteCommitment {
+            &self.cmx
         }
 
-        fn enc_ciphertext(&self) -> &[u8; ENC_CIPHERTEXT_SIZE] {
-            &self.enc_ciphertext
+        fn enc_ciphertext(&self) -> Option<&NoteCiphertextBytes> {
+            Some(&self.enc_ciphertext)
+        }
+
+        fn enc_ciphertext_compact(&self) -> CompactNoteCiphertextBytes {
+            // The compact prefix length follows the ciphertext variant.
+            let compact_size = match self.enc_ciphertext {
+                NoteCiphertextBytes::Vanilla(_) => COMPACT_NOTE_SIZE_VANILLA,
+                NoteCiphertextBytes::Zsa(_) => COMPACT_NOTE_SIZE_ZSA,
+            };
+            CompactNoteCiphertextBytes::from_slice(&self.enc_ciphertext.as_ref()[..compact_size])
+                .expect("the compact prefix has the size of its own variant")
         }
     }
 
@@ -272,7 +290,14 @@ fn recover_memo_plaintext_from_ciphertext_and_action(
         output: &OutputRecoveryData,
     ) -> Option<MemoPlaintext>
     where
-        D: Domain<Note = Note, Memo = [u8; MEMO_SIZE], ExtractedCommitmentBytes = [u8; 32]>,
+        D: Domain<
+                Note = Note,
+                Memo = [u8; MEMO_SIZE],
+                ExtractedCommitment = ExtractedNoteCommitment,
+                ExtractedCommitmentBytes = [u8; 32],
+                NoteCiphertextBytes = NoteCiphertextBytes,
+                CompactNoteCiphertextBytes = CompactNoteCiphertextBytes,
+            >,
     {
         let pk_d = D::get_pk_d(note);
         let esk = D::derive_esk(note)?;
@@ -282,12 +307,14 @@ fn recover_memo_plaintext_from_ciphertext_and_action(
     }
 
     let enc_ciphertext = match &action.output.enc_ciphertext {
-        EncCiphertext::Encrypted(ciphertext) => ciphertext.as_slice().try_into().ok()?,
+        // The variant is selected by length: a Vanilla or a ZSA note ciphertext.
+        EncCiphertext::Encrypted(ciphertext) => NoteCiphertextBytes::from_slice(ciphertext)?,
         // we return None here to avoid excess sets or clone operations, as the caller need not do anything in this case.
         EncCiphertext::MemoPlaintext(_) => return None,
     };
+    let cmx = Option::from(ExtractedNoteCommitment::from_bytes(&action.output.cmx))?;
     let output = OutputRecoveryData {
-        cmx: action.output.cmx,
+        cmx,
         ephemeral_key: action.output.ephemeral_key,
         enc_ciphertext,
     };
@@ -300,18 +327,18 @@ fn recover_memo_plaintext_from_ciphertext_and_action(
     let note = Option::from(Note::from_parts(
         recipient,
         NoteValue::from_raw(action.output.value?),
+        AssetBase::zatoshi(),
         rho,
         rseed,
         note_version,
     ))?;
 
     let nullifier = Option::from(Nullifier::from_bytes(&action.spend.nullifier))?;
-    let cmx = Option::from(ExtractedNoteCommitment::from_bytes(&action.output.cmx))?;
     let compact_action = CompactAction::from_parts(
         nullifier,
         cmx,
         EphemeralKeyBytes(action.output.ephemeral_key),
-        output.enc_ciphertext[..COMPACT_NOTE_SIZE].try_into().ok()?,
+        ShieldedOutput::<OrchardDomain>::enc_ciphertext_compact(&output),
     );
 
     match note_version {
@@ -325,6 +352,8 @@ fn recover_memo_plaintext_from_ciphertext_and_action(
             &note,
             &output,
         ),
+        // FIXME: PCZT builds no ZSA bundle, so no ZSA action reaches this point.
+        NoteVersion::ZSA => None,
     }
 }
 
@@ -772,6 +801,10 @@ pub(crate) mod v2 {
             match note_version {
                 NoteVersion::V2 => Self::V2,
                 NoteVersion::V3 => Self::V3,
+                // FIXME: the PCZT v2 format has no ZSA note version, and PCZT builds no ZSA
+                // bundle, so a ZSA note version never reaches serialization.
+                #[cfg(feature = "orchard")]
+                NoteVersion::ZSA => unreachable!("PCZT does not support ZSA bundles"),
             }
         }
     }
@@ -1129,7 +1162,7 @@ pub(crate) mod v2 {
             use ::orchard::{
                 Note,
                 keys::{FullViewingKey, Scope, SpendingKey},
-                note::{ExtractedNoteCommitment, RandomSeed, Rho},
+                note::{AssetBase, ExtractedNoteCommitment, RandomSeed, Rho},
                 note_encryption::{OrchardDomain, OrchardNoteEncryption},
                 value::NoteValue,
             };
@@ -1151,6 +1184,7 @@ pub(crate) mod v2 {
             let note = Option::from(Note::from_parts(
                 recipient,
                 value,
+                AssetBase::zatoshi(),
                 rho,
                 rseed,
                 NoteVersion::V2,
@@ -1180,7 +1214,7 @@ pub(crate) mod v2 {
                     cmx: ExtractedNoteCommitment::from(note.commitment()).to_bytes(),
                     ephemeral_key: OrchardDomain::epk_bytes(encryptor.epk()).0,
                     enc_ciphertext: EncCiphertext::Encrypted(
-                        encryptor.encrypt_note_plaintext().to_vec(),
+                        encryptor.encrypt_note_plaintext().as_ref().to_vec(),
                     ),
                     out_ciphertext: Vec::new(),
                     recipient: Some(recipient.to_raw_address_bytes()),
@@ -1499,7 +1533,7 @@ impl Output {
     ) -> Result<(), ::orchard::pczt::ParseError> {
         use ::orchard::{
             Address, Note,
-            note::{RandomSeed, Rho},
+            note::{AssetBase, RandomSeed, Rho},
             note_encryption::{OrchardDomain, OrchardNoteEncryption},
             pczt::ParseError,
             value::NoteValue,
@@ -1530,6 +1564,7 @@ impl Output {
         let note = Note::from_parts(
             recipient,
             NoteValue::from_raw(self.value.ok_or(ParseError::InvalidEncCiphertext)?),
+            AssetBase::zatoshi(),
             rho,
             rseed,
             note_version,
@@ -1538,7 +1573,7 @@ impl Output {
         .ok_or(ParseError::InvalidEncCiphertext)?;
         let encryptor = OrchardNoteEncryption::new(None, note, memo);
         let ephemeral_key = OrchardDomain::epk_bytes(encryptor.epk()).0;
-        let enc_ciphertext = encryptor.encrypt_note_plaintext().to_vec();
+        let enc_ciphertext = encryptor.encrypt_note_plaintext().as_ref().to_vec();
 
         if ephemeral_key != self.ephemeral_key {
             return Err(ParseError::InvalidEncCiphertext);
@@ -1554,6 +1589,7 @@ impl Action {
     /// Recomputes `cv_net`, if this action carries it as an omitted field.
     fn resolve_cv_net(&mut self) -> Result<(), ::orchard::pczt::ParseError> {
         use ::orchard::{
+            note::AssetBase,
             pczt::ParseError,
             value::{NoteValue, ValueCommitTrapdoor, ValueCommitment},
         };
@@ -1574,7 +1610,11 @@ impl Action {
                 .into_option()
                 .ok_or(ParseError::InvalidValueCommitment)?;
 
-        self.cv_net = Some(ValueCommitment::derive(spend_value - output_value, rcv).to_bytes());
+        // PCZT is zatoshi-only, so the commitment is always to the native asset.
+        self.cv_net = Some(
+            ValueCommitment::derive(spend_value - output_value, rcv, AssetBase::zatoshi())
+                .to_bytes(),
+        );
         Ok(())
     }
 }

@@ -932,6 +932,8 @@ impl<P: consensus::Parameters, U> Builder<P, U> {
                 ovk,
                 recipient,
                 orchard::value::NoteValue::from_raw(value.into()),
+                // Change in the Orchard value pool is always ZEC.
+                AssetBase::zatoshi(),
                 memo.into_bytes(),
             )
             .map_err(Error::OrchardRecipient)
@@ -984,6 +986,9 @@ impl<P: consensus::Parameters, U> Builder<P, U> {
                 ovk,
                 recipient,
                 orchard::value::NoteValue::from_raw(value.into()),
+                // FIXME: v7 puts ZSA in the Ironwood slot, so the asset belongs on this method
+                // rather than on `add_orchard_output`; until that is rewired, only ZEC is possible.
+                AssetBase::zatoshi(),
                 memo.into_bytes(),
             )
             .map_err(Error::IronwoodRecipient)
@@ -1982,6 +1987,7 @@ mod tests {
                 None,
                 recipient,
                 Zatoshis::const_from_u64(10_000),
+                orchard::note::AssetBase::zatoshi(),
                 MemoBytes::empty(),
             ),
             Err(Error::OrchardBuilderNotAvailable)
@@ -2060,6 +2066,8 @@ mod tests {
             .build_for_pczt(
                 OsRng,
                 &crate::transaction::fees::zip317::FeeRule::standard(),
+                #[cfg(zcash_unstable = "nu7")]
+                |_| false,
             )
             .unwrap();
         assert_eq!(res.pczt_parts.version, TxVersion::V6);
@@ -2099,6 +2107,8 @@ mod tests {
             builder.build_for_pczt(
                 OsRng,
                 &crate::transaction::fees::zip317::FeeRule::standard(),
+                #[cfg(zcash_unstable = "nu7")]
+                |_| false,
             ),
             Err(Error::InsufficientFunds(_))
         );
@@ -2138,6 +2148,8 @@ mod tests {
             builder.build_for_pczt(
                 OsRng,
                 &crate::transaction::fees::zip317::FeeRule::standard(),
+                #[cfg(zcash_unstable = "nu7")]
+                |_| false,
             ),
             Err(Error::TargetIncompatible(
                 BranchId::Nu6_3,
@@ -2166,7 +2178,15 @@ mod tests {
         let rseed = (0u8..=255)
             .find_map(|b| orchard::note::RandomSeed::from_bytes([b; 32], &rho).into_option())
             .expect("at least one test rseed is valid");
-        let note = orchard::Note::from_parts(recipient, value, rho, rseed, version).unwrap();
+        let note = orchard::Note::from_parts(
+            recipient,
+            value,
+            orchard::note::AssetBase::zatoshi(),
+            rho,
+            rseed,
+            version,
+        )
+        .unwrap();
         let zero = orchard::tree::MerkleHashOrchard::from_bytes(&[0; 32]).unwrap();
         let merkle_path = orchard::tree::MerklePath::from_parts(0, [zero; 32]);
 
@@ -2228,6 +2248,7 @@ mod tests {
         let note = orchard::Note::from_parts(
             spend_recipient,
             orchard::value::NoteValue::from_raw(10_000),
+            orchard::note::AssetBase::zatoshi(),
             rho,
             rseed,
             orchard::note::NoteVersion::V2,
@@ -2261,6 +2282,7 @@ mod tests {
                     None,
                     recipient,
                     orchard::value::NoteValue::from_raw(1_000),
+                    orchard::note::AssetBase::zatoshi(),
                     [0u8; 512],
                 )
                 .unwrap();
@@ -2309,6 +2331,7 @@ mod tests {
                     None,
                     recipient,
                     orchard::value::NoteValue::from_raw(10_000),
+                    orchard::note::AssetBase::zatoshi(),
                     [0u8; 512],
                 )
                 .unwrap();
@@ -2486,7 +2509,14 @@ mod tests {
             .unwrap();
 
         let res = builder
-            .mock_build(&transparent_signing_set, &[], &[], OsRng)
+            .mock_build(
+                &transparent_signing_set,
+                &[],
+                &[],
+                #[cfg(zcash_unstable = "nu7")]
+                |_| false,
+                OsRng,
+            )
             .unwrap();
         assert_eq!(res.transaction().expiry_height(), 0u32.into());
     }
@@ -2509,7 +2539,14 @@ mod tests {
             .unwrap();
 
         assert_matches!(
-            builder.mock_build(&TransparentSigningSet::new(), &[], &[], OsRng),
+            builder.mock_build(
+                &TransparentSigningSet::new(),
+                &[],
+                &[],
+                #[cfg(zcash_unstable = "nu7")]
+                |_| false,
+                OsRng,
+            ),
             Err(Error::CoinbaseExpiryHeightMismatch {
                 target_height,
                 expiry_height,

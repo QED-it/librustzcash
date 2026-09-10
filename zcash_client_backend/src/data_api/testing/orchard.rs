@@ -2,7 +2,7 @@ use std::hash::Hash;
 
 use ::orchard::{
     keys::{FullViewingKey, SpendingKey},
-    primitives::OrchardDomain,
+    note_encryption::OrchardDomain,
     tree::MerkleHashOrchard,
 };
 use incrementalmerkletree::{Hashable, Level};
@@ -172,7 +172,7 @@ impl ShieldedPoolTester for OrchardPoolTester {
         tx: &Transaction,
         fvk: &Self::Fvk,
     ) -> Option<(Note, Address, MemoBytes)> {
-        for action in tx.orchard_bundle().unwrap().as_vanilla_bundle().actions() {
+        for action in tx.orchard_bundle().unwrap().actions() {
             // Find the output that decrypts with the external OVK
             let result = try_output_recovery_with_ovk(
                 &OrchardDomain::for_action(action),

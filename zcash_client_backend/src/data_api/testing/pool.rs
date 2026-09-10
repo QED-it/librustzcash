@@ -81,7 +81,6 @@ use zcash_protocol::PoolType;
 
 #[cfg(feature = "pczt")]
 use {
-    orchard::flavor::OrchardVanilla,
     pczt::roles::{prover::Prover, signer::Signer},
     rand_core::OsRng,
     transparent::builder::TransparentSigningSet,

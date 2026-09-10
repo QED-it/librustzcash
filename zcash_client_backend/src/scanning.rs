@@ -26,7 +26,7 @@ use crate::{
 };
 
 #[cfg(feature = "orchard")]
-use orchard::{flavor::OrchardVanilla, primitives::OrchardDomain};
+use orchard::note_encryption::OrchardDomain;
 
 pub(crate) mod compact;
 pub mod full;
@@ -186,7 +186,7 @@ impl<AccountId> ScanningKeyOps<SaplingDomain, AccountId, sapling::Nullifier>
 }
 
 #[cfg(feature = "orchard")]
-impl<AccountId> ScanningKeyOps<OrchardDomain<OrchardVanilla>, AccountId, orchard::note::Nullifier>
+impl<AccountId> ScanningKeyOps<OrchardDomain, AccountId, orchard::note::Nullifier>
     for ScanningKey<orchard::keys::IncomingViewingKey, orchard::keys::FullViewingKey, AccountId>
 {
     fn prepare(&self) -> orchard::keys::PreparedIncomingViewingKey {
@@ -264,11 +264,7 @@ pub struct ScanningKeys<AccountId, IvkTag> {
     #[cfg(feature = "orchard")]
     orchard: HashMap<
         IvkTag,
-        Box<
-            dyn ScanningKeyOps<OrchardDomain<OrchardVanilla>, AccountId, orchard::note::Nullifier>
-                + Send
-                + Sync,
-        >,
+        Box<dyn ScanningKeyOps<OrchardDomain, AccountId, orchard::note::Nullifier> + Send + Sync>,
     >,
     #[cfg(feature = "orchard")]
     ironwood: HashMap<
@@ -287,11 +283,8 @@ impl<AccountId, IvkTag> ScanningKeys<AccountId, IvkTag> {
         #[cfg(feature = "orchard")] orchard: HashMap<
             IvkTag,
             Box<
-                dyn ScanningKeyOps<
-                        OrchardDomain<OrchardVanilla>,
-                        AccountId,
-                        orchard::note::Nullifier,
-                    > + Send
+                dyn ScanningKeyOps<OrchardDomain, AccountId, orchard::note::Nullifier>
+                    + Send
                     + Sync,
             >,
         >,
@@ -336,11 +329,7 @@ impl<AccountId, IvkTag> ScanningKeys<AccountId, IvkTag> {
         &self,
     ) -> &HashMap<
         IvkTag,
-        Box<
-            dyn ScanningKeyOps<OrchardDomain<OrchardVanilla>, AccountId, orchard::note::Nullifier>
-                + Send
-                + Sync,
-        >,
+        Box<dyn ScanningKeyOps<OrchardDomain, AccountId, orchard::note::Nullifier> + Send + Sync>,
     > {
         &self.orchard
     }
@@ -378,11 +367,8 @@ impl<AccountId: Copy + Eq + Hash + Send + Sync + 'static>
         let mut orchard: HashMap<
             (AccountId, Scope),
             Box<
-                dyn ScanningKeyOps<
-                        OrchardDomain<OrchardVanilla>,
-                        AccountId,
-                        orchard::note::Nullifier,
-                    > + Send
+                dyn ScanningKeyOps<OrchardDomain, AccountId, orchard::note::Nullifier>
+                    + Send
                     + Sync,
             >,
         > = HashMap::new();
@@ -895,7 +881,6 @@ fn find_received<
     Output: ShieldedOutput<D>,
     NoteCommitment,
     Note,
-    const CIPHERTEXT_SIZE: usize,
 >(
     block_height: BlockHeight,
     last_commitments_in_block: bool,

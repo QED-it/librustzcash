@@ -43,7 +43,3 @@ impl super::FeeRule for FeeRule {
         Ok(self.fixed_fee)
     }
 }
-    ) -> Result<Zatoshis, Self::Error> {
-        Ok(self.fixed_fee)
-    }
-}

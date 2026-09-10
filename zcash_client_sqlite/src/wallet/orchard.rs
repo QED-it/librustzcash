@@ -957,7 +957,7 @@ pub(crate) mod tests {
         use orchard::{
             ValuePool,
             keys::{FullViewingKey, SpendingKey},
-            note::{Note, NoteVersion, RandomSeed, Rho},
+            note::{AssetBase, Note, NoteVersion, RandomSeed, Rho},
             value::NoteValue,
         };
         use rusqlite::named_params;
@@ -988,6 +988,7 @@ pub(crate) mod tests {
             Option::from(Note::from_parts(
                 recipient,
                 NoteValue::from_raw(value),
+                AssetBase::zatoshi(),
                 rho,
                 rseed,
                 version,
@@ -2114,7 +2115,14 @@ pub(crate) mod tests {
                 )
                 .unwrap();
             let tx = builder
-                .mock_build(&TransparentSigningSet::new(), &[], &[orchard_sak], OsRng)
+                .mock_build(
+                    &TransparentSigningSet::new(),
+                    &[],
+                    &[orchard_sak],
+                    #[cfg(zcash_unstable = "nu7")]
+                    |_| false,
+                    OsRng,
+                )
                 .unwrap()
                 .transaction()
                 .clone();

@@ -107,7 +107,7 @@ use zcash_script::script::{self as zs_script, Evaluable};
 use {
     crate::data_api::error::PcztError,
     bip32::ChildNumber,
-    orchard::primitives::OrchardDomain,
+    orchard::note_encryption::OrchardDomain,
     pczt::roles::{
         creator::Creator, io_finalizer::IoFinalizer, spend_finalizer::SpendFinalizer,
         tx_extractor::TransactionExtractor, updater::Updater,
@@ -1908,6 +1908,7 @@ where
                             internal_ovk.map(|k| k.into()),
                             change_address,
                             change_value.value(),
+                            AssetBase::zatoshi(),
                             memo.clone(),
                         )?;
                         orchard_output_meta.push((
@@ -1945,7 +1946,6 @@ where
                         internal_ovk.map(|k| k.into()),
                         change_address,
                         change_value.value(),
-                        AssetBase::zatoshi(),
                         memo.clone(),
                     )?;
                     ironwood_output_meta.push((
@@ -2182,7 +2182,6 @@ where
                     .orchard_bundle()
                     .and_then(|bundle| {
                         bundle
-                            .as_vanilla_bundle()
                             .decrypt_output_with_key(output_index, &orchard_internal_ivk)
                             .or_else(|| {
                                 bundle.decrypt_output_with_key(output_index, &orchard_external_ivk)
@@ -2818,6 +2817,7 @@ where
                 orchard::Note::from_parts(
                     recipient,
                     value,
+                    orchard::note::AssetBase::zatoshi(),
                     rho,
                     rseed,
                     orchard::note::NoteVersion::V2,

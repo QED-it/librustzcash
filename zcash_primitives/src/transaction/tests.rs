@@ -5,7 +5,7 @@ use {
     crate::transaction::{
         Authorization, Transaction, TransactionData, TxDigests, TxIn, TxVersion,
         sighash::SignableInput, sighash::signature_hash, sighash_v4::v4_signature_hash,
-        sighash_v5::v5_signature_hash, testing::arb_tx, transparent, txid::TxIdDigester,
+        testing::arb_tx, transparent, txid::TxIdDigester,
     },
     ::transparent::{
         address::Script, sighash::SighashType, sighash::TransparentAuthorizingContext,
@@ -269,6 +269,7 @@ fn bundle_with_anchor(
         bundle.actions().clone(),
         *bundle.flags(),
         *bundle.value_balance(),
+        bundle.burn().clone(),
         anchor,
         bundle.authorization().clone(),
         bundle.bundle_version(),
@@ -442,6 +443,7 @@ fn disable_cross_address(
         bundle.actions().clone(),
         flags,
         *bundle.value_balance(),
+        bundle.burn().clone(),
         *bundle.anchor(),
         bundle.authorization().clone(),
         orchard::bundle::BundleVersion::orchard_v3(),
@@ -544,6 +546,10 @@ fn v6_tx_data_with_ironwood_bundle(
         Some(ironwood_bundle),
     )
 }
+
+// Only the pre-nu7 tests exercise the v5 sighash directly.
+#[cfg(all(test, not(zcash_unstable = "nu7")))]
+use crate::transaction::sighash_v5::v5_signature_hash;
 
 #[cfg(all(test, not(zcash_unstable = "nu7")))]
 fn v5_shielded_sighash(tx_data: &TransactionData<TestUnauthorized>) -> Blake2bHash {
@@ -1141,7 +1147,8 @@ fn zip_0244() {
         perform_digest_tests(&tv);
     }
 
-    // The orchard_zsa_digests test vectors include zip233_amount
+    // FIXME: these are the fork's old v6 ZSA vectors; they no longer parse and must be
+    // regenerated for v7 from QED-it/zcash-test-vectors.
     #[cfg(all(zcash_unstable = "nu7", feature = "zip-233"))]
     for tv in self::orchard_zsa_digests::make_test_vectors() {
         perform_digest_tests(&tv);
@@ -1216,8 +1223,8 @@ fn zip_0233() {
         (tdata, txdata.digest(TxIdDigester))
     }
 
-    for tv in self::data::zip_0233::make_test_vectors() {
-        let (txdata, txid_parts) = to_test_txdata(&tv);
+    for tv in self::data::zip_0233::TEST_VECTORS {
+        let (txdata, txid_parts) = to_test_txdata(tv);
 
         assert_eq!(
             v6_signature_hash(&txdata, &SignableInput::Shielded, &txid_parts).as_ref(),

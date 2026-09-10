@@ -33,7 +33,7 @@ use {
     crate::sighash_versioning::issue_sighash_kind_to_info,
     crate::transaction::TRANSPARENT_SIGHASH_INFO_V0,
     crate::transaction::components::sapling::SAPLING_SIGHASH_INFO_V0,
-    orchard::issuance::{IssueBundle, Signed},
+    ::orchard::issuance::{IssueBundle, Signed},
     zcash_encoding::Vector,
 };
 
