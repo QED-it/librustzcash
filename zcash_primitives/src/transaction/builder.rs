@@ -885,6 +885,8 @@ impl<P: consensus::Parameters, U> Builder<P, U> {
     }
 
     /// Adds an Orchard recipient to the transaction.
+    // FIXME: the `asset` parameter is vestigial now that ZSA lives in the Ironwood slot; the
+    // Orchard slot only ever carries ZEC, so it should be dropped.
     pub fn add_orchard_output<FE>(
         &mut self,
         ovk: Option<orchard::keys::OutgoingViewingKey>,
@@ -1834,7 +1836,7 @@ mod tests {
             issuance::auth::{IssueAuthKey, IssueValidatingKey},
             issuance::{IssueInfo, compute_asset_desc_hash},
             keys::{FullViewingKey, Scope, SpendAuthorizingKey, SpendingKey},
-            note::{AssetBase, AssetId},
+            note::{AssetBase, AssetId, Note, NoteVersion, RandomSeed, Rho},
             note_encryption::{NoteEncryptionDomain, ZSAVersion},
             tree::MerkleHashOrchard,
             value::NoteValue,
@@ -2980,9 +2982,6 @@ mod tests {
         }
     }
 
-    // FIXME: rewritten for the v7 ZSA layout but never compiled or run. Two things to check:
-    // the ZSA bundle is now built by the Ironwood builder, and `add_orchard_output` still takes an
-    // asset while writing into the Orchard slot, so asset-carrying outputs have no v7 path yet.
     #[cfg(zcash_unstable = "nu7")]
     #[test]
     fn check_zsa_issuance_fees() {
@@ -3126,5 +3125,157 @@ mod tests {
             tx.fee_paid(|_| Err(BalanceError::Overflow)).unwrap(),
             Some(Zatoshis::const_from_u64(EXPECTED_FEE))
         );
+    }
+
+    /// A v7 transaction can move a custom asset: the ZSA note is spent from and paid back into
+    /// the Ironwood slot, while a separate ZEC note covers the fee.
+    #[cfg(zcash_unstable = "nu7")]
+    #[test]
+    fn transfer_custom_asset_in_v7() {
+        use rand_core::RngCore;
+
+        const ZEC_NOTE_VALUE: u64 = 10_000_000;
+        // Two Ironwood actions, which is also the ZIP 317 grace count, so the fee is the
+        // marginal fee twice over.
+        const EXPECTED_FEE: u64 = 2 * 5_000;
+        const ZEC_OUTPUT_VALUE: u64 = ZEC_NOTE_VALUE - EXPECTED_FEE;
+        const ASSET_VALUE: u64 = 42;
+
+        let mut rng = OsRng;
+        let tx_height = TEST_NETWORK.activation_height(NetworkUpgrade::Nu7).unwrap();
+
+        let sk = SpendingKey::from_zip32_seed(&[7u8; 32], 1, AccountId::ZERO).unwrap();
+        let fvk = FullViewingKey::from(&sk);
+        let recipient = fvk.address_at(0u32, Scope::External);
+        let isk = IssueAuthKey::from_zip32_seed(&[7u8; 32], 1, 0).unwrap();
+        let ik = IssueValidatingKey::from(&isk);
+        let asset_desc =
+            compute_asset_desc_hash(&NonEmpty::from_slice(b"Transferable asset").unwrap());
+        let asset = AssetBase::custom(&AssetId::new_v0(&ik, &asset_desc));
+
+        // The notes are built directly rather than through a setup bundle: an output-only bundle
+        // cannot carry a custom asset, because padding it would need a split note to spend.
+        let mut make_note = |value: u64, asset: AssetBase, rho_seed: u8| -> Note {
+            let rho = Option::from(Rho::from_bytes(&[rho_seed; 32])).unwrap();
+            let rseed = loop {
+                let mut bytes = [0u8; 32];
+                rng.fill_bytes(&mut bytes);
+                if let Some(rseed) = Option::from(RandomSeed::from_bytes(bytes, &rho)) {
+                    break rseed;
+                }
+            };
+            Option::from(Note::from_parts(
+                recipient,
+                NoteValue::from_raw(value),
+                asset,
+                rho,
+                rseed,
+                NoteVersion::ZSA,
+            ))
+            .unwrap()
+        };
+        let zec_note = make_note(ZEC_NOTE_VALUE, AssetBase::zatoshi(), 1);
+        let asset_note = make_note(ASSET_VALUE, asset, 2);
+
+        // Both notes share one commitment tree, so their witnesses share an anchor.
+        let (anchor, zec_path, asset_path) = {
+            let mut tree = ShardTree::<_, 32, 16>::new(
+                MemoryShardStore::<MerkleHashOrchard, u32>::empty(),
+                100,
+            );
+            let zec_leaf = MerkleHashOrchard::from_cmx(&zec_note.commitment().into());
+            let asset_leaf = MerkleHashOrchard::from_cmx(&asset_note.commitment().into());
+            tree.append(zec_leaf, incrementalmerkletree::Retention::Marked)
+                .unwrap();
+            tree.append(asset_leaf, incrementalmerkletree::Retention::Marked)
+                .unwrap();
+            tree.checkpoint(9_999_999).unwrap();
+            let zec_path = tree
+                .witness_at_checkpoint_depth(0.into(), 0)
+                .unwrap()
+                .unwrap();
+            let asset_path = tree
+                .witness_at_checkpoint_depth(1.into(), 0)
+                .unwrap()
+                .unwrap();
+            assert_eq!(zec_path.root(zec_leaf), asset_path.root(asset_leaf));
+            (
+                zec_path.root(zec_leaf).into(),
+                zec_path.into(),
+                asset_path.into(),
+            )
+        };
+
+        let mut builder = Builder::new(
+            TEST_NETWORK,
+            tx_height,
+            BuildConfig::Standard {
+                sapling_anchor: Some(sapling::Anchor::empty_tree()),
+                orchard_anchor: None,
+                ironwood_anchor: Some(anchor),
+                orchard_pool_bundle_type: orchard::builder::BundleType::DEFAULT,
+            },
+        );
+
+        builder
+            .add_ironwood_spend::<zip317::FeeRule>(fvk.clone(), zec_note, zec_path)
+            .unwrap();
+        builder
+            .add_ironwood_spend::<zip317::FeeRule>(fvk.clone(), asset_note, asset_path)
+            .unwrap();
+        // The custom asset moves in full; the ZEC note pays for itself minus the fee.
+        builder
+            .add_ironwood_output::<zip317::FeeRule>(
+                Some(fvk.to_ovk(Scope::External)),
+                recipient,
+                Zatoshis::from_u64(ASSET_VALUE).unwrap(),
+                asset,
+                MemoBytes::empty(),
+            )
+            .unwrap();
+        builder
+            .add_ironwood_output::<zip317::FeeRule>(
+                Some(fvk.to_ovk(Scope::External)),
+                recipient,
+                Zatoshis::from_u64(ZEC_OUTPUT_VALUE).unwrap(),
+                AssetBase::zatoshi(),
+                MemoBytes::empty(),
+            )
+            .unwrap();
+
+        let build_result = builder
+            .mock_build(
+                &TransparentSigningSet::new(),
+                &[],
+                &[SpendAuthorizingKey::from(&sk)],
+                no_new_assets,
+                OsRng,
+            )
+            .unwrap();
+        let tx = build_result.transaction();
+
+        assert_eq!(
+            tx.fee_paid(|_| Err(BalanceError::Overflow)).unwrap(),
+            Some(Zatoshis::const_from_u64(EXPECTED_FEE))
+        );
+
+        // The custom asset must survive into a decryptable output of the Ironwood slot.
+        let ivk = fvk.to_ivk(Scope::External).prepare();
+        let carries_asset = tx
+            .ironwood_bundle()
+            .unwrap()
+            .actions()
+            .iter()
+            .filter_map(|action| {
+                try_note_decryption(
+                    &NoteEncryptionDomain::<ZSAVersion>::for_action(action),
+                    &ivk,
+                    action,
+                )
+            })
+            .any(|(note, _, _): (Note, _, _)| {
+                note.asset() == asset && note.value().inner() == ASSET_VALUE
+            });
+        assert!(carries_asset, "no Ironwood output carries the custom asset");
     }
 }
