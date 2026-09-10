@@ -1188,6 +1188,7 @@ fn pczt_with_anchor(pool: ShieldedPool) -> Pczt {
             Some(orchard_ovk),
             recipient,
             Zatoshis::const_from_u64(985_000),
+            AssetBase::zatoshi(),
             MemoBytes::empty(),
         )
         .unwrap();
@@ -1697,6 +1698,7 @@ fn redacted_orchard_anchor_can_be_restored_after_signing() {
             Some(orchard_ovk),
             recipient,
             Zatoshis::const_from_u64(980_000),
+            AssetBase::zatoshi(),
             MemoBytes::empty(),
         )
         .unwrap();
@@ -2043,6 +2045,7 @@ fn wallet_can_set_ironwood_witness_after_signing() {
             Some(orchard_ovk),
             recipient,
             Zatoshis::const_from_u64(990_000),
+            AssetBase::zatoshi(),
             MemoBytes::empty(),
         )
         .unwrap();
@@ -2220,6 +2223,7 @@ fn ironwood_low_level_signer_uses_preverified_signing_parse() {
             Some(orchard_ovk),
             recipient,
             Zatoshis::const_from_u64(990_000),
+            AssetBase::zatoshi(),
             MemoBytes::empty(),
         )
         .unwrap();

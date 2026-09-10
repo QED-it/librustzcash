@@ -2111,6 +2111,7 @@ pub(crate) mod tests {
                     None,
                     external_recipient,
                     Zatoshis::const_from_u64(90_000),
+                    ::orchard::note::AssetBase::zatoshi(),
                     MemoBytes::empty(),
                 )
                 .unwrap();

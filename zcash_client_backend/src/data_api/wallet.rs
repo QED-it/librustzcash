@@ -1749,6 +1749,7 @@ where
                     external_ovk.map(|k| k.into()),
                     to,
                     payment_amount,
+                    AssetBase::zatoshi(),
                     memo.clone(),
                 )?;
                 ironwood_output_meta.push((
@@ -1946,6 +1947,7 @@ where
                         internal_ovk.map(|k| k.into()),
                         change_address,
                         change_value.value(),
+                        AssetBase::zatoshi(),
                         memo.clone(),
                     )?;
                     ironwood_output_meta.push((

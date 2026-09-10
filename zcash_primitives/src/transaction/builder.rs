@@ -980,14 +980,20 @@ impl<P: consensus::Parameters, U> Builder<P, U> {
     ///
     /// The note uses the plaintext version of the transaction's Ironwood slot:
     /// [`orchard::note::NoteVersion::ZSA`] in a v7 transaction, and
-    /// [`orchard::note::NoteVersion::V3`] otherwise.
+    /// [`orchard::note::NoteVersion::V3`] otherwise. A non-ZEC `asset` is therefore
+    /// accepted only by a v7 transaction.
     pub fn add_ironwood_output<FE>(
         &mut self,
         ovk: Option<orchard::keys::OutgoingViewingKey>,
         recipient: orchard::Address,
         value: Zatoshis,
+        asset: AssetBase,
         memo: MemoBytes,
     ) -> Result<(), Error<FE>> {
+        if !bool::from(asset.is_zatoshi()) && !self.tx_version.has_orchard_zsa() {
+            return Err(Error::IronwoodBuild(BundleTypeNotSatisfiable));
+        }
+
         self.ironwood_builder
             .as_mut()
             .ok_or(Error::IronwoodBuilderNotAvailable)?
@@ -995,9 +1001,7 @@ impl<P: consensus::Parameters, U> Builder<P, U> {
                 ovk,
                 recipient,
                 orchard::value::NoteValue::from_raw(value.into()),
-                // FIXME: v7 puts ZSA in the Ironwood slot, so the asset belongs on this method
-                // rather than on `add_orchard_output`; until that is rewired, only ZEC is possible.
-                AssetBase::zatoshi(),
+                asset,
                 memo.into_bytes(),
             )
             .map_err(Error::IronwoodRecipient)
@@ -2007,6 +2011,7 @@ mod tests {
                 None,
                 recipient,
                 Zatoshis::const_from_u64(10_000),
+                orchard::note::AssetBase::zatoshi(),
                 MemoBytes::empty(),
             )
             .unwrap();
@@ -2108,6 +2113,7 @@ mod tests {
                 None,
                 recipient,
                 Zatoshis::const_from_u64(10_000),
+                orchard::note::AssetBase::zatoshi(),
                 MemoBytes::empty(),
             )
             .unwrap();
@@ -2149,6 +2155,7 @@ mod tests {
                 None,
                 recipient,
                 Zatoshis::const_from_u64(10_000),
+                orchard::note::AssetBase::zatoshi(),
                 MemoBytes::empty(),
             )
             .unwrap();
@@ -3078,6 +3085,7 @@ mod tests {
                 Some(fvk.to_ovk(Scope::External)),
                 recipient,
                 Zatoshis::from_u64(OLD_NOTE_VALUE - EXPECTED_FEE).unwrap(),
+                AssetBase::zatoshi(),
                 MemoBytes::empty(),
             )
             .unwrap();
