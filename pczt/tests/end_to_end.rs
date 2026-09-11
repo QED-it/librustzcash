@@ -175,7 +175,6 @@ fn transparent_to_orchard() {
             Some(orchard_ovk),
             recipient,
             Zatoshis::const_from_u64(100_000),
-            AssetBase::zatoshi(),
             MemoBytes::empty(),
         )
         .unwrap();
@@ -184,7 +183,6 @@ fn transparent_to_orchard() {
             Some(orchard_fvk.to_ovk(zip32::Scope::Internal)),
             orchard_fvk.address_at(0u32, orchard::keys::Scope::Internal),
             Zatoshis::const_from_u64(885_000),
-            AssetBase::zatoshi(),
             MemoBytes::empty(),
         )
         .unwrap();
@@ -375,7 +373,6 @@ fn transparent_p2sh_multisig_to_orchard() {
             Some(orchard_ovk),
             recipient,
             Zatoshis::const_from_u64(100_000),
-            AssetBase::zatoshi(),
             MemoBytes::empty(),
         )
         .unwrap();
@@ -384,7 +381,6 @@ fn transparent_p2sh_multisig_to_orchard() {
             Some(orchard_fvk.to_ovk(zip32::Scope::Internal)),
             orchard_fvk.address_at(0u32, orchard::keys::Scope::Internal),
             Zatoshis::const_from_u64(880_000),
-            AssetBase::zatoshi(),
             MemoBytes::empty(),
         )
         .unwrap();
@@ -594,7 +590,6 @@ fn sapling_to_orchard() {
             Some(sapling_dfvk.to_ovk(zip32::Scope::External).0.into()),
             recipient,
             Zatoshis::const_from_u64(100_000),
-            AssetBase::zatoshi(),
             MemoBytes::empty(),
         )
         .unwrap();
@@ -772,7 +767,6 @@ fn orchard_to_orchard() {
             Some(orchard_ovk),
             recipient,
             Zatoshis::const_from_u64(100_000),
-            AssetBase::zatoshi(),
             MemoBytes::empty(),
         )
         .unwrap();
@@ -781,7 +775,6 @@ fn orchard_to_orchard() {
             Some(orchard_fvk.to_ovk(zip32::Scope::Internal)),
             orchard_fvk.address_at(0u32, orchard::keys::Scope::Internal),
             Zatoshis::const_from_u64(890_000),
-            AssetBase::zatoshi(),
             MemoBytes::empty(),
         )
         .unwrap();
@@ -997,7 +990,6 @@ fn orchard_low_level_signer_uses_preverified_signing_parse() {
             Some(orchard_ovk),
             recipient,
             Zatoshis::const_from_u64(100_000),
-            AssetBase::zatoshi(),
             MemoBytes::empty(),
         )
         .unwrap();
@@ -1006,7 +998,6 @@ fn orchard_low_level_signer_uses_preverified_signing_parse() {
             Some(orchard_fvk.to_ovk(zip32::Scope::Internal)),
             orchard_fvk.address_at(0u32, orchard::keys::Scope::Internal),
             Zatoshis::const_from_u64(890_000),
-            AssetBase::zatoshi(),
             MemoBytes::empty(),
         )
         .unwrap();
@@ -1188,6 +1179,7 @@ fn pczt_with_anchor(pool: ShieldedPool) -> Pczt {
             Some(orchard_ovk),
             recipient,
             Zatoshis::const_from_u64(985_000),
+            #[cfg(zcash_unstable = "nu7")]
             AssetBase::zatoshi(),
             MemoBytes::empty(),
         )
@@ -1698,6 +1690,7 @@ fn redacted_orchard_anchor_can_be_restored_after_signing() {
             Some(orchard_ovk),
             recipient,
             Zatoshis::const_from_u64(980_000),
+            #[cfg(zcash_unstable = "nu7")]
             AssetBase::zatoshi(),
             MemoBytes::empty(),
         )
@@ -1861,7 +1854,6 @@ fn wallet_can_set_orchard_witness_after_signing() {
             Some(orchard_ovk),
             recipient,
             Zatoshis::const_from_u64(990_000),
-            AssetBase::zatoshi(),
             MemoBytes::empty(),
         )
         .unwrap();
@@ -2045,6 +2037,7 @@ fn wallet_can_set_ironwood_witness_after_signing() {
             Some(orchard_ovk),
             recipient,
             Zatoshis::const_from_u64(990_000),
+            #[cfg(zcash_unstable = "nu7")]
             AssetBase::zatoshi(),
             MemoBytes::empty(),
         )
@@ -2223,6 +2216,7 @@ fn ironwood_low_level_signer_uses_preverified_signing_parse() {
             Some(orchard_ovk),
             recipient,
             Zatoshis::const_from_u64(990_000),
+            #[cfg(zcash_unstable = "nu7")]
             AssetBase::zatoshi(),
             MemoBytes::empty(),
         )

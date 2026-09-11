@@ -120,6 +120,7 @@ use {
 };
 
 #[cfg(feature = "orchard")]
+#[cfg(zcash_unstable = "nu7")]
 use orchard::note::AssetBase;
 
 #[cfg(feature = "unstable")]
@@ -1724,7 +1725,6 @@ where
                     external_ovk.map(|k| k.into()),
                     to,
                     payment_amount,
-                    AssetBase::zatoshi(),
                     memo.clone(),
                 )?;
                 orchard_output_meta.push((
@@ -1749,6 +1749,7 @@ where
                     external_ovk.map(|k| k.into()),
                     to,
                     payment_amount,
+                    #[cfg(zcash_unstable = "nu7")]
                     AssetBase::zatoshi(),
                     memo.clone(),
                 )?;
@@ -1909,7 +1910,6 @@ where
                             internal_ovk.map(|k| k.into()),
                             change_address,
                             change_value.value(),
-                            AssetBase::zatoshi(),
                             memo.clone(),
                         )?;
                         orchard_output_meta.push((
@@ -1947,6 +1947,7 @@ where
                         internal_ovk.map(|k| k.into()),
                         change_address,
                         change_value.value(),
+                        #[cfg(zcash_unstable = "nu7")]
                         AssetBase::zatoshi(),
                         memo.clone(),
                     )?;
