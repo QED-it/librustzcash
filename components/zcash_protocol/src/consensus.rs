@@ -763,6 +763,7 @@ pub enum BranchId {
     /// The consensus rules to be deployed by [`NetworkUpgrade::Nu6_3`].
     Nu6_3,
     /// The consensus rules to be deployed by [`NetworkUpgrade::Nu7`].
+    // FIXME: NU7 has no officially assigned consensus branch ID yet; the fork uses a placeholder.
     #[cfg(zcash_unstable = "nu7")]
     Nu7,
 }
@@ -807,6 +808,8 @@ impl From<BranchId> for u32 {
             BranchId::Nu6_1 => 0x4dec_4df0,
             BranchId::Nu6_2 => 0x5437_f330,
             BranchId::Nu6_3 => 0x37a5_165b,
+            // FIXME: placeholder until NU7 is assigned a branch ID. It enters every v7
+            // transaction header and its sighash, so test vectors must be regenerated when it changes.
             #[cfg(zcash_unstable = "nu7")]
             BranchId::Nu7 => 0x7719_0ad8,
         }

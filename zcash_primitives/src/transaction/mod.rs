@@ -1439,7 +1439,7 @@ pub mod testing {
             BranchId::Nu6_2 => Just(TxVersion::V5).boxed(),
             BranchId::Nu6_3 => Just(TxVersion::V6).boxed(),
             #[cfg(zcash_unstable = "nu7")]
-            BranchId::Nu7 => Just(TxVersion::V6).boxed(),
+            BranchId::Nu7 => Just(TxVersion::V7).boxed(),
         }
     }
 

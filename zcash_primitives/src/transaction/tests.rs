@@ -878,7 +878,7 @@ proptest! {
     }
 }
 
-#[cfg(all(test, not(zcash_unstable = "nu7")))]
+#[cfg(test)]
 proptest! {
     #![proptest_config(ProptestConfig::with_cases(10))]
     #[test]
