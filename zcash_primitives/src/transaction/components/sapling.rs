@@ -480,9 +480,9 @@ pub(crate) fn read_v5_bundle<R: Read>(
     }))
 }
 
-/// Reads a [`Bundle`] from a v6 transaction format.
+/// Reads a [`Bundle`] from a v7 transaction format.
 #[cfg(zcash_unstable = "nu7")]
-pub(crate) fn read_v6_bundle<R: Read>(
+pub(crate) fn read_v7_bundle<R: Read>(
     mut reader: R,
 ) -> io::Result<Option<Bundle<Authorized, ZatBalance>>> {
     let sd_v5s = Vector::read(&mut reader, read_spend_v5)?;
@@ -587,9 +587,9 @@ pub(crate) fn write_v5_bundle<W: Write>(
     Ok(())
 }
 
-/// Writes a [`Bundle`] in the v6 transaction format.
+/// Writes a [`Bundle`] in the v7 transaction format.
 #[cfg(zcash_unstable = "nu7")]
-pub(crate) fn write_v6_bundle<W: Write>(
+pub(crate) fn write_v7_bundle<W: Write>(
     mut writer: W,
     sapling_bundle: Option<&Bundle<Authorized, ZatBalance>>,
 ) -> io::Result<()> {
