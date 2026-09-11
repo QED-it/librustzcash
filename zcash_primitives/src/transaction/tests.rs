@@ -27,6 +27,8 @@ use crate::transaction::{
 use crate::transaction::sighash_v6::v6_signature_hash;
 #[cfg(all(test, zcash_unstable = "nu7", feature = "zip-233"))]
 use crate::transaction::sighash_v6::v6_signature_hash;
+#[cfg(all(test, zcash_unstable = "nu7", feature = "zip-233"))]
+use crate::transaction::sighash_v7::v7_signature_hash;
 
 #[cfg(all(test, not(zcash_unstable = "nu7")))]
 use blake2b_simd::Params;
@@ -987,6 +989,9 @@ impl Authorization for TestUnauthorized {
 #[cfg(all(zcash_unstable = "nu7", feature = "zip-233"))]
 pub mod orchard_zsa_digests;
 
+#[cfg(all(zcash_unstable = "nu7", feature = "zip-233"))]
+pub mod zsa_zip_0233;
+
 #[test]
 fn zip_0244() {
     fn to_test_txdata(
@@ -1228,6 +1233,86 @@ fn zip_0233() {
 
         assert_eq!(
             v6_signature_hash(&txdata, &SignableInput::Shielded, &txid_parts).as_ref(),
+            tv.sighash_shielded
+        );
+    }
+}
+
+/// The fork's ZIP 233 digest test for ZSA transactions, which are v7 and carry the ZSA bundle in
+/// the Ironwood slot. Upstream's `zip_0233` covers its own Ironwood v6 vectors and is separate.
+#[cfg(all(zcash_unstable = "nu7", feature = "zip-233"))]
+#[test]
+fn zsa_zip_0233() {
+    fn to_test_txdata(
+        tv: &self::zsa_zip_0233::TestVector,
+    ) -> (TransactionData<TestUnauthorized>, TxDigests<Blake2bHash>) {
+        let tx = Transaction::read(&tv.tx[..], BranchId::Nu7).unwrap();
+
+        assert_eq!(tx.txid.as_ref(), &tv.txid);
+        assert_eq!(tx.auth_commitment().as_ref(), &tv.auth_digest);
+
+        let txdata = tx.deref();
+
+        let input_amounts = tv
+            .amounts
+            .iter()
+            .map(|amount| Zatoshis::from_nonnegative_i64(*amount).unwrap())
+            .collect();
+        let input_scriptpubkeys = tv
+            .script_pubkeys
+            .iter()
+            .map(|s| Script(script::Code(s.to_vec())))
+            .collect();
+
+        let test_bundle = txdata
+            .transparent_bundle
+            .as_ref()
+            .map(|b| transparent::Bundle {
+                // we have to do this map/clone to make the types line up, since the
+                // Authorization::ScriptSig type is bound to transparent::Authorized, and we need
+                // it to be bound to TestTransparentAuth.
+                vin: b
+                    .vin
+                    .iter()
+                    .map(|vin| {
+                        TxIn::from_parts(
+                            vin.prevout().clone(),
+                            vin.script_sig().clone(),
+                            vin.sequence(),
+                        )
+                    })
+                    .collect(),
+                vout: b.vout.clone(),
+                authorization: TestTransparentAuth {
+                    input_amounts,
+                    input_scriptpubkeys,
+                },
+            });
+
+        // Built field by field rather than through `from_parts`, which drops the Ironwood slot
+        // where a v7 transaction keeps its ZSA bundle.
+        let tdata = TransactionData {
+            version: txdata.version(),
+            consensus_branch_id: txdata.consensus_branch_id(),
+            lock_time: txdata.lock_time(),
+            expiry_height: txdata.expiry_height(),
+            zip233_amount: txdata.zip233_amount,
+            transparent_bundle: test_bundle,
+            sprout_bundle: None,
+            sapling_bundle: txdata.sapling_bundle().cloned(),
+            orchard_bundle: txdata.orchard_bundle().cloned(),
+            ironwood_bundle: txdata.ironwood_bundle().cloned(),
+            issue_bundle: txdata.issue_bundle().cloned(),
+        };
+
+        (tdata, txdata.digest(TxIdDigester))
+    }
+
+    for tv in self::zsa_zip_0233::make_test_vectors() {
+        let (txdata, txid_parts) = to_test_txdata(&tv);
+
+        assert_eq!(
+            v7_signature_hash(&txdata, &SignableInput::Shielded, &txid_parts).as_ref(),
             tv.sighash_shielded
         );
     }
