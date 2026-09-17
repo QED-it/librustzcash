@@ -2037,13 +2037,13 @@ dependencies = [
 [[package]]
 name = "halo2_gadgets"
 version = "0.5.0"
-source = "git+https://github.com/QED-it/halo2?rev=ef3d0ba2e9a513658f8d3d00294ddebd92cc649e#ef3d0ba2e9a513658f8d3d00294ddebd92cc649e"
+source = "git+https://github.com/zcash/halo2?rev=828fab66a72116a4a8ea0dc7d8895667d90dacf4#828fab66a72116a4a8ea0dc7d8895667d90dacf4"
 dependencies = [
  "arrayvec",
  "bitvec",
  "ff",
  "group",
- "halo2_poseidon 0.1.0 (git+https://github.com/QED-it/halo2?rev=ef3d0ba2e9a513658f8d3d00294ddebd92cc649e)",
+ "halo2_poseidon 0.1.0 (git+https://github.com/zcash/halo2?rev=828fab66a72116a4a8ea0dc7d8895667d90dacf4)",
  "halo2_proofs",
  "lazy_static",
  "pasta_curves",
@@ -2074,7 +2074,7 @@ dependencies = [
 [[package]]
 name = "halo2_poseidon"
 version = "0.1.0"
-source = "git+https://github.com/QED-it/halo2?rev=ef3d0ba2e9a513658f8d3d00294ddebd92cc649e#ef3d0ba2e9a513658f8d3d00294ddebd92cc649e"
+source = "git+https://github.com/zcash/halo2?rev=828fab66a72116a4a8ea0dc7d8895667d90dacf4#828fab66a72116a4a8ea0dc7d8895667d90dacf4"
 dependencies = [
  "bitvec",
  "ff",
@@ -2084,8 +2084,8 @@ dependencies = [
 
 [[package]]
 name = "halo2_proofs"
-version = "0.3.2"
-source = "git+https://github.com/QED-it/halo2?rev=ef3d0ba2e9a513658f8d3d00294ddebd92cc649e#ef3d0ba2e9a513658f8d3d00294ddebd92cc649e"
+version = "0.3.5"
+source = "git+https://github.com/zcash/halo2?rev=828fab66a72116a4a8ea0dc7d8895667d90dacf4#828fab66a72116a4a8ea0dc7d8895667d90dacf4"
 dependencies = [
  "blake2b_simd",
  "ff",
@@ -3022,8 +3022,8 @@ checksum = "04744f49eae99ab78e0d5c0b603ab218f515ea8cfe5a456d7629ad883a3b6e7d"
 
 [[package]]
 name = "orchard"
-version = "0.15.0"
-source = "git+https://github.com/QED-it/orchard?rev=837ddd1be33e8487d1c58d192fc0ed34f71a0cd0#837ddd1be33e8487d1c58d192fc0ed34f71a0cd0"
+version = "0.15.5"
+source = "git+https://github.com/QED-it/orchard?rev=ed7f805d6ab2a8c354caee3b0af13f5a23d056ba#ed7f805d6ab2a8c354caee3b0af13f5a23d056ba"
 dependencies = [
  "aes",
  "bitvec",
@@ -3164,9 +3164,9 @@ dependencies = [
 
 [[package]]
 name = "pasta_curves"
-version = "0.5.1"
+version = "0.5.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d3e57598f73cc7e1b2ac63c79c517b31a0877cd7c402cdcaa311b5208de7a095"
+checksum = "3437083215c505e867eea5478371feba43d7689d6d15ec0a209eb46fb0d4cda6"
 dependencies = [
  "blake2b_simd",
  "ff",
@@ -7259,8 +7259,8 @@ dependencies = [
 
 [[package]]
 name = "zcash_note_encryption"
-version = "0.4.1"
-source = "git+https://github.com/zcash/zcash_note_encryption?rev=9f7e93d42cef839d02b9d75918117941d453f8cb#9f7e93d42cef839d02b9d75918117941d453f8cb"
+version = "0.4.2"
+source = "git+https://github.com/zcash/zcash_note_encryption?rev=40b73b157374b62b648a26b94a1f236e5d9c389f#40b73b157374b62b648a26b94a1f236e5d9c389f"
 dependencies = [
  "chacha20",
  "chacha20poly1305",

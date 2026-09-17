@@ -1589,7 +1589,6 @@ impl Action {
     /// Recomputes `cv_net`, if this action carries it as an omitted field.
     fn resolve_cv_net(&mut self) -> Result<(), ::orchard::pczt::ParseError> {
         use ::orchard::{
-            note::AssetBase,
             pczt::ParseError,
             value::{NoteValue, ValueCommitTrapdoor, ValueCommitment},
         };
@@ -1610,11 +1609,7 @@ impl Action {
                 .into_option()
                 .ok_or(ParseError::InvalidValueCommitment)?;
 
-        // PCZT is zatoshi-only, so the commitment is always to the native asset.
-        self.cv_net = Some(
-            ValueCommitment::derive(spend_value - output_value, rcv, AssetBase::zatoshi())
-                .to_bytes(),
-        );
+        self.cv_net = Some(ValueCommitment::derive(spend_value - output_value, rcv).to_bytes());
         Ok(())
     }
 }
