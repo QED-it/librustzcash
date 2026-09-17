@@ -1317,3 +1317,24 @@ fn zsa_zip_0233() {
         );
     }
 }
+
+/// An absent Ironwood bundle's auth digest uses the ZSA domain in v7, as the txid digest and a
+/// present ZSA bundle do, and stays on the Ironwood v6 domain in v6.
+#[cfg(zcash_unstable = "nu7")]
+#[test]
+fn empty_ironwood_auth_digest_domain() {
+    use crate::transaction::{TransactionDigest, txid::BlockTxCommitmentDigester};
+    use ::orchard::{
+        ValuePool,
+        bundle::{TxVersion as OrchardTxVersion, commitments::hash_bundle_auth_empty},
+    };
+
+    assert_eq!(
+        BlockTxCommitmentDigester.digest_ironwood(TxVersion::V7, None),
+        hash_bundle_auth_empty(ValuePool::Ironwood, OrchardTxVersion::ZSA).unwrap()
+    );
+    assert_eq!(
+        BlockTxCommitmentDigester.digest_ironwood(TxVersion::V6, None),
+        hash_bundle_auth_empty(ValuePool::Ironwood, OrchardTxVersion::V6).unwrap()
+    );
+}

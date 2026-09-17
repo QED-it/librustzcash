@@ -405,6 +405,7 @@ impl<A: Authorization> TransactionDigest<A> for TxIdDigester {
 
     fn digest_ironwood(
         &self,
+        #[cfg(zcash_unstable = "nu7")] _version: TxVersion,
         ironwood_bundle: Option<&orchard::Bundle<A::OrchardAuth, ZatBalance>>,
     ) -> Self::IronwoodDigest {
         ironwood_bundle.map(|b| {
@@ -737,11 +738,15 @@ impl TransactionDigest<Authorized> for BlockTxCommitmentDigester {
 
     fn digest_ironwood(
         &self,
+        #[cfg(zcash_unstable = "nu7")] version: TxVersion,
         ironwood_bundle: Option<&orchard::Bundle<orchard::Authorized, ZatBalance>>,
     ) -> Self::IronwoodDigest {
         ironwood_bundle.map_or_else(
             || {
-                let (value_pool, tx_version) = ironwood_v6_domain();
+                // Without the ZSA gate the Ironwood slot exists only in v6.
+                #[cfg(not(zcash_unstable = "nu7"))]
+                let version = TxVersion::V6;
+                let (value_pool, tx_version) = ironwood_domain(version);
                 orchard::commitments::hash_bundle_auth_empty(value_pool, tx_version)
                     .expect("empty Ironwood bundle auth commitment is valid")
             },

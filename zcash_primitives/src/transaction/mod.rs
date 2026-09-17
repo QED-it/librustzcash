@@ -603,7 +603,11 @@ impl<A: Authorization> TransactionData<A> {
             ),
             digester.digest_sapling(self.version, self.sapling_bundle.as_ref()),
             digester.digest_orchard(self.version, self.orchard_bundle.as_ref()),
-            digester.digest_ironwood(self.ironwood_bundle.as_ref()),
+            digester.digest_ironwood(
+                #[cfg(zcash_unstable = "nu7")]
+                self.version,
+                self.ironwood_bundle.as_ref(),
+            ),
             #[cfg(zcash_unstable = "nu7")]
             digester.digest_issue(self.issue_bundle.as_ref()),
         )
@@ -1377,9 +1381,11 @@ pub trait TransactionDigest<A: Authorization> {
     /// version 6 transaction ID combination substitutes the empty Ironwood bundle digest for
     /// `None`. Transaction commitment digesters may instead return an empty authorizing data
     /// digest when no Ironwood bundle is present, and may use a different anchor commitment
-    /// policy than transaction ID digesters.
+    /// policy than transaction ID digesters. The transaction version selects the empty digest's
+    /// domain, which is the ZSA one in v7.
     fn digest_ironwood(
         &self,
+        #[cfg(zcash_unstable = "nu7")] version: TxVersion,
         ironwood_bundle: Option<&orchard::Bundle<A::OrchardAuth, ZatBalance>>,
     ) -> Self::IronwoodDigest;
 
