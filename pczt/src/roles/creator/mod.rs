@@ -290,6 +290,9 @@ impl Creator {
         let tx_version = match parts.version {
             zcash_primitives::transaction::TxVersion::Sprout(_)
             | zcash_primitives::transaction::TxVersion::V3 => None,
+            // FIXME: PCZT builds no ZSA bundle, so it cannot represent a v7 transaction.
+            #[cfg(zcash_unstable = "nu7")]
+            zcash_primitives::transaction::TxVersion::V7 => None,
             zcash_primitives::transaction::TxVersion::V4 => Some(V4_TX_VERSION),
             zcash_primitives::transaction::TxVersion::V5 => Some(V5_TX_VERSION),
             zcash_primitives::transaction::TxVersion::V6 => Some(V6_TX_VERSION),

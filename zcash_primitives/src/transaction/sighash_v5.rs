@@ -144,6 +144,10 @@ pub fn v5_signature_hash<
         txid_parts.transparent_digests.is_some()
     );
 
+    // An issuance bundle exists only in v7 transactions.
+    #[cfg(zcash_unstable = "nu7")]
+    assert!(txid_parts.issue_digest.is_none());
+
     to_hash(
         tx.version,
         tx.consensus_branch_id,

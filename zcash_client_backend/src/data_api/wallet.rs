@@ -119,6 +119,11 @@ use {
     zcash_protocol::consensus::NetworkConstants,
 };
 
+#[cfg(feature = "orchard")]
+#[cfg(zcash_unstable = "nu7")]
+use orchard::note::AssetBase;
+
+#[cfg(feature = "unstable")]
 use zcash_primitives::transaction::TxVersion;
 
 pub mod input_selection;
@@ -1744,6 +1749,8 @@ where
                     external_ovk.map(|k| k.into()),
                     to,
                     payment_amount,
+                    #[cfg(zcash_unstable = "nu7")]
+                    AssetBase::zatoshi(),
                     memo.clone(),
                 )?;
                 ironwood_output_meta.push((
@@ -1940,6 +1947,8 @@ where
                         internal_ovk.map(|k| k.into()),
                         change_address,
                         change_value.value(),
+                        #[cfg(zcash_unstable = "nu7")]
+                        AssetBase::zatoshi(),
                         memo.clone(),
                     )?;
                     ironwood_output_meta.push((
@@ -2149,6 +2158,8 @@ where
         spend_prover,
         output_prover,
         fee_rule,
+        #[cfg(zcash_unstable = "nu7")]
+        crate::no_new_assets,
     )?;
 
     #[cfg(feature = "orchard")]
@@ -2422,7 +2433,12 @@ where
     )?;
 
     // Build the transaction with the specified fee rule
-    let mut build_result = build_state.builder.build_for_pczt(OsRng, fee_rule)?;
+    let mut build_result = build_state.builder.build_for_pczt(
+        OsRng,
+        fee_rule,
+        #[cfg(zcash_unstable = "nu7")]
+        crate::no_new_assets,
+    )?;
 
     if let Some(target) = target_expiry_height {
         build_result.pczt_parts.expiry_height = target;
@@ -2765,7 +2781,7 @@ where
     DbT::AccountId: serde::de::DeserializeOwned,
 {
     use std::collections::BTreeMap;
-    use zcash_note_encryption::{Domain, ENC_CIPHERTEXT_SIZE, ShieldedOutput};
+    use zcash_note_encryption::{Domain, ShieldedOutput};
 
     let finalized = SpendFinalizer::new(pczt).finalize_spends()?;
 
@@ -2804,6 +2820,7 @@ where
                 orchard::Note::from_parts(
                     recipient,
                     value,
+                    orchard::note::AssetBase::zatoshi(),
                     rho,
                     rseed,
                     orchard::note::NoteVersion::V2,
@@ -2941,7 +2958,7 @@ where
     fn to_sent_transaction_output<
         AccountId: Copy,
         D: Domain,
-        O: ShieldedOutput<D, { ENC_CIPHERTEXT_SIZE }>,
+        O: ShieldedOutput<D>,
         DbT: WalletRead + WalletCommitmentTrees,
         N,
     >(
@@ -2999,6 +3016,8 @@ where
     #[cfg(feature = "orchard")]
     let orchard_outputs = transaction
         .orchard_bundle()
+        // FIXME: Ironwood actions are not mapped to sent outputs, so a v7 ZSA bundle extracted
+        // from a PCZT records none. See the FIXME in `Pczt::extract_tx_data`.
         .map(|bundle| {
             assert_eq!(bundle.actions().len(), orchard_output_info.len());
             bundle
