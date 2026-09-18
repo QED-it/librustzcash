@@ -10,7 +10,7 @@ use {
         issuance::auth::{IssueAuthSig, IssueValidatingKey, ZSASchnorr},
         issuance::sighash_kind::BIP340IssueAuthSig,
         issuance::{IssueAction, IssueAuth, IssueBundle, Signed},
-        note::{AssetBase, AssetId, RandomSeed, Rho},
+        note::{AssetBase, AssetId, NoteVersion, RandomSeed, Rho},
         value::NoteValue,
         {Address, Note},
     },
@@ -106,6 +106,7 @@ pub fn read_note<R: Read>(mut reader: R, asset: AssetBase) -> io::Result<Note> {
         asset,
         rho,
         rseed,
+        NoteVersion::ZSA,
     ))
     .ok_or(Error::new(ErrorKind::InvalidData, "Invalid note"))
 }

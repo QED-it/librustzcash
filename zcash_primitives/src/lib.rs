@@ -24,8 +24,6 @@ extern crate alloc;
 
 pub mod block;
 pub(crate) mod encoding;
-#[cfg(zcash_unstable = "zfuture")]
-pub mod extensions;
 pub mod merkle_tree;
 pub mod sighash_versioning;
 pub mod transaction;
