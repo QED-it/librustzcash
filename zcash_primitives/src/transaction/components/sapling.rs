@@ -175,7 +175,12 @@ fn read_versioned_signature<R: Read, T: SigType>(
     mut reader: R,
 ) -> io::Result<redjubjub::Signature<T>> {
     let sighash_info_bytes = Vector::read(&mut reader, |r| r.read_u8())?;
-    assert!(sighash_info_bytes == SAPLING_SIGHASH_INFO_V0.to_vec());
+    if sighash_info_bytes != SAPLING_SIGHASH_INFO_V0.to_vec() {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            "unexpected Sapling sighash info",
+        ));
+    }
 
     let mut signature_bytes = [0u8; 64];
     reader.read_exact(&mut signature_bytes)?;

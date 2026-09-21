@@ -195,6 +195,8 @@ where
                 .process_outputs(OrchardDomain::for_action, bundle.actions().iter().cloned())
         });
 
+        // FIXME: a v7 Ironwood slot carries a ZSA bundle, whose notes use the ZSA domain (see
+        // `decrypt_transaction`). Scanning only tries the Ironwood domain, so ZSA notes are missed.
         #[cfg(feature = "orchard")]
         let ironwood_batch = tx.ironwood_bundle().map(|bundle| {
             self.ironwood

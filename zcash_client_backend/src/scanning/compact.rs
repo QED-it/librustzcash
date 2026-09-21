@@ -213,6 +213,8 @@ where
                     .collect::<Result<Vec<_>, _>>()?,
             );
 
+            // FIXME: ZSA notes in a v7 Ironwood slot need the ZSA domain, which a compact action
+            // would have to select by ciphertext length. They are missed here too, as in `full`.
             #[cfg(feature = "orchard")]
             self.ironwood.add_outputs(
                 block_hash,
