@@ -9,6 +9,9 @@ use ::sapling::{Note, PaymentAddress, builder::SaplingMetadata};
 use ::transparent::{
     address::TransparentAddress, builder::TransparentBuilder, bundle::TxOut, coinbase,
 };
+#[cfg(zcash_unstable = "nu7")]
+use orchard::builder::BuildError::BundleTypeNotSatisfiable;
+use orchard::note::AssetBase;
 use zcash_protocol::{
     PoolType,
     consensus::{self, BlockHeight, BranchId, Parameters},
@@ -46,6 +49,17 @@ use {::transparent::builder::TransparentInputInfo, zcash_script::script};
 
 #[cfg(not(feature = "transparent-inputs"))]
 use core::convert::Infallible;
+
+#[cfg(zcash_unstable = "nu7")]
+use {
+    orchard::{
+        Address, bundle, issuance,
+        issuance::auth::{IssueAuthKey, IssueValidatingKey, ZSASchnorr},
+        issuance::{IssueBundle, IssueInfo},
+        note::{AssetId, Nullifier},
+    },
+    rand_core::OsRng,
+};
 
 use super::components::sapling::zip212_enforcement;
 
@@ -109,6 +123,18 @@ pub enum Error<FE> {
     /// The builder was constructed with a target height before NU6.3 activation,
     /// or without an Ironwood anchor, but an Ironwood spend or output was added.
     IronwoodBuilderNotAvailable,
+    /// The issuance bundle not initialized.
+    #[cfg(zcash_unstable = "nu7")]
+    IssuanceBuilderNotAvailable,
+    /// The issuance key not initialized.
+    #[cfg(zcash_unstable = "nu7")]
+    IssuanceKeyNotAvailable,
+    /// An error occurred in constructing the Issuance bundle.
+    #[cfg(zcash_unstable = "nu7")]
+    IssuanceBundle(issuance::Error),
+    /// Issuance bundle already initialized.
+    #[cfg(zcash_unstable = "nu7")]
+    IssuanceBundleAlreadyInitialized,
     /// An error occurred in constructing a coinbase transaction.
     Coinbase(coinbase::Error),
     /// A coinbase transaction's expiry height does not match its target block height.
@@ -161,6 +187,16 @@ impl<FE: fmt::Display> fmt::Display for Error<FE> {
                 f,
                 "Cannot create Ironwood transactions without an Ironwood anchor, or before NU6.3 activation"
             ),
+            #[cfg(zcash_unstable = "nu7")]
+            Error::IssuanceBuilderNotAvailable => write!(f, "Issuance bundle not initialized"),
+            #[cfg(zcash_unstable = "nu7")]
+            Error::IssuanceKeyNotAvailable => write!(f, "Issuance key not initialized"),
+            #[cfg(zcash_unstable = "nu7")]
+            Error::IssuanceBundle(err) => write!(f, "Issuance bundle internal error: {:?}", err),
+            #[cfg(zcash_unstable = "nu7")]
+            Error::IssuanceBundleAlreadyInitialized => {
+                write!(f, "Issuance bundle already initialized")
+            }
             Error::Coinbase(err) => write!(
                 f,
                 "An error occurred in constructing a coinbase transaction: {err}"
@@ -323,8 +359,10 @@ impl BuildConfig {
     }
 
     /// Returns the Ironwood builder for this configuration.
-    fn ironwood_builder(&self) -> Option<orchard::builder::Builder> {
-        let bundle_version = orchard::bundle::BundleVersion::ironwood_v3();
+    fn ironwood_builder(
+        &self,
+        bundle_version: orchard::bundle::BundleVersion,
+    ) -> Option<orchard::builder::Builder> {
         match self {
             BuildConfig::Standard {
                 ironwood_anchor,
@@ -355,6 +393,17 @@ impl BuildConfig {
     pub fn is_coinbase(&self) -> bool {
         matches!(self, BuildConfig::Coinbase { .. })
     }
+}
+
+/// The [`BundleVersion`] of the Ironwood slot for a transaction version: the ZSA bundle in v7,
+/// the plain Ironwood bundle otherwise.
+fn ironwood_bundle_version(version: TxVersion) -> orchard::bundle::BundleVersion {
+    #[cfg(zcash_unstable = "nu7")]
+    if version.has_orchard_zsa() {
+        return orchard::bundle::BundleVersion::zsa();
+    }
+    let _ = version;
+    orchard::bundle::BundleVersion::ironwood_v3()
 }
 
 fn orchard_action_count(
@@ -464,6 +513,10 @@ pub struct Builder<P, U> {
     orchard_builder: Option<orchard::builder::Builder>,
     orchard_bundle_version: Option<orchard::bundle::BundleVersion>,
     ironwood_builder: Option<orchard::builder::Builder>,
+    #[cfg(zcash_unstable = "nu7")]
+    issuance_builder: Option<IssueBundle<issuance::AwaitingNullifier>>,
+    #[cfg(zcash_unstable = "nu7")]
+    issuance_isk: Option<orchard::issuance::auth::IssueAuthKey<ZSASchnorr>>,
     _progress_notifier: U,
 }
 
@@ -615,7 +668,7 @@ impl<P: consensus::Parameters> Builder<P, ()> {
         // The Ironwood builder exists exactly when the branch's transaction version
         // carries an Ironwood bundle (V6, i.e. NU6.3 onward).
         let ironwood_builder = if tx_version.has_ironwood() {
-            build_config.ironwood_builder()
+            build_config.ironwood_builder(ironwood_bundle_version(tx_version))
         } else {
             None
         };
@@ -659,6 +712,10 @@ impl<P: consensus::Parameters> Builder<P, ()> {
             orchard_builder,
             orchard_bundle_version,
             ironwood_builder,
+            #[cfg(zcash_unstable = "nu7")]
+            issuance_builder: None,
+            #[cfg(zcash_unstable = "nu7")]
+            issuance_isk: None,
             _progress_notifier: (),
         }
     }
@@ -688,8 +745,100 @@ impl<P: consensus::Parameters> Builder<P, ()> {
             orchard_builder: self.orchard_builder,
             orchard_bundle_version: self.orchard_bundle_version,
             ironwood_builder: self.ironwood_builder,
+            #[cfg(zcash_unstable = "nu7")]
+            issuance_builder: self.issuance_builder,
+            #[cfg(zcash_unstable = "nu7")]
+            issuance_isk: self.issuance_isk,
             _progress_notifier,
         }
+    }
+
+    /// Creates IssuanceBundle and adds an Issuance action to the transaction.
+    #[cfg(zcash_unstable = "nu7")]
+    pub fn init_issuance_bundle<FE>(
+        &mut self,
+        ik: IssueAuthKey<ZSASchnorr>,
+        asset_desc_hash: [u8; 32],
+        issue_info: Option<IssueInfo>,
+        first_issuance: bool,
+    ) -> Result<(), Error<FE>> {
+        if !self.tx_version.has_orchard_zsa() {
+            return Err(Error::OrchardBuild(BundleTypeNotSatisfiable));
+        }
+
+        if self.issuance_builder.is_some() {
+            return Err(Error::IssuanceBundleAlreadyInitialized);
+        }
+
+        let (bundle, _) = IssueBundle::new(
+            IssueValidatingKey::<ZSASchnorr>::from(&ik),
+            asset_desc_hash,
+            issue_info,
+            first_issuance,
+            OsRng,
+        );
+
+        self.issuance_builder = Some(bundle);
+        self.issuance_isk = Some(ik);
+
+        Ok(())
+    }
+
+    /// Adds an Issuance action to the transaction.
+    #[cfg(zcash_unstable = "nu7")]
+    pub fn add_recipient<FE>(
+        &mut self,
+        asset_desc_hash: [u8; 32],
+        recipient: Address,
+        value: orchard::value::NoteValue,
+        first_issuance: bool,
+    ) -> Result<(), Error<FE>> {
+        if !self.tx_version.has_orchard_zsa() {
+            return Err(Error::OrchardBuild(BundleTypeNotSatisfiable));
+        }
+
+        self.issuance_builder
+            .as_mut()
+            .ok_or(Error::IssuanceBuilderNotAvailable)?
+            .add_recipient(asset_desc_hash, recipient, value, first_issuance, OsRng)
+            .map_err(Error::IssuanceBundle)?;
+
+        Ok(())
+    }
+
+    /// Finalizes a given asset
+    #[cfg(zcash_unstable = "nu7")]
+    pub fn finalize_asset<FE>(&mut self, asset_desc_hash: &[u8; 32]) -> Result<(), Error<FE>> {
+        if !self.tx_version.has_orchard_zsa() {
+            return Err(Error::OrchardBuild(BundleTypeNotSatisfiable));
+        }
+
+        self.issuance_builder
+            .as_mut()
+            .ok_or(Error::IssuanceBuilderNotAvailable)?
+            .finalize_action(asset_desc_hash)
+            .map_err(Error::IssuanceBundle)?;
+
+        Ok(())
+    }
+
+    /// Adds a Burn action to the transaction.
+    ///
+    /// Burning is a ZSA feature, so it targets the Ironwood slot, which carries the ZSA bundle in
+    /// a v7 transaction.
+    #[cfg(zcash_unstable = "nu7")]
+    pub fn add_burn<FE>(&mut self, value: u64, asset: AssetBase) -> Result<(), Error<FE>> {
+        if !self.tx_version.has_orchard_zsa() {
+            return Err(Error::IronwoodBuild(BundleTypeNotSatisfiable));
+        }
+
+        self.ironwood_builder
+            .as_mut()
+            .ok_or(Error::IronwoodBuilderNotAvailable)?
+            .add_burn(asset, orchard::value::NoteValue::from_raw(value))
+            .map_err(Error::IronwoodBuild)?;
+
+        Ok(())
     }
 }
 
@@ -741,6 +890,9 @@ impl<P: consensus::Parameters, U> Builder<P, U> {
     }
 
     /// Adds an Orchard recipient to the transaction.
+    ///
+    /// The Orchard slot carries ZEC only: ZSA lives in the Ironwood slot, so use
+    /// [`Self::add_ironwood_output`] to pay a custom asset.
     pub fn add_orchard_output<FE>(
         &mut self,
         ovk: Option<orchard::keys::OutgoingViewingKey>,
@@ -755,6 +907,7 @@ impl<P: consensus::Parameters, U> Builder<P, U> {
                 ovk,
                 recipient,
                 orchard::value::NoteValue::from_raw(value.into()),
+                AssetBase::zatoshi(),
                 memo.into_bytes(),
             )
             .map_err(Error::OrchardRecipient)
@@ -782,6 +935,8 @@ impl<P: consensus::Parameters, U> Builder<P, U> {
                 ovk,
                 recipient,
                 orchard::value::NoteValue::from_raw(value.into()),
+                // Change in the Orchard value pool is always ZEC.
+                AssetBase::zatoshi(),
                 memo.into_bytes(),
             )
             .map_err(Error::OrchardRecipient)
@@ -789,8 +944,9 @@ impl<P: consensus::Parameters, U> Builder<P, U> {
 
     /// Adds an Ironwood note to be spent in this bundle.
     ///
-    /// The note must use [`orchard::note::NoteVersion::V3`], the Ironwood
-    /// note plaintext format.
+    /// The note must use the plaintext version of the transaction's Ironwood slot:
+    /// [`orchard::note::NoteVersion::ZSA`] in a v7 transaction, and
+    /// [`orchard::note::NoteVersion::V3`] otherwise.
     ///
     /// Returns an error if the given note has an unsupported version, or if
     /// the given Merkle path does not have the required Ironwood anchor for the
@@ -801,12 +957,19 @@ impl<P: consensus::Parameters, U> Builder<P, U> {
         note: orchard::Note,
         merkle_path: orchard::tree::MerklePath,
     ) -> Result<(), Error<FE>> {
+        // In a v7 transaction the Ironwood slot carries ZSA notes instead of Ironwood v3 ones.
+        let expected_version = if self.tx_version.has_orchard_zsa() {
+            orchard::note::NoteVersion::ZSA
+        } else {
+            orchard::note::NoteVersion::V3
+        };
+
         let builder = self
             .ironwood_builder
             .as_mut()
             .ok_or(Error::IronwoodBuilderNotAvailable)?;
 
-        if note.version() != orchard::note::NoteVersion::V3 {
+        if note.version() != expected_version {
             return Err(Error::IronwoodSpendUnsupportedNoteVersion(note.version()));
         }
 
@@ -818,15 +981,26 @@ impl<P: consensus::Parameters, U> Builder<P, U> {
 
     /// Adds an Ironwood recipient to the transaction.
     ///
-    /// This uses [`orchard::note::NoteVersion::V3`], the Ironwood note
-    /// plaintext format.
+    /// The note uses the plaintext version of the transaction's Ironwood slot:
+    /// [`orchard::note::NoteVersion::ZSA`] in a v7 transaction, and
+    /// [`orchard::note::NoteVersion::V3`] otherwise. A non-ZEC `asset` is therefore
+    /// accepted only by a v7 transaction.
     pub fn add_ironwood_output<FE>(
         &mut self,
         ovk: Option<orchard::keys::OutgoingViewingKey>,
         recipient: orchard::Address,
         value: Zatoshis,
+        #[cfg(zcash_unstable = "nu7")] asset: AssetBase,
         memo: MemoBytes,
     ) -> Result<(), Error<FE>> {
+        #[cfg(zcash_unstable = "nu7")]
+        if !bool::from(asset.is_zatoshi()) && !self.tx_version.has_orchard_zsa() {
+            return Err(Error::IronwoodBuild(BundleTypeNotSatisfiable));
+        }
+        // Without the ZSA gate the Ironwood slot carries ZEC only.
+        #[cfg(not(zcash_unstable = "nu7"))]
+        let asset = AssetBase::zatoshi();
+
         self.ironwood_builder
             .as_mut()
             .ok_or(Error::IronwoodBuilderNotAvailable)?
@@ -834,6 +1008,7 @@ impl<P: consensus::Parameters, U> Builder<P, U> {
                 ovk,
                 recipient,
                 orchard::value::NoteValue::from_raw(value.into()),
+                asset,
                 memo.into_bytes(),
             )
             .map_err(Error::IronwoodRecipient)
@@ -961,7 +1136,11 @@ impl<P: consensus::Parameters, U> Builder<P, U> {
     ///
     /// This fee is a function of the spends and outputs that have been added to the builder,
     /// pursuant to the specified [`FeeRule`].
-    pub fn get_fee<FR: FeeRule>(&self, fee_rule: &FR) -> Result<Zatoshis, FeeError<FR::Error>> {
+    pub fn get_fee<FR: FeeRule>(
+        &self,
+        fee_rule: &FR,
+        #[cfg(zcash_unstable = "nu7")] is_new_asset: impl Fn(&AssetBase) -> bool,
+    ) -> Result<Zatoshis, FeeError<FR::Error>> {
         #[cfg(feature = "transparent-inputs")]
         let transparent_inputs = self.transparent_builder.inputs();
 
@@ -980,7 +1159,7 @@ impl<P: consensus::Parameters, U> Builder<P, U> {
                 orchard_action_count(
                     builder,
                     self.build_config.is_coinbase(),
-                    orchard::bundle::BundleVersion::ironwood_v3(),
+                    ironwood_bundle_version(self.tx_version),
                 )
             })
             .map_err(FeeError::Bundle)?;
@@ -1015,6 +1194,23 @@ impl<P: consensus::Parameters, U> Builder<P, U> {
                     })
                     .map_err(FeeError::Bundle)?,
                 ironwood_actions,
+                #[cfg(zcash_unstable = "nu7")]
+                self.issuance_builder.as_ref().map_or(0, |bundle| {
+                    bundle
+                        .actions()
+                        .iter()
+                        .filter(|&action| {
+                            is_new_asset(&AssetBase::custom(&AssetId::new_v0(
+                                bundle.ik(),
+                                action.asset_desc_hash(),
+                            )))
+                        })
+                        .count()
+                }),
+                #[cfg(zcash_unstable = "nu7")]
+                self.issuance_builder
+                    .as_ref()
+                    .map_or(0, |bundle| bundle.get_all_notes().len()),
             )
             .map_err(FeeError::FeeRule)
     }
@@ -1023,6 +1219,68 @@ impl<P: consensus::Parameters, U> Builder<P, U> {
     pub fn set_zip233_amount(&mut self, zip233_amount: Zatoshis) {
         self.zip233_amount = zip233_amount;
     }
+}
+
+#[cfg(all(feature = "circuits", zcash_unstable = "nu7"))]
+trait BuildInternalAuth:
+    Authorization<
+        SaplingAuth = sapling::builder::InProgress<
+            sapling::builder::Proven,
+            sapling::builder::Unsigned,
+        >,
+        OrchardAuth = orchard::builder::InProgress<
+            orchard::builder::Unproven,
+            orchard::builder::Unauthorized,
+        >,
+        IssueAuth = orchard::issuance::AwaitingSighash,
+    >
+{
+}
+
+#[cfg(all(feature = "circuits", zcash_unstable = "nu7"))]
+impl<T> BuildInternalAuth for T where
+    T: Authorization<
+            SaplingAuth = sapling::builder::InProgress<
+                sapling::builder::Proven,
+                sapling::builder::Unsigned,
+            >,
+            OrchardAuth = orchard::builder::InProgress<
+                orchard::builder::Unproven,
+                orchard::builder::Unauthorized,
+            >,
+            IssueAuth = orchard::issuance::AwaitingSighash,
+        >
+{
+}
+
+#[cfg(all(feature = "circuits", not(zcash_unstable = "nu7")))]
+trait BuildInternalAuth:
+    Authorization<
+        SaplingAuth = sapling::builder::InProgress<
+            sapling::builder::Proven,
+            sapling::builder::Unsigned,
+        >,
+        OrchardAuth = orchard::builder::InProgress<
+            orchard::builder::Unproven,
+            orchard::builder::Unauthorized,
+        >,
+    >
+{
+}
+
+#[cfg(all(feature = "circuits", not(zcash_unstable = "nu7")))]
+impl<T> BuildInternalAuth for T where
+    T: Authorization<
+            SaplingAuth = sapling::builder::InProgress<
+                sapling::builder::Proven,
+                sapling::builder::Unsigned,
+            >,
+            OrchardAuth = orchard::builder::InProgress<
+                orchard::builder::Unproven,
+                orchard::builder::Unauthorized,
+            >,
+        >
+{
 }
 
 impl<P: consensus::Parameters, U: sapling::builder::ProverProgress> Builder<P, U> {
@@ -1050,6 +1308,7 @@ impl<P: consensus::Parameters, U: sapling::builder::ProverProgress> Builder<P, U
         spend_prover: &SP,
         output_prover: &OP,
         fee_rule: &FR,
+        #[cfg(zcash_unstable = "nu7")] is_new_asset: impl Fn(&AssetBase) -> bool,
     ) -> Result<BuildResult, Error<FR::Error>> {
         match &self.build_config {
             BuildConfig::Coinbase { miner_data } => {
@@ -1072,8 +1331,13 @@ impl<P: consensus::Parameters, U: sapling::builder::ProverProgress> Builder<P, U
                 )
             }
             BuildConfig::Standard { .. } => {
-                let fee = self.get_fee(fee_rule).map_err(Error::Fee)?;
-
+                let fee = self
+                    .get_fee(
+                        fee_rule,
+                        #[cfg(zcash_unstable = "nu7")]
+                        is_new_asset,
+                    )
+                    .map_err(Error::Fee)?;
                 self.build_internal::<Unauthorized, _, _, _, _>(
                     |b| Ok(b.build()),
                     |b, unauthed_tx, txid_parts| {
@@ -1116,16 +1380,7 @@ impl<P: consensus::Parameters, U: sapling::builder::ProverProgress> Builder<P, U
         fee: Option<Zatoshis>,
     ) -> Result<BuildResult, Error<FE>>
     where
-        A: Authorization<
-                SaplingAuth = sapling::builder::InProgress<
-                    sapling::builder::Proven,
-                    sapling::builder::Unsigned,
-                >,
-                OrchardAuth = orchard::builder::InProgress<
-                    orchard::builder::Unproven,
-                    orchard::builder::Unauthorized,
-                >,
-            >,
+        A: BuildInternalAuth,
         A::TransparentAuth: transparent::sighash::TransparentAuthorizingContext,
         R: RngCore + CryptoRng,
         SP: SpendProver,
@@ -1187,7 +1442,7 @@ impl<P: consensus::Parameters, U: sapling::builder::ProverProgress> Builder<P, U
             None => (None, SaplingMetadata::empty()),
         };
 
-        let (orchard_bundle, orchard_meta) = match self
+        let (unproven_orchard_bundle, orchard_meta) = match self
             .orchard_builder
             .and_then(|builder| {
                 builder
@@ -1215,6 +1470,18 @@ impl<P: consensus::Parameters, U: sapling::builder::ProverProgress> Builder<P, U
             None => (None, orchard::builder::BundleMetadata::empty()),
         };
 
+        #[cfg(zcash_unstable = "nu7")]
+        let issue_bundle_awaiting_sighash = match self.issuance_builder {
+            Some(b) => {
+                let nullifier =
+                    first_nullifier(&ironwood_bundle).ok_or(Error::<FE>::OrchardBuild(
+                        orchard::builder::BuildError::BundleTypeNotSatisfiable,
+                    ))?;
+                Some(b.update_rho(nullifier, &mut rng))
+            }
+            None => None,
+        };
+
         let unauthed_tx: TransactionData<A> = TransactionData {
             version: self.tx_version,
             consensus_branch_id: self.consensus_branch_id,
@@ -1234,8 +1501,10 @@ impl<P: consensus::Parameters, U: sapling::builder::ProverProgress> Builder<P, U
             // <https://zips.z.cash/protocol/protocol.pdf#txnconsensus>
             sprout_bundle: None,
             sapling_bundle,
-            orchard_bundle,
+            orchard_bundle: unproven_orchard_bundle,
             ironwood_bundle,
+            #[cfg(zcash_unstable = "nu7")]
+            issue_bundle: issue_bundle_awaiting_sighash,
         };
 
         //
@@ -1266,51 +1535,41 @@ impl<P: consensus::Parameters, U: sapling::builder::ProverProgress> Builder<P, U
             .transpose()
             .map_err(Error::SaplingBuild)?;
 
-        // The Orchard and Ironwood circuit version is fixed by the transaction's
-        // consensus branch (both pools share the post-NU6.3 circuit), so derive it
-        // once from the branch rather than from a bundle. Only build the key when
-        // an Orchard or Ironwood bundle is actually present.
-        let orchard_proving_key = {
-            let build_proving_key = unauthed_tx.orchard_bundle.is_some();
-            let build_proving_key = build_proving_key || unauthed_tx.ironwood_bundle.is_some();
-            build_proving_key.then(|| {
-                orchard::circuit::ProvingKey::build(
-                    bundle_version_for_branch(
-                        unauthed_tx.consensus_branch_id,
-                        orchard::ValuePool::Orchard,
-                    )
-                    .expect("an Orchard or Ironwood bundle implies an NU5+ consensus branch")
-                    .circuit_version(),
-                )
-            })
+        // A bundle is proved under the circuit its own `BundleVersion` selects. In a v6
+        // transaction both slots share the post-NU6.3 circuit, but in a v7 transaction the
+        // Ironwood slot is ZSA and uses the ZSA circuit, so each slot gets its own key.
+        let proving_key_for = |bundle_version: orchard::bundle::BundleVersion| {
+            orchard::circuit::ProvingKey::build(bundle_version.circuit_version())
         };
 
         let orchard_bundle = unauthed_tx
             .orchard_bundle
             .map(|b| {
-                b.create_proof(
-                    orchard_proving_key
-                        .as_ref()
-                        .expect("proving key is built when an Orchard bundle is present"),
-                    &mut rng,
-                )
-                .and_then(|b| {
+                let pk = proving_key_for(b.bundle_version());
+                b.create_proof(&pk, &mut rng).and_then(|b| {
                     b.apply_signatures(&mut rng, *shielded_sig_commitment.as_ref(), orchard_saks)
                 })
             })
             .transpose()
             .map_err(Error::OrchardBuild)?;
 
+        #[cfg(zcash_unstable = "nu7")]
+        let issue_bundle = if let Some(bundle) = unauthed_tx.issue_bundle {
+            let prepared = bundle.prepare(*shielded_sig_commitment.as_ref());
+            let isk = self
+                .issuance_isk
+                .as_ref()
+                .ok_or_else(|| Error::IssuanceKeyNotAvailable)?;
+            Some(prepared.sign(isk).map_err(Error::IssuanceBundle)?)
+        } else {
+            None
+        };
+
         let ironwood_bundle = unauthed_tx
             .ironwood_bundle
             .map(|b| {
-                b.create_proof(
-                    orchard_proving_key
-                        .as_ref()
-                        .expect("proving key is built when an Ironwood bundle is present"),
-                    &mut rng,
-                )
-                .and_then(|b| {
+                let pk = proving_key_for(b.bundle_version());
+                b.create_proof(&pk, &mut rng).and_then(|b| {
                     // Ironwood actions use the Orchard bundle type and the same
                     // Orchard spend authority. The `IronwoodNu6_3Onward` pool
                     // restrictions select the Ironwood circuit and flag rules;
@@ -1334,6 +1593,8 @@ impl<P: consensus::Parameters, U: sapling::builder::ProverProgress> Builder<P, U
             sapling_bundle,
             orchard_bundle,
             ironwood_bundle,
+            #[cfg(zcash_unstable = "nu7")]
+            issue_bundle,
         };
 
         // The unwrap() here is safe because the txid hashing
@@ -1357,8 +1618,15 @@ impl<P: consensus::Parameters, U> Builder<P, U> {
         self,
         mut rng: R,
         fee_rule: &FR,
+        #[cfg(zcash_unstable = "nu7")] is_new_asset: impl Fn(&AssetBase) -> bool,
     ) -> Result<PcztResult<P>, Error<FR::Error>> {
-        let fee = self.get_fee(fee_rule).map_err(Error::Fee)?;
+        let fee = self
+            .get_fee(
+                fee_rule,
+                #[cfg(zcash_unstable = "nu7")]
+                is_new_asset,
+            )
+            .map_err(Error::Fee)?;
         self.check_version_compatibility::<FR::Error>(self.tx_version)?;
         self.check_coinbase_expiry_height::<FR::Error>()?;
 
@@ -1446,6 +1714,18 @@ impl<P: consensus::Parameters, U> Builder<P, U> {
     }
 }
 
+/// The nullifier that seeds issuance note randomness: the first action of the ZSA bundle, which
+/// a v7 transaction carries in its Ironwood slot.
+#[cfg(zcash_unstable = "nu7")]
+fn first_nullifier<A: bundle::Authorization>(
+    ironwood_bundle: &Option<orchard::Bundle<A, ZatBalance>>,
+) -> Option<&Nullifier> {
+    ironwood_bundle
+        .as_ref()
+        .filter(|b| b.bundle_version() == orchard::bundle::BundleVersion::zsa())
+        .map(|b| b.actions().first().nullifier())
+}
+
 #[cfg(feature = "circuits")]
 fn authorize_transparent(
     b: &transparent::bundle::Bundle<transparent::builder::Unauthorized>,
@@ -1481,6 +1761,7 @@ mod testing {
             transparent_signing_set: &TransparentSigningSet,
             sapling_extsks: &[sapling::zip32::ExtendedSpendingKey],
             orchard_saks: &[orchard::keys::SpendAuthorizingKey],
+            #[cfg(zcash_unstable = "nu7")] is_new_asset: impl Fn(&orchard::note::AssetBase) -> bool,
             rng: R,
         ) -> Result<BuildResult, Error<zip317::FeeError>> {
             struct FakeCryptoRng<R: RngCore>(R);
@@ -1512,6 +1793,8 @@ mod testing {
                 &MockOutputProver,
                 #[allow(deprecated)]
                 &zip317::FeeRule::standard(),
+                #[cfg(zcash_unstable = "nu7")]
+                is_new_asset,
             )
         }
     }
@@ -1537,6 +1820,10 @@ mod tests {
         },
     };
 
+    #[cfg(zcash_unstable = "nu7")]
+    #[cfg(not(feature = "transparent-inputs"))]
+    use zip32::AccountId;
+
     #[cfg(feature = "transparent-inputs")]
     use {
         crate::transaction::{OutPoint, TxOut, TxVersion, builder::DEFAULT_TX_EXPIRY_DELTA},
@@ -1544,6 +1831,31 @@ mod tests {
         zcash_protocol::consensus::BranchId,
         zip32::AccountId,
     };
+
+    #[cfg(zcash_unstable = "nu7")]
+    use {
+        crate::transaction::fees::zip317,
+        nonempty::NonEmpty,
+        orchard::{
+            bundle::BundleVersion,
+            issuance::auth::{IssueAuthKey, IssueValidatingKey},
+            issuance::{IssueInfo, compute_asset_desc_hash},
+            keys::{FullViewingKey, Scope, SpendAuthorizingKey, SpendingKey},
+            note::{AssetBase, AssetId, Note, NoteVersion, RandomSeed, Rho},
+            note_encryption::{NoteEncryptionDomain, ZSAVersion},
+            tree::MerkleHashOrchard,
+            value::NoteValue,
+        },
+        shardtree::{ShardTree, store::memory::MemoryShardStore},
+        zcash_note_encryption::try_note_decryption,
+        zcash_protocol::memo::Memo,
+    };
+
+    /// This is a helper function for testing that indicates no assets are newly created.
+    #[cfg(zcash_unstable = "nu7")]
+    fn no_new_assets(_: &AssetBase) -> bool {
+        false
+    }
 
     // The Ironwood tests below reference `TxVersion`/`BranchId` directly; without the
     // `transparent-inputs` feature these are not otherwise in scope.
@@ -1705,6 +2017,8 @@ mod tests {
                 None,
                 recipient,
                 Zatoshis::const_from_u64(10_000),
+                #[cfg(zcash_unstable = "nu7")]
+                orchard::note::AssetBase::zatoshi(),
                 MemoBytes::empty(),
             )
             .unwrap();
@@ -1773,6 +2087,8 @@ mod tests {
             .build_for_pczt(
                 OsRng,
                 &crate::transaction::fees::zip317::FeeRule::standard(),
+                #[cfg(zcash_unstable = "nu7")]
+                |_| false,
             )
             .unwrap();
         assert_eq!(res.pczt_parts.version, TxVersion::V6);
@@ -1804,6 +2120,8 @@ mod tests {
                 None,
                 recipient,
                 Zatoshis::const_from_u64(10_000),
+                #[cfg(zcash_unstable = "nu7")]
+                orchard::note::AssetBase::zatoshi(),
                 MemoBytes::empty(),
             )
             .unwrap();
@@ -1812,6 +2130,8 @@ mod tests {
             builder.build_for_pczt(
                 OsRng,
                 &crate::transaction::fees::zip317::FeeRule::standard(),
+                #[cfg(zcash_unstable = "nu7")]
+                |_| false,
             ),
             Err(Error::InsufficientFunds(_))
         );
@@ -1843,6 +2163,8 @@ mod tests {
                 None,
                 recipient,
                 Zatoshis::const_from_u64(10_000),
+                #[cfg(zcash_unstable = "nu7")]
+                orchard::note::AssetBase::zatoshi(),
                 MemoBytes::empty(),
             )
             .unwrap();
@@ -1851,6 +2173,8 @@ mod tests {
             builder.build_for_pczt(
                 OsRng,
                 &crate::transaction::fees::zip317::FeeRule::standard(),
+                #[cfg(zcash_unstable = "nu7")]
+                |_| false,
             ),
             Err(Error::TargetIncompatible(
                 BranchId::Nu6_3,
@@ -1879,7 +2203,15 @@ mod tests {
         let rseed = (0u8..=255)
             .find_map(|b| orchard::note::RandomSeed::from_bytes([b; 32], &rho).into_option())
             .expect("at least one test rseed is valid");
-        let note = orchard::Note::from_parts(recipient, value, rho, rseed, version).unwrap();
+        let note = orchard::Note::from_parts(
+            recipient,
+            value,
+            orchard::note::AssetBase::zatoshi(),
+            rho,
+            rseed,
+            version,
+        )
+        .unwrap();
         let zero = orchard::tree::MerkleHashOrchard::from_bytes(&[0; 32]).unwrap();
         let merkle_path = orchard::tree::MerklePath::from_parts(0, [zero; 32]);
 
@@ -1941,6 +2273,7 @@ mod tests {
         let note = orchard::Note::from_parts(
             spend_recipient,
             orchard::value::NoteValue::from_raw(10_000),
+            orchard::note::AssetBase::zatoshi(),
             rho,
             rseed,
             orchard::note::NoteVersion::V2,
@@ -1974,6 +2307,7 @@ mod tests {
                     None,
                     recipient,
                     orchard::value::NoteValue::from_raw(1_000),
+                    orchard::note::AssetBase::zatoshi(),
                     [0u8; 512],
                 )
                 .unwrap();
@@ -2022,6 +2356,7 @@ mod tests {
                     None,
                     recipient,
                     orchard::value::NoteValue::from_raw(10_000),
+                    orchard::note::AssetBase::zatoshi(),
                     [0u8; 512],
                 )
                 .unwrap();
@@ -2106,6 +2441,10 @@ mod tests {
             orchard_builder: None,
             orchard_bundle_version: None,
             ironwood_builder: None,
+            #[cfg(zcash_unstable = "nu7")]
+            issuance_builder: None,
+            #[cfg(zcash_unstable = "nu7")]
+            issuance_isk: None,
             _progress_notifier: (),
         };
 
@@ -2138,7 +2477,14 @@ mod tests {
             .unwrap();
 
         let res = builder
-            .mock_build(&transparent_signing_set, &[], &[], OsRng)
+            .mock_build(
+                &transparent_signing_set,
+                &[],
+                &[],
+                #[cfg(zcash_unstable = "nu7")]
+                no_new_assets,
+                OsRng,
+            )
             .unwrap();
         // No binding signature, because only t input and outputs
         assert!(res.transaction().sapling_bundle.is_none());
@@ -2188,7 +2534,14 @@ mod tests {
             .unwrap();
 
         let res = builder
-            .mock_build(&transparent_signing_set, &[], &[], OsRng)
+            .mock_build(
+                &transparent_signing_set,
+                &[],
+                &[],
+                #[cfg(zcash_unstable = "nu7")]
+                |_| false,
+                OsRng,
+            )
             .unwrap();
         assert_eq!(res.transaction().expiry_height(), 0u32.into());
     }
@@ -2211,7 +2564,14 @@ mod tests {
             .unwrap();
 
         assert_matches!(
-            builder.mock_build(&TransparentSigningSet::new(), &[], &[], OsRng),
+            builder.mock_build(
+                &TransparentSigningSet::new(),
+                &[],
+                &[],
+                #[cfg(zcash_unstable = "nu7")]
+                |_| false,
+                OsRng,
+            ),
             Err(Error::CoinbaseExpiryHeightMismatch {
                 target_height,
                 expiry_height,
@@ -2263,7 +2623,14 @@ mod tests {
 
         // A binding signature (and bundle) is present because there is a Sapling spend.
         let res = builder
-            .mock_build(&TransparentSigningSet::new(), &[extsk], &[], OsRng)
+            .mock_build(
+                &TransparentSigningSet::new(),
+                &[extsk],
+                &[],
+                #[cfg(zcash_unstable = "nu7")]
+                no_new_assets,
+                OsRng,
+            )
             .unwrap();
         assert!(res.transaction().sapling_bundle().is_some());
     }
@@ -2292,7 +2659,14 @@ mod tests {
             };
             let builder = Builder::new(TEST_NETWORK, tx_height, build_config);
             assert_matches!(
-                builder.mock_build(&TransparentSigningSet::new(), &[], &[], OsRng),
+                builder.mock_build(
+                    &TransparentSigningSet::new(),
+                    &[],
+                    &[],
+                    #[cfg(zcash_unstable = "nu7")]
+                    no_new_assets,
+                    OsRng,
+                ),
                 Err(Error::InsufficientFunds(expected)) if expected == MINIMUM_FEE.into()
             );
         }
@@ -2322,7 +2696,14 @@ mod tests {
                 )
                 .unwrap();
             assert_matches!(
-                builder.mock_build(&TransparentSigningSet::new(), extsks, &[], OsRng),
+                builder.mock_build(
+                    &TransparentSigningSet::new(),
+                    extsks,
+                    &[],
+                    #[cfg(zcash_unstable = "nu7")]
+                    no_new_assets,
+                    OsRng
+                ),
                 Err(Error::InsufficientFunds(expected)) if
                     expected == (Zatoshis::const_from_u64(50000) + MINIMUM_FEE).unwrap().into()
             );
@@ -2345,7 +2726,14 @@ mod tests {
                 )
                 .unwrap();
             assert_matches!(
-                builder.mock_build(&TransparentSigningSet::new(), extsks, &[], OsRng),
+                builder.mock_build(
+                    &TransparentSigningSet::new(),
+                    extsks,
+                    &[],
+                    #[cfg(zcash_unstable = "nu7")]
+                    no_new_assets,
+                    OsRng
+                ),
                 Err(Error::InsufficientFunds(expected)) if expected ==
                     (Zatoshis::const_from_u64(50000) + MINIMUM_FEE).unwrap().into()
             );
@@ -2365,7 +2753,14 @@ mod tests {
             builder.set_zip233_amount(Zatoshis::const_from_u64(50000));
 
             assert_matches!(
-                builder.mock_build(&TransparentSigningSet::new(), extsks, &[], OsRng),
+                builder.mock_build(
+                    &TransparentSigningSet::new(),
+                    extsks,
+                    &[],
+                    #[cfg(zcash_unstable = "nu7")]
+                    no_new_assets,
+                    OsRng
+                ),
                 Err(Error::InsufficientFunds(expected)) if expected ==
                     (Zatoshis::const_from_u64(50000) + MINIMUM_FEE).unwrap().into()
             );
@@ -2412,7 +2807,14 @@ mod tests {
                 )
                 .unwrap();
             assert_matches!(
-                builder.mock_build(&TransparentSigningSet::new(), extsks, &[], OsRng),
+                builder.mock_build(
+                    &TransparentSigningSet::new(),
+                    extsks,
+                    &[],
+                    #[cfg(zcash_unstable = "nu7")]
+                    no_new_assets,
+                    OsRng
+                ),
                 Err(Error::InsufficientFunds(expected)) if expected == ZatBalance::const_from_i64(1)
             );
         }
@@ -2451,7 +2853,14 @@ mod tests {
                 .unwrap();
             builder.set_zip233_amount(Zatoshis::const_from_u64(10000));
             assert_matches!(
-                builder.mock_build(&TransparentSigningSet::new(), extsks, &[], OsRng),
+                builder.mock_build(
+                    &TransparentSigningSet::new(),
+                    extsks,
+                    &[],
+                    #[cfg(zcash_unstable = "nu7")]
+                    no_new_assets,
+                    OsRng
+                ),
                 Err(Error::InsufficientFunds(expected)) if expected == ZatBalance::const_from_i64(1)
             );
         }
@@ -2504,7 +2913,14 @@ mod tests {
                 )
                 .unwrap();
             let res = builder
-                .mock_build(&TransparentSigningSet::new(), extsks, &[], OsRng)
+                .mock_build(
+                    &TransparentSigningSet::new(),
+                    extsks,
+                    &[],
+                    #[cfg(zcash_unstable = "nu7")]
+                    no_new_assets,
+                    OsRng,
+                )
                 .unwrap();
             assert_eq!(
                 res.transaction()
@@ -2555,7 +2971,14 @@ mod tests {
                 .unwrap();
             builder.set_zip233_amount(Zatoshis::const_from_u64(10000));
             let res = builder
-                .mock_build(&TransparentSigningSet::new(), extsks, &[], OsRng)
+                .mock_build(
+                    &TransparentSigningSet::new(),
+                    extsks,
+                    &[],
+                    #[cfg(zcash_unstable = "nu7")]
+                    no_new_assets,
+                    OsRng,
+                )
                 .unwrap();
             assert_eq!(
                 res.transaction()
@@ -2564,5 +2987,432 @@ mod tests {
                 Some(Zatoshis::const_from_u64(15_000))
             );
         }
+    }
+
+    #[cfg(zcash_unstable = "nu7")]
+    #[test]
+    fn check_zsa_issuance_fees() {
+        const OLD_NOTE_VALUE: u64 = 10_000_000;
+
+        // The scenario in the test issues:
+        // - one note of a previously issued asset (asset_desc_hash_1), and
+        // - two notes of a newly created asset (asset_desc_hash_2): the first note is the
+        //   reference note and the second note is another note of the same newly created asset.
+        // The expected number of logical actions is:
+        // - 2 Orchard Actions (the minimum required for an Orchard bundle),
+        // - 3 issued notes in total,
+        // - 1 * 100 for the contribution of the newly created asset.
+        // The logical_actions is therefore 105, leading to a fee of 105 * 5_000 = 525_000 zatoshis.
+        const EXPECTED_FEE: u64 = 525_000;
+
+        let mut rng = OsRng;
+        let tx_height = TEST_NETWORK.activation_height(NetworkUpgrade::Nu7).unwrap();
+
+        // Generate keys
+        let sk = SpendingKey::from_zip32_seed(&[1u8; 32], 1, AccountId::ZERO).unwrap();
+        let fvk = FullViewingKey::from(&sk);
+        let recipient = fvk.address_at(0u32, Scope::External);
+        let isk = IssueAuthKey::from_zip32_seed(&[1u8; 32], 1, 0).unwrap();
+        let ik = IssueValidatingKey::from(&isk);
+
+        // Create a test note in the Orchard tree
+        let note = {
+            let bundle_version = BundleVersion::zsa();
+            let mut builder = orchard::builder::Builder::new(
+                orchard::builder::BundleType::DEFAULT,
+                bundle_version,
+                bundle_version.default_flags(),
+                orchard::Anchor::empty_tree(),
+            )
+            .unwrap();
+            builder
+                .add_output(
+                    None,
+                    recipient,
+                    NoteValue::from_raw(OLD_NOTE_VALUE),
+                    AssetBase::zatoshi(),
+                    Memo::Empty.encode().into_bytes(),
+                )
+                .unwrap();
+            let (bundle, meta) = builder.build::<i64>(&mut rng).unwrap().unwrap();
+            let action = bundle
+                .actions()
+                .get(meta.output_action_index(0).unwrap())
+                .unwrap();
+            let (note, _, _) = try_note_decryption(
+                &NoteEncryptionDomain::<ZSAVersion>::for_action(action),
+                &fvk.to_ivk(Scope::External).prepare(),
+                action,
+            )
+            .unwrap();
+            note
+        };
+
+        let (anchor, merkle_path) = {
+            let leaf = MerkleHashOrchard::from_cmx(&note.commitment().into());
+            let mut tree = ShardTree::<_, 32, 16>::new(
+                MemoryShardStore::<MerkleHashOrchard, u32>::empty(),
+                100,
+            );
+            tree.append(leaf, incrementalmerkletree::Retention::Marked)
+                .unwrap();
+            tree.checkpoint(9_999_999).unwrap();
+            let path = tree
+                .witness_at_checkpoint_depth(0.into(), 0)
+                .unwrap()
+                .unwrap();
+            (path.root(leaf).into(), path.into())
+        };
+
+        let mut builder = Builder::new(
+            TEST_NETWORK,
+            tx_height,
+            BuildConfig::Standard {
+                sapling_anchor: Some(sapling::Anchor::empty_tree()),
+                orchard_anchor: None,
+                ironwood_anchor: Some(anchor),
+                orchard_pool_bundle_type: orchard::builder::BundleType::DEFAULT,
+            },
+        );
+
+        // Define two assets: one previously issued, one newly created
+        let asset_1 = compute_asset_desc_hash(&NonEmpty::from_slice(b"This is Asset 1").unwrap());
+        let asset_2 = compute_asset_desc_hash(&NonEmpty::from_slice(b"This is Asset 2").unwrap());
+
+        let prev_issued = AssetBase::custom(&AssetId::new_v0(&ik, &asset_1));
+        let is_new_asset = move |asset: &AssetBase| asset != &prev_issued;
+
+        // Add spend and output for fees
+        builder
+            .add_ironwood_spend::<zip317::FeeRule>(fvk.clone(), note, merkle_path)
+            .unwrap();
+        builder
+            .add_ironwood_output::<zip317::FeeRule>(
+                Some(fvk.to_ovk(Scope::External)),
+                recipient,
+                Zatoshis::from_u64(OLD_NOTE_VALUE - EXPECTED_FEE).unwrap(),
+                #[cfg(zcash_unstable = "nu7")]
+                AssetBase::zatoshi(),
+                MemoBytes::empty(),
+            )
+            .unwrap();
+
+        // Issue previously issued asset and newly created asset
+        builder
+            .init_issuance_bundle::<zip317::FeeRule>(
+                isk,
+                asset_1,
+                Some(IssueInfo {
+                    recipient,
+                    value: NoteValue::from_raw(1),
+                }),
+                false,
+            )
+            .unwrap();
+        builder
+            .add_recipient::<zip317::FeeRule>(asset_2, recipient, NoteValue::from_raw(1), true)
+            .unwrap();
+
+        let build_result = builder
+            .mock_build(
+                &TransparentSigningSet::new(),
+                &[],
+                &[SpendAuthorizingKey::from(&sk)],
+                #[cfg(zcash_unstable = "nu7")]
+                is_new_asset,
+                OsRng,
+            )
+            .unwrap();
+        let tx = build_result.transaction();
+
+        // Verify: 2 Ironwood actions, 3 issued notes,
+        // fee = 5000 * (2 + 3 + 100) = 525_000 (as in the EXPECTED_FEE calculation above).
+        assert_eq!(tx.ironwood_bundle().unwrap().actions().len(), 2);
+        assert_eq!(tx.issue_bundle().unwrap().get_all_notes().len(), 3);
+        assert_eq!(
+            tx.fee_paid(|_| Err(BalanceError::Overflow)).unwrap(),
+            Some(Zatoshis::const_from_u64(EXPECTED_FEE))
+        );
+    }
+
+    /// A v7 transaction can move a custom asset: the ZSA note is spent from and paid back into
+    /// the Ironwood slot, while a separate ZEC note covers the fee.
+    #[cfg(zcash_unstable = "nu7")]
+    #[test]
+    fn transfer_custom_asset_in_v7() {
+        use rand_core::RngCore;
+
+        const ZEC_NOTE_VALUE: u64 = 10_000_000;
+        // Two Ironwood actions, which is also the ZIP 317 grace count, so the fee is the
+        // marginal fee twice over.
+        const EXPECTED_FEE: u64 = 2 * 5_000;
+        const ZEC_OUTPUT_VALUE: u64 = ZEC_NOTE_VALUE - EXPECTED_FEE;
+        const ASSET_VALUE: u64 = 42;
+
+        let mut rng = OsRng;
+        let tx_height = TEST_NETWORK.activation_height(NetworkUpgrade::Nu7).unwrap();
+
+        let sk = SpendingKey::from_zip32_seed(&[7u8; 32], 1, AccountId::ZERO).unwrap();
+        let fvk = FullViewingKey::from(&sk);
+        let recipient = fvk.address_at(0u32, Scope::External);
+        let isk = IssueAuthKey::from_zip32_seed(&[7u8; 32], 1, 0).unwrap();
+        let ik = IssueValidatingKey::from(&isk);
+        let asset_desc =
+            compute_asset_desc_hash(&NonEmpty::from_slice(b"Transferable asset").unwrap());
+        let asset = AssetBase::custom(&AssetId::new_v0(&ik, &asset_desc));
+
+        // The notes are built directly rather than through a setup bundle: an output-only bundle
+        // cannot carry a custom asset, because padding it would need a split note to spend.
+        let mut make_note = |value: u64, asset: AssetBase, rho_seed: u8| -> Note {
+            let rho = Option::from(Rho::from_bytes(&[rho_seed; 32])).unwrap();
+            let rseed = loop {
+                let mut bytes = [0u8; 32];
+                rng.fill_bytes(&mut bytes);
+                if let Some(rseed) = Option::from(RandomSeed::from_bytes(bytes, &rho)) {
+                    break rseed;
+                }
+            };
+            Option::from(Note::from_parts(
+                recipient,
+                NoteValue::from_raw(value),
+                asset,
+                rho,
+                rseed,
+                NoteVersion::ZSA,
+            ))
+            .unwrap()
+        };
+        let zec_note = make_note(ZEC_NOTE_VALUE, AssetBase::zatoshi(), 1);
+        let asset_note = make_note(ASSET_VALUE, asset, 2);
+
+        // Both notes share one commitment tree, so their witnesses share an anchor.
+        let (anchor, zec_path, asset_path) = {
+            let mut tree = ShardTree::<_, 32, 16>::new(
+                MemoryShardStore::<MerkleHashOrchard, u32>::empty(),
+                100,
+            );
+            let zec_leaf = MerkleHashOrchard::from_cmx(&zec_note.commitment().into());
+            let asset_leaf = MerkleHashOrchard::from_cmx(&asset_note.commitment().into());
+            tree.append(zec_leaf, incrementalmerkletree::Retention::Marked)
+                .unwrap();
+            tree.append(asset_leaf, incrementalmerkletree::Retention::Marked)
+                .unwrap();
+            tree.checkpoint(9_999_999).unwrap();
+            let zec_path = tree
+                .witness_at_checkpoint_depth(0.into(), 0)
+                .unwrap()
+                .unwrap();
+            let asset_path = tree
+                .witness_at_checkpoint_depth(1.into(), 0)
+                .unwrap()
+                .unwrap();
+            assert_eq!(zec_path.root(zec_leaf), asset_path.root(asset_leaf));
+            (
+                zec_path.root(zec_leaf).into(),
+                zec_path.into(),
+                asset_path.into(),
+            )
+        };
+
+        let mut builder = Builder::new(
+            TEST_NETWORK,
+            tx_height,
+            BuildConfig::Standard {
+                sapling_anchor: Some(sapling::Anchor::empty_tree()),
+                orchard_anchor: None,
+                ironwood_anchor: Some(anchor),
+                orchard_pool_bundle_type: orchard::builder::BundleType::DEFAULT,
+            },
+        );
+
+        builder
+            .add_ironwood_spend::<zip317::FeeRule>(fvk.clone(), zec_note, zec_path)
+            .unwrap();
+        builder
+            .add_ironwood_spend::<zip317::FeeRule>(fvk.clone(), asset_note, asset_path)
+            .unwrap();
+        // The custom asset moves in full; the ZEC note pays for itself minus the fee.
+        builder
+            .add_ironwood_output::<zip317::FeeRule>(
+                Some(fvk.to_ovk(Scope::External)),
+                recipient,
+                Zatoshis::from_u64(ASSET_VALUE).unwrap(),
+                asset,
+                MemoBytes::empty(),
+            )
+            .unwrap();
+        builder
+            .add_ironwood_output::<zip317::FeeRule>(
+                Some(fvk.to_ovk(Scope::External)),
+                recipient,
+                Zatoshis::from_u64(ZEC_OUTPUT_VALUE).unwrap(),
+                #[cfg(zcash_unstable = "nu7")]
+                AssetBase::zatoshi(),
+                MemoBytes::empty(),
+            )
+            .unwrap();
+
+        let build_result = builder
+            .mock_build(
+                &TransparentSigningSet::new(),
+                &[],
+                &[SpendAuthorizingKey::from(&sk)],
+                no_new_assets,
+                OsRng,
+            )
+            .unwrap();
+        let tx = build_result.transaction();
+
+        assert_eq!(
+            tx.fee_paid(|_| Err(BalanceError::Overflow)).unwrap(),
+            Some(Zatoshis::const_from_u64(EXPECTED_FEE))
+        );
+
+        // The custom asset must survive into a decryptable output of the Ironwood slot.
+        let ivk = fvk.to_ivk(Scope::External).prepare();
+        let carries_asset = tx
+            .ironwood_bundle()
+            .unwrap()
+            .actions()
+            .iter()
+            .filter_map(|action| {
+                try_note_decryption(
+                    &NoteEncryptionDomain::<ZSAVersion>::for_action(action),
+                    &ivk,
+                    action,
+                )
+            })
+            .any(|(note, _, _): (Note, _, _)| {
+                note.asset() == asset && note.value().inner() == ASSET_VALUE
+            });
+        assert!(carries_asset, "no Ironwood output carries the custom asset");
+    }
+
+    /// Burning is a ZSA feature, so it must reach the Ironwood slot: the burned asset is spent
+    /// from that slot and recorded in the bundle's burn list, while a ZEC note covers the fee.
+    #[cfg(zcash_unstable = "nu7")]
+    #[test]
+    fn burn_custom_asset_in_v7() {
+        use rand_core::RngCore;
+
+        const ZEC_NOTE_VALUE: u64 = 10_000_000;
+        // Two Ironwood actions, which is also the ZIP 317 grace count.
+        const EXPECTED_FEE: u64 = 2 * 5_000;
+        const ZEC_OUTPUT_VALUE: u64 = ZEC_NOTE_VALUE - EXPECTED_FEE;
+        const BURN_VALUE: u64 = 7;
+
+        let mut rng = OsRng;
+        let tx_height = TEST_NETWORK.activation_height(NetworkUpgrade::Nu7).unwrap();
+
+        let sk = SpendingKey::from_zip32_seed(&[9u8; 32], 1, AccountId::ZERO).unwrap();
+        let fvk = FullViewingKey::from(&sk);
+        let recipient = fvk.address_at(0u32, Scope::External);
+        let isk = IssueAuthKey::from_zip32_seed(&[9u8; 32], 1, 0).unwrap();
+        let ik = IssueValidatingKey::from(&isk);
+        let asset_desc = compute_asset_desc_hash(&NonEmpty::from_slice(b"Burnable asset").unwrap());
+        let asset = AssetBase::custom(&AssetId::new_v0(&ik, &asset_desc));
+
+        let mut make_note = |value: u64, asset: AssetBase, rho_seed: u8| -> Note {
+            let rho = Option::from(Rho::from_bytes(&[rho_seed; 32])).unwrap();
+            let rseed = loop {
+                let mut bytes = [0u8; 32];
+                rng.fill_bytes(&mut bytes);
+                if let Some(rseed) = Option::from(RandomSeed::from_bytes(bytes, &rho)) {
+                    break rseed;
+                }
+            };
+            Option::from(Note::from_parts(
+                recipient,
+                NoteValue::from_raw(value),
+                asset,
+                rho,
+                rseed,
+                NoteVersion::ZSA,
+            ))
+            .unwrap()
+        };
+        let zec_note = make_note(ZEC_NOTE_VALUE, AssetBase::zatoshi(), 3);
+        let asset_note = make_note(BURN_VALUE, asset, 4);
+
+        let (anchor, zec_path, asset_path) = {
+            let mut tree = ShardTree::<_, 32, 16>::new(
+                MemoryShardStore::<MerkleHashOrchard, u32>::empty(),
+                100,
+            );
+            let zec_leaf = MerkleHashOrchard::from_cmx(&zec_note.commitment().into());
+            let asset_leaf = MerkleHashOrchard::from_cmx(&asset_note.commitment().into());
+            tree.append(zec_leaf, incrementalmerkletree::Retention::Marked)
+                .unwrap();
+            tree.append(asset_leaf, incrementalmerkletree::Retention::Marked)
+                .unwrap();
+            tree.checkpoint(9_999_999).unwrap();
+            let zec_path = tree
+                .witness_at_checkpoint_depth(0.into(), 0)
+                .unwrap()
+                .unwrap();
+            let asset_path = tree
+                .witness_at_checkpoint_depth(1.into(), 0)
+                .unwrap()
+                .unwrap();
+            (
+                zec_path.root(zec_leaf).into(),
+                zec_path.into(),
+                asset_path.into(),
+            )
+        };
+
+        let mut builder = Builder::new(
+            TEST_NETWORK,
+            tx_height,
+            BuildConfig::Standard {
+                sapling_anchor: Some(sapling::Anchor::empty_tree()),
+                orchard_anchor: None,
+                ironwood_anchor: Some(anchor),
+                orchard_pool_bundle_type: orchard::builder::BundleType::DEFAULT,
+            },
+        );
+
+        builder
+            .add_ironwood_spend::<zip317::FeeRule>(fvk.clone(), zec_note, zec_path)
+            .unwrap();
+        builder
+            .add_ironwood_spend::<zip317::FeeRule>(fvk.clone(), asset_note, asset_path)
+            .unwrap();
+        builder
+            .add_ironwood_output::<zip317::FeeRule>(
+                Some(fvk.to_ovk(Scope::External)),
+                recipient,
+                Zatoshis::from_u64(ZEC_OUTPUT_VALUE).unwrap(),
+                AssetBase::zatoshi(),
+                MemoBytes::empty(),
+            )
+            .unwrap();
+        // The asset is spent but not paid out: it is burned instead.
+        builder
+            .add_burn::<zip317::FeeRule>(BURN_VALUE, asset)
+            .unwrap();
+
+        let build_result = builder
+            .mock_build(
+                &TransparentSigningSet::new(),
+                &[],
+                &[SpendAuthorizingKey::from(&sk)],
+                no_new_assets,
+                OsRng,
+            )
+            .unwrap();
+        let tx = build_result.transaction();
+
+        assert_eq!(
+            tx.fee_paid(|_| Err(BalanceError::Overflow)).unwrap(),
+            Some(Zatoshis::const_from_u64(EXPECTED_FEE))
+        );
+        assert!(
+            tx.ironwood_bundle()
+                .unwrap()
+                .burn()
+                .contains(&(asset, NoteValue::from_raw(BURN_VALUE))),
+            "the burn was not recorded in the Ironwood bundle"
+        );
     }
 }

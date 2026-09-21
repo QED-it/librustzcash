@@ -2885,6 +2885,8 @@ fn parse_tx<P: consensus::Parameters>(
                 tx_data.sprout_bundle().cloned(),
                 tx_data.sapling_bundle().cloned(),
                 tx_data.orchard_bundle().cloned(),
+                #[cfg(zcash_unstable = "nu7")]
+                tx_data.issue_bundle().cloned(),
             )
             .freeze()
             .map(|t| (expiry_height, t))
