@@ -8,7 +8,7 @@ use ff::PrimeField;
 
 use ::orchard::{
     ValuePool,
-    bundle::{self as orchard, BundleVersion, TxVersion as OrchardTxVersion},
+    bundle::{self as orchard, TxVersion as OrchardTxVersion},
 };
 use ::sapling::bundle::{OutputDescription, SpendDescription};
 use ::transparent::bundle::{self as transparent, TxIn, TxOut};
@@ -113,10 +113,6 @@ fn orchard_commitment_domain(version: TxVersion) -> (ValuePool, OrchardTxVersion
     }
 }
 
-fn ironwood_v6_domain() -> (ValuePool, OrchardTxVersion) {
-    (ValuePool::Ironwood, OrchardTxVersion::V6)
-}
-
 /// The Ironwood-slot commitment domain for a transaction version: the ZSA format in v7, the
 /// Ironwood v6 format otherwise.
 fn ironwood_domain(version: TxVersion) -> (ValuePool, OrchardTxVersion) {
@@ -125,16 +121,7 @@ fn ironwood_domain(version: TxVersion) -> (ValuePool, OrchardTxVersion) {
         return (ValuePool::Ironwood, OrchardTxVersion::ZSA);
     }
     let _ = version;
-    ironwood_v6_domain()
-}
-
-/// The Ironwood-slot commitment version of a bundle, taken from the bundle's own version.
-fn ironwood_tx_version(bundle_version: BundleVersion) -> OrchardTxVersion {
-    if bundle_version == BundleVersion::zsa() {
-        OrchardTxVersion::ZSA
-    } else {
-        OrchardTxVersion::V6
-    }
+    (ValuePool::Ironwood, OrchardTxVersion::V6)
 }
 
 fn hasher(personal: &[u8; 16]) -> StateWrite {
@@ -405,11 +392,14 @@ impl<A: Authorization> TransactionDigest<A> for TxIdDigester {
 
     fn digest_ironwood(
         &self,
-        #[cfg(zcash_unstable = "nu7")] _version: TxVersion,
+        #[cfg(zcash_unstable = "nu7")] version: TxVersion,
         ironwood_bundle: Option<&orchard::Bundle<A::OrchardAuth, ZatBalance>>,
     ) -> Self::IronwoodDigest {
+        #[cfg(not(zcash_unstable = "nu7"))]
+        let version = TxVersion::V6;
+        let (_, tx_version) = ironwood_domain(version);
         ironwood_bundle.map(|b| {
-            b.commitment(ironwood_tx_version(b.bundle_version()))
+            b.commitment(tx_version)
                 .expect("Ironwood bundle flags must be representable")
                 .0
         })
@@ -741,22 +731,18 @@ impl TransactionDigest<Authorized> for BlockTxCommitmentDigester {
         #[cfg(zcash_unstable = "nu7")] version: TxVersion,
         ironwood_bundle: Option<&orchard::Bundle<orchard::Authorized, ZatBalance>>,
     ) -> Self::IronwoodDigest {
+        #[cfg(not(zcash_unstable = "nu7"))]
+        let version = TxVersion::V6;
+        let (value_pool, tx_version) = ironwood_domain(version);
         ironwood_bundle.map_or_else(
             || {
-                // Without the ZSA gate the Ironwood slot exists only in v6.
-                #[cfg(not(zcash_unstable = "nu7"))]
-                let version = TxVersion::V6;
-                let (value_pool, tx_version) = ironwood_domain(version);
                 orchard::commitments::hash_bundle_auth_empty(value_pool, tx_version)
                     .expect("empty Ironwood bundle auth commitment is valid")
             },
             |b| {
-                b.authorizing_commitment(
-                    ironwood_tx_version(b.bundle_version()),
-                    orchard_sighash_kind_to_info,
-                )
-                .expect("Ironwood bundle flags must be representable")
-                .0
+                b.authorizing_commitment(tx_version, orchard_sighash_kind_to_info)
+                    .expect("Ironwood bundle flags must be representable")
+                    .0
             },
         )
     }
