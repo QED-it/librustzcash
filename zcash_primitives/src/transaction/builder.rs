@@ -776,7 +776,8 @@ impl<P: consensus::Parameters> Builder<P, ()> {
             issue_info,
             first_issuance,
             OsRng,
-        );
+        )
+        .map_err(Error::IssuanceBundle)?;
 
         self.issuance_builder = Some(bundle);
         self.issuance_isk = Some(ik);
@@ -816,8 +817,7 @@ impl<P: consensus::Parameters> Builder<P, ()> {
         self.issuance_builder
             .as_mut()
             .ok_or(Error::IssuanceBuilderNotAvailable)?
-            .finalize_action(asset_desc_hash)
-            .map_err(Error::IssuanceBundle)?;
+            .finalize_action(asset_desc_hash);
 
         Ok(())
     }
