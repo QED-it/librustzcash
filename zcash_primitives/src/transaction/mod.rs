@@ -1455,7 +1455,7 @@ pub mod testing {
             version in arb_tx_version(consensus_branch_id)
         )(
             lock_time in any::<u32>(),
-            expiry_height in if version == TxVersion::V6 { Just(0u32).boxed() } else { any::<u32>().boxed() },
+            expiry_height in any::<u32>(),
             transparent_bundle in transparent::arb_bundle(),
             sapling_bundle in sapling::arb_bundle_for_version(version),
             orchard_bundle in orchard::arb_bundle_for_version(version),
@@ -1484,7 +1484,7 @@ pub mod testing {
             version in arb_tx_version(consensus_branch_id)
         )(
             lock_time in any::<u32>(),
-            expiry_height in if version == TxVersion::V6 { Just(0u32).boxed() } else { any::<u32>().boxed() },
+            expiry_height in any::<u32>(),
             zip233_amount in 0..=MAX_MONEY,
             transparent_bundle in transparent::arb_bundle(),
             sapling_bundle in sapling::arb_bundle_for_version(version),
