@@ -123,7 +123,6 @@ use {
 #[cfg(zcash_unstable = "nu7")]
 use orchard::note::AssetBase;
 
-#[cfg(feature = "unstable")]
 use zcash_primitives::transaction::TxVersion;
 
 pub mod input_selection;
