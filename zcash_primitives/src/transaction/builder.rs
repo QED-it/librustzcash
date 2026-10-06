@@ -192,7 +192,7 @@ impl<FE: fmt::Display> fmt::Display for Error<FE> {
             #[cfg(zcash_unstable = "nu7")]
             Error::IssuanceKeyNotAvailable => write!(f, "Issuance key not initialized"),
             #[cfg(zcash_unstable = "nu7")]
-            Error::IssuanceBundle(err) => write!(f, "Issuance bundle internal error: {:?}", err),
+            Error::IssuanceBundle(err) => write!(f, "Issuance bundle internal error: {err:?}"),
             #[cfg(zcash_unstable = "nu7")]
             Error::IssuanceBundleAlreadyInitialized => {
                 write!(f, "Issuance bundle already initialized")
@@ -395,7 +395,7 @@ impl BuildConfig {
     }
 }
 
-/// The [`BundleVersion`] of the Ironwood slot for a transaction version: the ZSA bundle in v7,
+/// The [`orchard::bundle::BundleVersion`] of the Ironwood slot for a transaction version: the ZSA bundle in v7,
 /// the plain Ironwood bundle otherwise.
 fn ironwood_bundle_version(version: TxVersion) -> orchard::bundle::BundleVersion {
     #[cfg(zcash_unstable = "nu7")]
