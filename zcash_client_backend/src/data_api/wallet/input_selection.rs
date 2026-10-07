@@ -1584,6 +1584,10 @@ where
                 sapling_output_count,
                 orchard_action_count,
                 ironwood_action_count,
+                #[cfg(zcash_unstable = "nu7")]
+                0,
+                #[cfg(zcash_unstable = "nu7")]
+                0,
             )
             .map(|fee| (fee, None)),
         Address::Transparent(_) => fee_rule
@@ -1596,6 +1600,10 @@ where
                 sapling_output_count,
                 orchard_action_count,
                 ironwood_action_count,
+                #[cfg(zcash_unstable = "nu7")]
+                0,
+                #[cfg(zcash_unstable = "nu7")]
+                0,
             )
             .map(|fee| (fee, None)),
         Address::Unified(addr) => fee_rule
@@ -1612,6 +1620,10 @@ where
                 sapling_output_count,
                 orchard_action_count,
                 ironwood_action_count,
+                #[cfg(zcash_unstable = "nu7")]
+                0,
+                #[cfg(zcash_unstable = "nu7")]
+                0,
             )
             .map(|fee| (fee, None)),
         Address::Tex(_) => fee_rule
@@ -1624,6 +1636,10 @@ where
                 sapling_output_count,
                 orchard_action_count,
                 ironwood_action_count,
+                #[cfg(zcash_unstable = "nu7")]
+                0,
+                #[cfg(zcash_unstable = "nu7")]
+                0,
             )
             .and_then(|tr0_fee| {
                 let tr1_fee = fee_rule.fee_required(
@@ -1634,6 +1650,10 @@ where
                     0,
                     0,
                     0,
+                    0,
+                    #[cfg(zcash_unstable = "nu7")]
+                    0,
+                    #[cfg(zcash_unstable = "nu7")]
                     0,
                 )?;
 
@@ -2019,6 +2039,11 @@ impl<DbT: InputSource> ShieldingSelector for GreedyInputSelector<DbT> {
                 sapling_output_count,
                 orchard_action_count,
                 ironwood_action_count,
+                // FIXME: issuance is not taken into account when selecting inputs.
+                #[cfg(zcash_unstable = "nu7")]
+                0,
+                #[cfg(zcash_unstable = "nu7")]
+                0,
             )
             // The `InputSelectorError::Change` variant is the only existing
             // carrier capable of holding an arbitrary fee-rule error

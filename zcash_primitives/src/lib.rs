@@ -25,4 +25,5 @@ extern crate alloc;
 pub mod block;
 pub(crate) mod encoding;
 pub mod merkle_tree;
+pub mod sighash_versioning;
 pub mod transaction;

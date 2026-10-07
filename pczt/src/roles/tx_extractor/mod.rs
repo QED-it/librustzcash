@@ -110,6 +110,8 @@ impl<'a> TransactionExtractor<'a> {
                 })
                 .transpose()
             },
+            // FIXME: this closure also authorizes the Ironwood slot, whose ZSA bundle PCZT does
+            // not build yet. See the FIXME in `Pczt::extract_tx_data`.
             |o| {
                 o.map(|o| {
                     o.apply_binding_signature(*shielded_sighash.as_ref(), OsRng)
@@ -117,6 +119,8 @@ impl<'a> TransactionExtractor<'a> {
                 })
                 .transpose()
             },
+            #[cfg(zcash_unstable = "nu7")]
+            |i| i,
         )?;
 
         let tx = tx_data.freeze().expect("txid construction can't fail here");
@@ -147,6 +151,8 @@ impl Authorization for Unbound {
     type TransparentAuth = ::transparent::pczt::Unbound;
     type SaplingAuth = ::sapling::pczt::Unbound;
     type OrchardAuth = ::orchard::pczt::Unbound;
+    #[cfg(zcash_unstable = "nu7")]
+    type IssueAuth = ::orchard::issuance::Signed;
 }
 
 /// Errors that can occur while extracting a transaction from a PCZT.

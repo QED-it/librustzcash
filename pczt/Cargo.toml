@@ -63,6 +63,7 @@ shardtree.workspace = true
 zcash_primitives = { workspace = true, features = [
     "test-dependencies",
     "transparent-inputs",
+    "zsa-issuance",
 ] }
 zcash_proofs = { workspace = true, features = ["bundled-prover"] }
 zcash_protocol = { workspace = true, features = ["local-consensus"] }

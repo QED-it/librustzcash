@@ -11,8 +11,8 @@ use std::{
 };
 use zcash_address::unified::{self, Encoding};
 
-use sapling::{self, Node, note::ExtractedNoteCommitment};
-use zcash_note_encryption::{COMPACT_NOTE_SIZE, EphemeralKeyBytes};
+use sapling::{self, Node, note::ExtractedNoteCommitment, note_encryption::COMPACT_NOTE_SIZE};
+use zcash_note_encryption::EphemeralKeyBytes;
 use zcash_primitives::{
     block::{BlockHash, BlockHeader},
     merkle_tree::read_commitment_tree,
@@ -40,7 +40,13 @@ use crate::{
 use transparent::bundle::OutPoint;
 
 #[cfg(feature = "orchard")]
-use orchard::tree::MerkleHashOrchard;
+use {
+    orchard::{
+        note_encryption::{CompactNoteCiphertextBytes, OrchardDomain},
+        tree::MerkleHashOrchard,
+    },
+    zcash_note_encryption::{ShieldedOutput, note_bytes::NoteBytes},
+};
 
 #[rustfmt::skip]
 #[allow(unknown_lints)]
@@ -171,7 +177,7 @@ impl<Proof> From<&sapling::bundle::OutputDescription<Proof>>
         compact_formats::CompactSaplingOutput {
             cmu: out.cmu().to_bytes().to_vec(),
             ephemeral_key: out.ephemeral_key().as_ref().to_vec(),
-            ciphertext: out.enc_ciphertext()[..COMPACT_NOTE_SIZE].to_vec(),
+            ciphertext: out.enc_ciphertext().0[..COMPACT_NOTE_SIZE].to_vec(),
         }
     }
 }
@@ -220,9 +226,9 @@ impl TryFrom<&compact_formats::CompactOrchardAction> for orchard::note_encryptio
             value.nf()?,
             value.cmx()?,
             value.ephemeral_key()?,
-            value.ciphertext[..]
-                .try_into()
-                .map_err(CompactFormatError::InvalidLength)?,
+            // The variant is selected by length: a Vanilla or a ZSA compact ciphertext.
+            CompactNoteCiphertextBytes::from_slice(&value.ciphertext)
+                .ok_or(CompactFormatError::InvalidValue)?,
         ))
     }
 }
@@ -280,7 +286,10 @@ impl<SpendAuth> From<&orchard::Action<SpendAuth>> for compact_formats::CompactOr
             nullifier: action.nullifier().to_bytes().to_vec(),
             cmx: action.cmx().to_bytes().to_vec(),
             ephemeral_key: action.encrypted_note().epk_bytes.to_vec(),
-            ciphertext: action.encrypted_note().enc_ciphertext[..COMPACT_NOTE_SIZE].to_vec(),
+            // The compact prefix length follows the note version, so let the action report it.
+            ciphertext: ShieldedOutput::<OrchardDomain>::enc_ciphertext_compact(action)
+                .as_ref()
+                .to_vec(),
         }
     }
 }

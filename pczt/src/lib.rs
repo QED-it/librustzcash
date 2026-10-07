@@ -492,6 +492,16 @@ impl Pczt {
                     return Err(ExtractError::IronwoodNotSupported.into());
                 }
             }
+            // FIXME: v7 replaces the Ironwood slot with an Ironwood-ZSA one, which PCZT cannot
+            // build; the version parse above never yields V7, so this arm is defensive.
+            #[cfg(zcash_unstable = "nu7")]
+            TxVersion::V7 => {
+                return Err(ExtractError::UnsupportedTxVersion {
+                    version: global.tx_version,
+                    version_group_id: global.version_group_id,
+                }
+                .into());
+            }
             // The v6 transaction format does not exist prior to NU6.3 (the first
             // upgrade under which the Orchard protocol is at revision V3).
             TxVersion::V6 => {
@@ -525,6 +535,8 @@ impl Pczt {
         let orchard_bundle = extract_orchard(&orchard)?;
         let ironwood_bundle = extract_ironwood(&ironwood)?;
 
+        // FIXME: PCZT does not carry the Ironwood ZSA or issuance bundles yet; a v7 transaction
+        // extracted here would silently lose them.
         let tx_data = match version {
             TxVersion::V6 => TransactionData::from_parts_v6(
                 consensus_branch_id,
@@ -536,6 +548,8 @@ impl Pczt {
                 sapling_bundle,
                 orchard_bundle,
                 ironwood_bundle,
+                #[cfg(zcash_unstable = "nu7")]
+                None,
             ),
             _ => TransactionData::from_parts(
                 version,
@@ -548,6 +562,8 @@ impl Pczt {
                 None,
                 sapling_bundle,
                 orchard_bundle,
+                #[cfg(zcash_unstable = "nu7")]
+                None,
             ),
         };
 
@@ -600,6 +616,8 @@ impl Authorization for EffectsOnly {
     type TransparentAuth = ::transparent::bundle::EffectsOnly;
     type SaplingAuth = ::sapling::bundle::EffectsOnly;
     type OrchardAuth = ::orchard::bundle::EffectsOnly;
+    #[cfg(zcash_unstable = "nu7")]
+    type IssueAuth = ::orchard::issuance::EffectsOnly;
 }
 
 /// Helper to produce the correct sighash for a PCZT.

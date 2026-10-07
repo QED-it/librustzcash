@@ -3,7 +3,7 @@ use std::{collections::HashSet, rc::Rc};
 use incrementalmerkletree::Position;
 use orchard::{
     keys::Diversifier,
-    note::{Note, NoteVersion, Nullifier, RandomSeed, Rho},
+    note::{AssetBase, Note, NoteVersion, Nullifier, RandomSeed, Rho},
 };
 use rusqlite::{Connection, Row, named_params, types::Value};
 
@@ -123,6 +123,7 @@ pub(crate) fn to_received_note<P: consensus::Parameters>(
             let note = Option::from(Note::from_parts(
                 recipient,
                 orchard::value::NoteValue::from_raw(note_value),
+                AssetBase::zatoshi(),
                 rho,
                 rseed,
                 note_version,
@@ -358,6 +359,7 @@ pub(crate) fn note_version_code(version: NoteVersion) -> i64 {
     match version {
         NoteVersion::V2 => 2,
         NoteVersion::V3 => 3,
+        NoteVersion::ZSA => 4,
     }
 }
 
@@ -367,6 +369,7 @@ pub(crate) fn parse_note_version(code: i64) -> Option<NoteVersion> {
     match code {
         2 => Some(NoteVersion::V2),
         3 => Some(NoteVersion::V3),
+        4 => Some(NoteVersion::ZSA),
         _ => None,
     }
 }
@@ -954,7 +957,7 @@ pub(crate) mod tests {
         use orchard::{
             ValuePool,
             keys::{FullViewingKey, SpendingKey},
-            note::{Note, NoteVersion, RandomSeed, Rho},
+            note::{AssetBase, Note, NoteVersion, RandomSeed, Rho},
             value::NoteValue,
         };
         use rusqlite::named_params;
@@ -985,6 +988,7 @@ pub(crate) mod tests {
             Option::from(Note::from_parts(
                 recipient,
                 NoteValue::from_raw(value),
+                AssetBase::zatoshi(),
                 rho,
                 rseed,
                 version,
@@ -2107,11 +2111,20 @@ pub(crate) mod tests {
                     None,
                     external_recipient,
                     Zatoshis::const_from_u64(90_000),
+                    #[cfg(zcash_unstable = "nu7")]
+                    ::orchard::note::AssetBase::zatoshi(),
                     MemoBytes::empty(),
                 )
                 .unwrap();
             let tx = builder
-                .mock_build(&TransparentSigningSet::new(), &[], &[orchard_sak], OsRng)
+                .mock_build(
+                    &TransparentSigningSet::new(),
+                    &[],
+                    &[orchard_sak],
+                    #[cfg(zcash_unstable = "nu7")]
+                    |_| false,
+                    OsRng,
+                )
                 .unwrap()
                 .transaction()
                 .clone();
