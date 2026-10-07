@@ -510,6 +510,11 @@ pub struct ChainState {
     #[cfg(feature = "orchard")]
     final_orchard_tree:
         Frontier<orchard::tree::MerkleHashOrchard, { orchard::NOTE_COMMITMENT_TREE_DEPTH as u8 }>,
+    // The Ironwood note commitment tree is Orchard-shaped, but Ironwood is a distinct pool with
+    // its own tree, tracked separately from Orchard.
+    #[cfg(feature = "orchard")]
+    final_ironwood_tree:
+        Frontier<orchard::tree::MerkleHashOrchard, { orchard::NOTE_COMMITMENT_TREE_DEPTH as u8 }>,
 }
 
 impl ChainState {
@@ -521,6 +526,8 @@ impl ChainState {
             final_sapling_tree: Frontier::empty(),
             #[cfg(feature = "orchard")]
             final_orchard_tree: Frontier::empty(),
+            #[cfg(feature = "orchard")]
+            final_ironwood_tree: Frontier::empty(),
         }
     }
 
@@ -533,6 +540,10 @@ impl ChainState {
             orchard::tree::MerkleHashOrchard,
             { orchard::NOTE_COMMITMENT_TREE_DEPTH as u8 },
         >,
+        #[cfg(feature = "orchard")] final_ironwood_tree: Frontier<
+            orchard::tree::MerkleHashOrchard,
+            { orchard::NOTE_COMMITMENT_TREE_DEPTH as u8 },
+        >,
     ) -> Self {
         Self {
             block_height,
@@ -540,6 +551,8 @@ impl ChainState {
             final_sapling_tree,
             #[cfg(feature = "orchard")]
             final_orchard_tree,
+            #[cfg(feature = "orchard")]
+            final_ironwood_tree,
         }
     }
 
@@ -570,6 +583,16 @@ impl ChainState {
     {
         &self.final_orchard_tree
     }
+
+    /// Returns the frontier of the Ironwood note commitment tree as of the end of the block at
+    /// [`Self::block_height`].
+    #[cfg(feature = "orchard")]
+    pub fn final_ironwood_tree(
+        &self,
+    ) -> &Frontier<orchard::tree::MerkleHashOrchard, { orchard::NOTE_COMMITMENT_TREE_DEPTH as u8 }>
+    {
+        &self.final_ironwood_tree
+    }
 }
 
 /// Scans at most `limit` blocks from the provided block source in order to find transactions
@@ -577,6 +600,18 @@ impl ChainState {
 ///
 /// This function will return after scanning at most `limit` new blocks, to enable the caller to
 /// update their UI with scanning progress.
+///
+/// ## Errors
+///
+/// - [`Error::BlockSource`] if the requested blocks cannot be read from `block_source`.
+/// - [`Error::Scan`] if a scanned block violates chain-continuity rules or contains note
+///   commitments that cannot be reconciled with the wallet's note commitment tree(s).
+/// - [`Error::Wallet`] if a wallet-database operation fails. This covers reading the tracked
+///   viewing keys, block metadata, and nullifiers, as well as persisting the scanned blocks via
+///   [`WalletWrite::put_blocks`]. In particular, a failure to update the note commitment trees
+///   with the scanned data is reported here (for example, the `zcash_client_sqlite` backend
+///   surfaces such a failure as a `PutBlocksCommitmentTree` error identifying the affected
+///   shielded pool and block range).
 ///
 /// ## Panics
 ///
@@ -604,7 +639,7 @@ where
         .get_unified_full_viewing_keys()
         .map_err(Error::Wallet)?;
     let scanning_keys = ScanningKeys::from_account_ufvks(account_ufvks);
-    let mut runners = BatchRunners::<_, (), ()>::for_keys(100, &scanning_keys);
+    let mut runners = BatchRunners::<_, (), (), ()>::for_keys(100, &scanning_keys);
 
     block_source.with_blocks::<_, DbT::Error>(Some(from_height), Some(limit), |block| {
         runners.add_block(params, block).map_err(|e| e.into())
@@ -629,7 +664,7 @@ where
         Some(limit),
         |block: CompactBlock| {
             scan_summary.scanned_range.end = block.height() + 1;
-            let scanned_block = scan_block_with_runners::<_, _, _, (), ()>(
+            let scanned_block = scan_block_with_runners::<_, _, _, (), (), ()>(
                 params,
                 block,
                 &scanning_keys,
