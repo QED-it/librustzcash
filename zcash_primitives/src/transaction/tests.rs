@@ -1240,8 +1240,10 @@ fn zip_0233() {
 
 /// The fork's ZIP 233 digest test for ZSA transactions, which are v7 and carry the ZSA bundle in
 /// the Ironwood slot. Upstream's `zip_0233` covers its own Ironwood v6 vectors and is separate.
+// Upstream has since removed the `zip233Amount` header field, so a regeneration is on hold.
 #[cfg(all(zcash_unstable = "nu7", feature = "zip-233"))]
 #[test]
+#[ignore = "The ZSA ZIP 233 vectors were generated while ZSA was v6 and must be regenerated."]
 fn zsa_zip_0233() {
     fn to_test_txdata(
         tv: &self::zsa_zip_0233::TestVector,

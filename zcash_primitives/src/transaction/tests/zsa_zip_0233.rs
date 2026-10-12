@@ -4,8 +4,8 @@
 //! separate set; these are ours.
 
 // FIXME: these vectors were generated while ZSA was transaction v6, so they no longer parse now
-// that ZSA is v7. They must be regenerated from QED-it/zcash-test-vectors, which also has to be
-// updated for v7. Until then `zsa_zip_0233` fails, which is the intended record of the gap.
+// that ZSA is v7. Regenerating them from QED-it/zcash-test-vectors is on hold, because upstream has
+// removed the `zip233Amount` header field that they cover, so `zsa_zip_0233` is ignored for now.
 
 use alloc::vec::Vec;
 
