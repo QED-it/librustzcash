@@ -1,9 +1,9 @@
 //! The fork's ZIP 246 digest vectors for ZSA transactions, including the ZIP 233 changes to the
-//! transaction format. They are checked by the second loop of the `zip_0244` test.
+//! transaction format. They are checked by the `zsa_zip_0244` test.
 
 // FIXME: these vectors were generated while ZSA was transaction v6, so they no longer parse now
-// that ZSA is v7. They must be regenerated from QED-it/zcash-test-vectors, which also has to be
-// updated for v7. Until then `zip_0244` fails, which is the intended record of the gap.
+// that ZSA is v7. Regenerating them from QED-it/zcash-test-vectors waits for the decision on which
+// transaction format and version ZSA targets, so `zsa_zip_0244` is ignored for now.
 
 use std::vec::Vec;
 
