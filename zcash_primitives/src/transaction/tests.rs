@@ -27,6 +27,8 @@ use crate::transaction::{
 use crate::transaction::sighash_v6::v6_signature_hash;
 #[cfg(all(test, zcash_unstable = "nu7", feature = "zip-233"))]
 use crate::transaction::sighash_v6::v6_signature_hash;
+#[cfg(all(test, zcash_unstable = "nu7", feature = "zip-233"))]
+use crate::transaction::sighash_v7::v7_signature_hash;
 
 #[cfg(all(test, not(zcash_unstable = "nu7")))]
 use blake2b_simd::Params;
@@ -269,6 +271,7 @@ fn bundle_with_anchor(
         bundle.actions().clone(),
         *bundle.flags(),
         *bundle.value_balance(),
+        bundle.burn().clone(),
         anchor,
         bundle.authorization().clone(),
         bundle.bundle_version(),
@@ -442,6 +445,7 @@ fn disable_cross_address(
         bundle.actions().clone(),
         flags,
         *bundle.value_balance(),
+        bundle.burn().clone(),
         *bundle.anchor(),
         bundle.authorization().clone(),
         orchard::bundle::BundleVersion::orchard_v3(),
@@ -804,6 +808,11 @@ fn check_roundtrip(tx: Transaction) -> Result<(), TestCaseError> {
         tx.ironwood_bundle.as_ref().map(|v| *v.value_balance()),
         txo.ironwood_bundle.as_ref().map(|v| *v.value_balance())
     );
+
+    #[cfg(zcash_unstable = "nu7")]
+    if tx.issue_bundle.is_some() {
+        prop_assert_eq!(tx.issue_bundle.as_ref(), txo.issue_bundle.as_ref());
+    }
     #[cfg(all(zcash_unstable = "nu7", feature = "zip-233"))]
     if tx.version.has_zip233() {
         prop_assert_eq!(tx.zip233_amount, txo.zip233_amount);
@@ -867,7 +876,7 @@ proptest! {
     }
 }
 
-#[cfg(all(test, not(zcash_unstable = "nu7")))]
+#[cfg(test)]
 proptest! {
     #![proptest_config(ProptestConfig::with_cases(10))]
     #[test]
@@ -968,7 +977,16 @@ impl Authorization for TestUnauthorized {
     type TransparentAuth = TestTransparentAuth;
     type SaplingAuth = sapling::bundle::Authorized;
     type OrchardAuth = orchard::bundle::Authorized;
+
+    #[cfg(zcash_unstable = "nu7")]
+    type IssueAuth = orchard::issuance::Signed;
 }
+
+#[cfg(all(zcash_unstable = "nu7", feature = "zip-233"))]
+pub mod orchard_zsa_digests;
+
+#[cfg(all(zcash_unstable = "nu7", feature = "zip-233"))]
+pub mod zsa_zip_0233;
 
 #[test]
 fn zip_0244() {
@@ -1031,6 +1049,8 @@ fn zip_0244() {
             txdata.sprout_bundle().cloned(),
             txdata.sapling_bundle().cloned(),
             txdata.orchard_bundle().cloned(),
+            #[cfg(zcash_unstable = "nu7")]
+            txdata.issue_bundle().cloned(),
         );
         (tdata, txdata.digest(TxIdDigester))
     }
@@ -1121,6 +1141,87 @@ fn zip_0244() {
     }
 }
 
+/// The ZSA version of the `zip_0244` test.
+// TODO: drop the `ignore` once the ZSA transaction format is settled, and check the transparent
+// sighashes as `zip_0244` does once the vectors are regenerated.
+#[cfg(all(zcash_unstable = "nu7", feature = "zip-233"))]
+#[test]
+#[ignore = "The ZSA ZIP 244 vectors were generated while ZSA was v6 and must be regenerated."]
+fn zsa_zip_0244() {
+    fn to_test_txdata(
+        tv: &self::data::zip_0244::TestVector,
+    ) -> (TransactionData<TestUnauthorized>, TxDigests<Blake2bHash>) {
+        let tx = Transaction::read(&tv.tx[..], BranchId::Nu7).unwrap();
+
+        assert_eq!(tx.txid.as_ref(), &tv.txid);
+        assert_eq!(tx.auth_commitment().as_ref(), &tv.auth_digest);
+
+        let txdata = tx.deref();
+
+        let input_amounts = tv
+            .amounts
+            .iter()
+            .map(|amount| Zatoshis::from_nonnegative_i64(*amount).unwrap())
+            .collect();
+        let input_scriptpubkeys = tv
+            .script_pubkeys
+            .iter()
+            .cloned()
+            .map(script::Code)
+            .map(Script)
+            .collect();
+
+        let test_bundle = txdata
+            .transparent_bundle
+            .as_ref()
+            .map(|b| transparent::Bundle {
+                vin: b
+                    .vin
+                    .iter()
+                    .map(|vin| {
+                        TxIn::from_parts(
+                            vin.prevout().clone(),
+                            vin.script_sig().clone(),
+                            vin.sequence(),
+                        )
+                    })
+                    .collect(),
+                vout: b.vout.clone(),
+                authorization: TestTransparentAuth {
+                    input_amounts,
+                    input_scriptpubkeys,
+                },
+            });
+
+        // Built field by field rather than through `from_parts`, which drops the Ironwood slot
+        // where a v7 transaction keeps its ZSA bundle.
+        let tdata = TransactionData {
+            version: txdata.version(),
+            consensus_branch_id: txdata.consensus_branch_id(),
+            lock_time: txdata.lock_time(),
+            expiry_height: txdata.expiry_height(),
+            zip233_amount: txdata.zip233_amount,
+            transparent_bundle: test_bundle,
+            sprout_bundle: None,
+            sapling_bundle: txdata.sapling_bundle().cloned(),
+            orchard_bundle: txdata.orchard_bundle().cloned(),
+            ironwood_bundle: txdata.ironwood_bundle().cloned(),
+            issue_bundle: txdata.issue_bundle().cloned(),
+        };
+
+        (tdata, txdata.digest(TxIdDigester))
+    }
+
+    for tv in self::orchard_zsa_digests::make_test_vectors() {
+        let (txdata, txid_parts) = to_test_txdata(&tv);
+
+        assert_eq!(
+            v7_signature_hash(&txdata, &SignableInput::Shielded, &txid_parts).as_ref(),
+            tv.sighash_shielded
+        );
+    }
+}
+
 #[cfg(all(zcash_unstable = "nu7", feature = "zip-233"))]
 #[test]
 #[ignore = "The ZIP 233 test vectors were generated using the placeholder v6 version group ID \
@@ -1182,6 +1283,8 @@ fn zip_0233() {
             txdata.sprout_bundle().cloned(),
             txdata.sapling_bundle().cloned(),
             txdata.orchard_bundle().cloned(),
+            #[cfg(zcash_unstable = "nu7")]
+            txdata.issue_bundle().cloned(),
         );
 
         (tdata, txdata.digest(TxIdDigester))
@@ -1195,4 +1298,107 @@ fn zip_0233() {
             tv.sighash_shielded
         );
     }
+}
+
+/// The fork's ZIP 233 digest test for ZSA transactions, which are v7 and carry the ZSA bundle in
+/// the Ironwood slot. Upstream's `zip_0233` covers its own Ironwood v6 vectors and is separate.
+// Upstream has since removed the `zip233Amount` header field, so a regeneration is on hold.
+#[cfg(all(zcash_unstable = "nu7", feature = "zip-233"))]
+#[test]
+#[ignore = "The ZSA ZIP 233 vectors were generated while ZSA was v6 and must be regenerated."]
+fn zsa_zip_0233() {
+    fn to_test_txdata(
+        tv: &self::zsa_zip_0233::TestVector,
+    ) -> (TransactionData<TestUnauthorized>, TxDigests<Blake2bHash>) {
+        let tx = Transaction::read(&tv.tx[..], BranchId::Nu7).unwrap();
+
+        assert_eq!(tx.txid.as_ref(), &tv.txid);
+        assert_eq!(tx.auth_commitment().as_ref(), &tv.auth_digest);
+
+        let txdata = tx.deref();
+
+        let input_amounts = tv
+            .amounts
+            .iter()
+            .map(|amount| Zatoshis::from_nonnegative_i64(*amount).unwrap())
+            .collect();
+        let input_scriptpubkeys = tv
+            .script_pubkeys
+            .iter()
+            .map(|s| Script(script::Code(s.to_vec())))
+            .collect();
+
+        let test_bundle = txdata
+            .transparent_bundle
+            .as_ref()
+            .map(|b| transparent::Bundle {
+                // we have to do this map/clone to make the types line up, since the
+                // Authorization::ScriptSig type is bound to transparent::Authorized, and we need
+                // it to be bound to TestTransparentAuth.
+                vin: b
+                    .vin
+                    .iter()
+                    .map(|vin| {
+                        TxIn::from_parts(
+                            vin.prevout().clone(),
+                            vin.script_sig().clone(),
+                            vin.sequence(),
+                        )
+                    })
+                    .collect(),
+                vout: b.vout.clone(),
+                authorization: TestTransparentAuth {
+                    input_amounts,
+                    input_scriptpubkeys,
+                },
+            });
+
+        // Built field by field rather than through `from_parts`, which drops the Ironwood slot
+        // where a v7 transaction keeps its ZSA bundle.
+        let tdata = TransactionData {
+            version: txdata.version(),
+            consensus_branch_id: txdata.consensus_branch_id(),
+            lock_time: txdata.lock_time(),
+            expiry_height: txdata.expiry_height(),
+            zip233_amount: txdata.zip233_amount,
+            transparent_bundle: test_bundle,
+            sprout_bundle: None,
+            sapling_bundle: txdata.sapling_bundle().cloned(),
+            orchard_bundle: txdata.orchard_bundle().cloned(),
+            ironwood_bundle: txdata.ironwood_bundle().cloned(),
+            issue_bundle: txdata.issue_bundle().cloned(),
+        };
+
+        (tdata, txdata.digest(TxIdDigester))
+    }
+
+    for tv in self::zsa_zip_0233::make_test_vectors() {
+        let (txdata, txid_parts) = to_test_txdata(&tv);
+
+        assert_eq!(
+            v7_signature_hash(&txdata, &SignableInput::Shielded, &txid_parts).as_ref(),
+            tv.sighash_shielded
+        );
+    }
+}
+
+/// An absent Ironwood bundle's auth digest uses the ZSA domain in v7, as the txid digest and a
+/// present ZSA bundle do, and stays on the Ironwood v6 domain in v6.
+#[cfg(zcash_unstable = "nu7")]
+#[test]
+fn empty_ironwood_auth_digest_domain() {
+    use crate::transaction::{TransactionDigest, txid::BlockTxCommitmentDigester};
+    use ::orchard::{
+        ValuePool,
+        bundle::{TxVersion as OrchardTxVersion, commitments::hash_bundle_auth_empty},
+    };
+
+    assert_eq!(
+        BlockTxCommitmentDigester.digest_ironwood(TxVersion::V7, None),
+        hash_bundle_auth_empty(ValuePool::Ironwood, OrchardTxVersion::ZSA).unwrap()
+    );
+    assert_eq!(
+        BlockTxCommitmentDigester.digest_ironwood(TxVersion::V6, None),
+        hash_bundle_auth_empty(ValuePool::Ironwood, OrchardTxVersion::V6).unwrap()
+    );
 }

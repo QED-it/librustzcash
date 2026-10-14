@@ -1595,6 +1595,10 @@ pub(crate) fn select_spendable_transparent_outputs<P: consensus::Parameters>(
                     0,
                     0,
                     0,
+                    #[cfg(zcash_unstable = "nu7")]
+                    0,
+                    #[cfg(zcash_unstable = "nu7")]
+                    0,
                 )
                 .map_err(SqliteClientError::from)?;
             if accumulated_value.saturating_sub(u64::from(cumulative_fee)) >= target {
