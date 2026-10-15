@@ -5,7 +5,8 @@ updates:
   schedule:
     interval: daily
     timezone: Etc/UTC
-  open-pull-requests-limit: 10
+  # Zero stops Dependabot from opening pull requests; the fork takes CI updates from upstream.
+  open-pull-requests-limit: 0
   reviewers:
   - str4d
   assignees:
