@@ -5,7 +5,7 @@ updates:
   schedule:
     interval: daily
     timezone: Etc/UTC
-  # Zero stops Dependabot from opening pull requests; the fork takes CI updates from upstream.
+  # TODO: temporarily stops Dependabot from opening PRs. Return this to the upstream value when creating a PR to upstream.
   open-pull-requests-limit: 0
   reviewers:
   - str4d
