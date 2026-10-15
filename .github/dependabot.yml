@@ -5,7 +5,8 @@ updates:
   schedule:
     interval: daily
     timezone: Etc/UTC
-  open-pull-requests-limit: 10
+  # TODO: temporarily stops Dependabot from opening PRs. Return this to the upstream value when creating a PR to upstream.
+  open-pull-requests-limit: 0
   reviewers:
   - str4d
   assignees:
