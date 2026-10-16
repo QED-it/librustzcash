@@ -15,11 +15,19 @@ use {
     ::orchard::{
         Address, Note, ValuePool,
         bundle::BundleVersion,
-        note::{ExtractedNoteCommitment, RandomSeed, Rho},
+        note::{AssetBase, ExtractedNoteCommitment, Nullifier, RandomSeed, Rho},
+        note_encryption::{
+            COMPACT_NOTE_SIZE_VANILLA, COMPACT_NOTE_SIZE_ZSA, CompactAction,
+            CompactNoteCiphertextBytes, IronwoodDomain, NoteCiphertextBytes, OrchardDomain,
+            OrchardNoteEncryption,
+        },
         value::{NoteValue, ValueCommitTrapdoor, ValueCommitment},
     },
     ff::PrimeField,
-    zcash_note_encryption::{Domain, EphemeralKeyBytes, ShieldedOutput},
+    zcash_note_encryption::{
+        Domain, EphemeralKeyBytes, ShieldedOutput, note_bytes::NoteBytes,
+        try_output_recovery_with_pkd_esk,
+    },
     zcash_protocol::consensus::{BranchId, OrchardProtocolRevision},
 };
 
@@ -347,17 +355,6 @@ fn recover_memo_plaintext_from_ciphertext_and_action(
     action: &Action,
     note_version: NoteVersion,
 ) -> Option<MemoPlaintext> {
-    use ::orchard::{
-        Address, Note,
-        note::{AssetBase, ExtractedNoteCommitment, Nullifier, RandomSeed, Rho},
-        note_encryption::{
-            COMPACT_NOTE_SIZE_VANILLA, COMPACT_NOTE_SIZE_ZSA, CompactAction,
-            CompactNoteCiphertextBytes, IronwoodDomain, NoteCiphertextBytes, OrchardDomain,
-        },
-        value::NoteValue,
-    };
-    use zcash_note_encryption::{note_bytes::NoteBytes, try_output_recovery_with_pkd_esk};
-
     struct OutputRecoveryData {
         cmx: ExtractedNoteCommitment,
         ephemeral_key: [u8; 32],
@@ -2002,15 +1999,6 @@ impl Output {
         note_version: NoteVersion,
         spend_nullifier: [u8; 32],
     ) -> Result<(), ::orchard::pczt::ParseError> {
-        use ::orchard::{
-            Address, Note,
-            note::{AssetBase, RandomSeed, Rho},
-            note_encryption::{OrchardDomain, OrchardNoteEncryption},
-            pczt::ParseError,
-            value::NoteValue,
-        };
-        use zcash_note_encryption::Domain;
-
         let memo: [u8; 512] = match &self.enc_ciphertext {
             EncCiphertext::Encrypted(_) => return Ok(()),
             EncCiphertext::MemoPlaintext(memo) => memo.to_memo(),
@@ -2037,7 +2025,10 @@ impl Output {
         .ok_or(orchard::pczt::ParseError::InvalidRandomSeed)?;
         let note = Note::from_parts(
             recipient,
-            NoteValue::from_raw(self.value.ok_or(ParseError::InvalidEncCiphertext)?),
+            NoteValue::from_raw(
+                self.value
+                    .ok_or(orchard::pczt::ParseError::InvalidEncCiphertext)?,
+            ),
             AssetBase::zatoshi(),
             rho,
             rseed,
