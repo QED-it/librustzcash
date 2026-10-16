@@ -8,15 +8,24 @@ use std::collections::HashSet;
 
 use schemerz_rusqlite::RusqliteMigration;
 use uuid::Uuid;
-use zcash_protocol::consensus;
+use zcash_protocol::{ShieldedPool, consensus};
 
-use super::account_delete_cascade;
-use crate::wallet::init::WalletMigrationError;
-use crate::wallet::scanning::mark_stabilized_notes;
+use super::{account_delete_cascade, ironwood_shardtree};
+use crate::wallet::{init::WalletMigrationError, scanning::mark_stabilized_notes};
 
-pub(super) const MIGRATION_ID: Uuid = Uuid::from_u128(0x64925567_65ae_495e_b6cf_d5f56e99e422);
+/// Adds a `witness_stabilized` flag to received-note tables, indicating that the note's containing
+/// shard's block extent has been fully scanned and that the shard's end height has received at
+/// least `PRUNING_DEPTH` confirmations.
+pub const MIGRATION_ID: Uuid = Uuid::from_u128(0x64925567_65ae_495e_b6cf_d5f56e99e422);
 
-const DEPENDENCIES: &[Uuid] = &[account_delete_cascade::MIGRATION_ID];
+// This migration invokes `block_max_scanned`, which reads the `ironwood_commitment_tree_size`
+// column of the `blocks` table; that column is added by `ironwood_shardtree`, so this migration
+// must run after it. (The analogous Orchard column is covered because `orchard_shardtree` is
+// already a transitive dependency.)
+pub(super) const DEPENDENCIES: &[Uuid] = &[
+    account_delete_cascade::MIGRATION_ID,
+    ironwood_shardtree::MIGRATION_ID,
+];
 
 pub(super) struct Migration<P> {
     pub(super) params: P,
@@ -55,7 +64,18 @@ impl<P: consensus::Parameters> RusqliteMigration for Migration<P> {
         )?;
 
         // Backfill: Identify any notes which have stable witness data, and mark them as such.
-        mark_stabilized_notes(transaction, &self.params)?;
+        // Only the Sapling and Orchard received-note tables exist at this point in the migration
+        // DAG; the Ironwood table is introduced by a later migration (already stabilization-aware),
+        // so it is intentionally excluded from this backfill.
+        mark_stabilized_notes(
+            transaction,
+            &self.params,
+            &[
+                ShieldedPool::Sapling,
+                #[cfg(feature = "orchard")]
+                ShieldedPool::Orchard,
+            ],
+        )?;
 
         Ok(())
     }
@@ -70,14 +90,17 @@ mod tests {
     use rusqlite::named_params;
     use secrecy::Secret;
     use tempfile::NamedTempFile;
-    use zcash_client_backend::data_api::SAPLING_SHARD_HEIGHT;
+    use zcash_client_backend::data_api::{SAPLING_SHARD_HEIGHT, scanning::ScanPriority};
     use zcash_keys::keys::UnifiedSpendingKey;
-    use zcash_protocol::consensus::Network;
+    use zcash_protocol::{ShieldedPool, consensus::Network};
 
     use crate::{
         PRUNING_DEPTH, WalletDb,
         testing::db::{test_clock, test_rng},
-        wallet::init::{WalletMigrator, migrations::tests::test_migrate},
+        wallet::{
+            init::{WalletMigrator, migrations::tests::test_migrate},
+            scanning::{mark_stabilized_notes, priority_code},
+        },
     };
 
     use super::{DEPENDENCIES, MIGRATION_ID};
@@ -414,10 +437,6 @@ mod tests {
     /// the per-shard view-based check in `mark_stabilized_notes`.
     #[test]
     fn gap_in_scanned_coverage_prevents_stabilization() {
-        use zcash_client_backend::data_api::scanning::ScanPriority;
-
-        use crate::wallet::scanning::{mark_stabilized_notes, priority_code};
-
         let network = Network::TestNetwork;
         let data_file = NamedTempFile::new().unwrap();
         let mut db_data =
@@ -597,7 +616,16 @@ mod tests {
         // First call: the non-Scanned gap lies inside shard 0's extent, so the note must
         // NOT stabilize.
         let tx = db_data.conn.transaction().unwrap();
-        mark_stabilized_notes(&tx, &network).unwrap();
+        mark_stabilized_notes(
+            &tx,
+            &network,
+            &[
+                ShieldedPool::Sapling,
+                #[cfg(feature = "orchard")]
+                ShieldedPool::Orchard,
+            ],
+        )
+        .unwrap();
         tx.commit().unwrap();
 
         assert_eq!(
@@ -632,7 +660,16 @@ mod tests {
             .unwrap();
 
         let tx = db_data.conn.transaction().unwrap();
-        mark_stabilized_notes(&tx, &network).unwrap();
+        mark_stabilized_notes(
+            &tx,
+            &network,
+            &[
+                ShieldedPool::Sapling,
+                #[cfg(feature = "orchard")]
+                ShieldedPool::Orchard,
+            ],
+        )
+        .unwrap();
         tx.commit().unwrap();
 
         assert_eq!(

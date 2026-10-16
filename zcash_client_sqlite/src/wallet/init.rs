@@ -1,8 +1,6 @@
 //! Functions for initializing the various databases.
 
-use std::borrow::BorrowMut;
-use std::fmt;
-use std::rc::Rc;
+use std::{borrow::BorrowMut, fmt, rc::Rc};
 
 use rand_core::RngCore;
 use regex::Regex;
@@ -30,6 +28,7 @@ const MIGRATIONS_TABLE: &str = "schemer_migrations";
 
 /// Errors that can occur when applying migrations to the wallet database.
 #[derive(Debug)]
+#[non_exhaustive]
 pub enum WalletMigrationError {
     /// A feature required by the wallet database is not supported by the version of
     /// SQLite that the migration is running against.
@@ -199,11 +198,14 @@ fn sqlite_client_error_to_wallet_migration_error(e: SqliteClientError) -> Wallet
         SqliteClientError::TableNotEmpty => unreachable!("wallet already initialized"),
         SqliteClientError::BlockConflict(_)
         | SqliteClientError::NonSequentialBlocks
+        | SqliteClientError::PutBlocksCommitmentTree { .. }
+        | SqliteClientError::TruncateCommitmentTree { .. }
         | SqliteClientError::RequestedRewindInvalid { .. }
         | SqliteClientError::KeyDerivationError(_)
         | SqliteClientError::Zip32AccountIndexOutOfRange
         | SqliteClientError::AccountCollision(_)
-        | SqliteClientError::CacheMiss(_) => {
+        | SqliteClientError::CacheMiss(_)
+        | SqliteClientError::BackendError(_) => {
             unreachable!("we only call WalletRead methods; mutations can't occur")
         }
         #[cfg(feature = "transparent-inputs")]
@@ -254,6 +256,10 @@ fn sqlite_client_error_to_wallet_migration_error(e: SqliteClientError) -> Wallet
         SqliteClientError::HistoricalFrontierInvalid(_)
         | SqliteClientError::HistoricalWitnessUnavailable { .. } => {
             unreachable!("we do not generate historical witnesses in migrations")
+        }
+        #[cfg(feature = "transparent-inputs")]
+        SqliteClientError::FeeRuleError(_) => {
+            unreachable!("we don't use fee rules in migrations")
         }
     }
 }
@@ -494,7 +500,16 @@ impl WalletMigrator {
     /// In order to enable anchoring your external migrations correctly with respect to
     /// this library's internal migrations, we provide constants in the [`migrations`]
     /// module (for each release that adds a migration) which you can include within your
-    /// [`schemerz::Migration::dependencies`] set.
+    /// [`schemerz::Migration::dependencies`] set. Prefer these release constants: each
+    /// names a state of the migration graph that a published release exposed, so it is
+    /// unaffected by the migrations that later releases add.
+    ///
+    /// When no released state is precise enough — most commonly when your migration
+    /// depends on schema that has been added since the most recent release — the
+    /// `migrations::ids` module, behind the `unstable` feature, provides the identifier
+    /// of each individual internal migration. Those identifiers are for developing
+    /// against unreleased schema; move the anchor to the release constant that covers
+    /// it once that release exists.
     ///
     /// Each migration runs inside a database transaction, which has the following
     /// implications:
@@ -635,20 +650,18 @@ fn init_wallet_db_internal<
     // but unfortunately `schemer` does not currently expose its DAG of migrations. As a
     // consequence, the caller has to choose whether or not this check should be performed
     // based upon which migrations they're asking to apply.
-    if verify_seed_relevance {
-        if let Some(seed) = seed {
-            match wdb
-                .seed_relevance_to_derived_accounts(&seed)
-                .map_err(sqlite_client_error_to_wallet_migration_error)?
-            {
-                SeedRelevance::Relevant { .. } => (),
-                // Every seed is relevant to a wallet with no accounts; this is most likely a
-                // new wallet database being initialized for the first time.
-                SeedRelevance::NoAccounts => (),
-                // No seed is relevant to a wallet that only has imported accounts.
-                SeedRelevance::NotRelevant | SeedRelevance::NoDerivedAccounts => {
-                    return Err(WalletMigrationError::SeedNotRelevant.into());
-                }
+    if verify_seed_relevance && let Some(seed) = seed {
+        match wdb
+            .seed_relevance_to_derived_accounts(&seed)
+            .map_err(sqlite_client_error_to_wallet_migration_error)?
+        {
+            SeedRelevance::Relevant { .. } => (),
+            // Every seed is relevant to a wallet with no accounts; this is most likely a
+            // new wallet database being initialized for the first time.
+            SeedRelevance::NoAccounts => (),
+            // No seed is relevant to a wallet that only has imported accounts.
+            SeedRelevance::NotRelevant | SeedRelevance::NoDerivedAccounts => {
+                return Err(WalletMigrationError::SeedNotRelevant.into());
             }
         }
     }
@@ -749,10 +762,12 @@ mod tests {
         super::WalletMigrationError,
         crate::wallet::{self, PoolType, pool_code},
         zcash_address::test_vectors,
-        zcash_client_backend::data_api::WalletWrite,
+        zcash_client_backend::data_api::{AccountBirthday, AccountSource, WalletRead, WalletWrite},
+        zcash_primitives::block::BlockHash,
         zip32::DiversifierIndex,
     };
 
+    use regex::Regex;
     #[cfg(all(zcash_unstable = "nu7", feature = "zip-233"))]
     use zcash_protocol::value::Zatoshis;
 
@@ -765,41 +780,63 @@ mod tests {
         Ok(result)
     }
 
+    /// A schema statement's text with each parenthesis and comma surrounded by whitespace and every
+    /// run of whitespace (including newlines) collapsed to a single space, so that two statements
+    /// are compared for what they declare rather than how they were laid out.
+    ///
+    /// The comma is punctuation for the same reason the parentheses are, and it is load-bearing
+    /// here: SQLite's `ALTER TABLE ... ADD COLUMN` splices the new definition into the stored text
+    /// just before the closing parenthesis, so a repaired schema separates its last two columns
+    /// with `\n        , ` where the `CREATE TABLE` that states the same shape writes `,\n`.
+    fn normalize_sql(s: &str) -> String {
+        let re = Regex::new(r"\s+").unwrap();
+        let re_punct = Regex::new(r"([(),])").unwrap();
+        re.replace_all(&re_punct.replace_all(s, " $1 "), " ")
+            .trim()
+            .to_string()
+    }
+
     #[test]
     fn verify_schema() {
         let st = TestBuilder::new()
             .with_data_store_factory(TestDbFactory::default())
             .build();
 
-        use regex::Regex;
-        let re = Regex::new(r"\s+").unwrap();
-        let re_paren = Regex::new(r"([\(\)])").unwrap();
-
-        // Surround each opening or closing parenthesis character with whitespace, and then
-        // replace each occurrence of any amount of whitespace (including newlines) with a single
-        // space.
-        let normalize = |s: &str| -> String {
-            re.replace_all(&re_paren.replace_all(s, " $1 "), " ")
-                .trim()
-                .to_string()
-        };
+        let normalize = normalize_sql;
 
         let expected_tables = vec![
             db::TABLE_ACCOUNTS,
             db::TABLE_ADDRESSES,
             db::TABLE_BLOCKS,
+            db::TABLE_IRONWOOD_RECEIVED_NOTE_SPENDS,
+            db::TABLE_IRONWOOD_RECEIVED_NOTES,
+            db::TABLE_IRONWOOD_TREE_CAP,
+            db::TABLE_IRONWOOD_TREE_CHECKPOINT_MARKS_REMOVED,
+            db::TABLE_IRONWOOD_TREE_CHECKPOINTS,
+            db::TABLE_IRONWOOD_TREE_RETAINED_CHECKPOINTS,
+            db::TABLE_IRONWOOD_TREE_SHARDS,
             db::TABLE_NULLIFIER_MAP,
+            db::TABLE_ORCHARD_IRONWOOD_MIGRATION_CROSSING_VALUES,
+            db::TABLE_ORCHARD_IRONWOOD_MIGRATION_PREP_DIRECT_FUNDING,
+            db::TABLE_ORCHARD_IRONWOOD_MIGRATION_PREP_INPUTS,
+            db::TABLE_ORCHARD_IRONWOOD_MIGRATION_PREP_OUTPUTS,
+            db::TABLE_ORCHARD_IRONWOOD_MIGRATION_SPEND_NULLIFIERS,
+            db::TABLE_ORCHARD_IRONWOOD_MIGRATION_TRANSACTION_DEPS,
+            db::TABLE_ORCHARD_IRONWOOD_MIGRATION_TRANSACTIONS,
+            db::TABLE_ORCHARD_IRONWOOD_MIGRATIONS,
             db::TABLE_ORCHARD_RECEIVED_NOTE_SPENDS,
             db::TABLE_ORCHARD_RECEIVED_NOTES,
             db::TABLE_ORCHARD_TREE_CAP,
             db::TABLE_ORCHARD_TREE_CHECKPOINT_MARKS_REMOVED,
             db::TABLE_ORCHARD_TREE_CHECKPOINTS,
+            db::TABLE_ORCHARD_TREE_RETAINED_CHECKPOINTS,
             db::TABLE_ORCHARD_TREE_SHARDS,
             db::TABLE_SAPLING_RECEIVED_NOTE_SPENDS,
             db::TABLE_SAPLING_RECEIVED_NOTES,
             db::TABLE_SAPLING_TREE_CAP,
             db::TABLE_SAPLING_TREE_CHECKPOINT_MARKS_REMOVED,
             db::TABLE_SAPLING_TREE_CHECKPOINTS,
+            db::TABLE_SAPLING_TREE_RETAINED_CHECKPOINTS,
             db::TABLE_SAPLING_TREE_SHARDS,
             db::TABLE_SCAN_QUEUE,
             db::TABLE_SCHEMERZ_MIGRATIONS,
@@ -830,10 +867,19 @@ mod tests {
             db::INDEX_ACCOUNTS_UUID,
             db::INDEX_HD_ACCOUNT,
             db::INDEX_ADDRESSES_ACCOUNTS,
+            db::INDEX_ADDRESSES_CACHED_TRANSPARENT_RECEIVER_ADDRESS,
             db::INDEX_ADDRESSES_INDICES,
             db::INDEX_ADDRESSES_PUBKEYS,
             db::INDEX_ADDRESSES_T_INDICES,
+            db::INDEX_IRONWOOD_RNS_NOTE,
+            db::INDEX_IRONWOOD_RNS_TX,
+            db::INDEX_IRONWOOD_RECEIVED_NOTES_ACCOUNT,
+            db::INDEX_IRONWOOD_RECEIVED_NOTES_ADDRESS,
+            db::INDEX_IRONWOOD_RECEIVED_NOTES_TX,
+            db::INDEX_IRONWOOD_RECEIVED_NOTES_WITNESS_STABILIZED,
             db::INDEX_NF_MAP_LOCATOR_IDX,
+            db::INDEX_ORCHARD_IRONWOOD_MIGRATION_TX_DUE,
+            db::INDEX_ORCHARD_IRONWOOD_MIGRATIONS_ACCOUNT,
             db::INDEX_ORCHARD_RNS_NOTE,
             db::INDEX_ORCHARD_RNS_TX,
             db::INDEX_ORCHARD_RECEIVED_NOTES_ACCOUNT,
@@ -854,6 +900,7 @@ mod tests {
             db::INDEX_TRANSPARENT_RECEIVED_OUTPUTS_ACCOUNT,
             db::INDEX_TRANSPARENT_RECEIVED_OUTPUTS_ADDRESS,
             db::INDEX_TRANSPARENT_RECEIVED_OUTPUTS_TX,
+            db::INDEX_TRANSPARENT_RECEIVED_OUTPUTS_VALUE_ZAT,
             db::INDEX_TRANSPARENT_SPEND_MAP_TX,
             db::INDEX_TRANSPARENT_SPEND_SEARCH_TX,
             db::INDEX_TX_RETIREVAL_QUEUE_DEPENDENT_TX,
@@ -878,6 +925,10 @@ mod tests {
         let expected_views = vec![
             db::VIEW_ADDRESS_FIRST_USE.to_owned(),
             db::VIEW_ADDRESS_USES.to_owned(),
+            db::view_ironwood_shard_scan_ranges(st.network()),
+            db::view_ironwood_shard_unscanned_ranges(),
+            db::VIEW_IRONWOOD_SHARDS_SCAN_STATE.to_owned(),
+            db::view_migration_transactions(),
             db::view_orchard_shard_scan_ranges(st.network()),
             db::view_orchard_shard_unscanned_ranges(),
             db::VIEW_ORCHARD_SHARDS_SCAN_STATE.to_owned(),
@@ -887,6 +938,7 @@ mod tests {
             db::view_sapling_shard_unscanned_ranges(),
             db::VIEW_SAPLING_SHARDS_SCAN_STATE.to_owned(),
             db::VIEW_TRANSACTIONS.to_owned(),
+            db::VIEW_TRANSACTIONS_WITH_PENDING_MIGRATIONS.to_owned(),
             db::VIEW_TX_OUTPUTS.to_owned(),
         ];
 
@@ -902,6 +954,76 @@ mod tests {
             let actual: String = row.get(0).unwrap();
             assert_eq!(normalize(&actual), normalize(&expected_views[expected_idx]));
             expected_idx += 1;
+        }
+    }
+
+    /// The pool-migration store's canonical DDL and the schema the migrations actually leave behind
+    /// are the same schema.
+    ///
+    /// They are written twice on purpose: `orchard_ironwood_migration_tables` is published, so it
+    /// creates its tables from a frozen copy of the DDL it shipped with — down to naming the
+    /// transfer ordinal `tx_id`, which `orchard_ironwood_migration_unsatisfiability` then renames —
+    /// while the store's DDL states the shape those migrations converge on, and is what the
+    /// fixtures that build a store without running any migration create. `verify_schema` above pins
+    /// the constants compared here to the migration path, so this equates the two descriptions:
+    /// were the canonical DDL to drift, a store built by a fixture would answer questions about a
+    /// schema no wallet has.
+    #[test]
+    fn canonical_pool_migration_ddl_matches_the_migration_path() {
+        let conn = Connection::open_in_memory().unwrap();
+        crate::pool_migration::orchard_ironwood::init_migration_tables(&conn).unwrap();
+
+        let expected = [
+            (
+                "orchard_ironwood_migrations",
+                db::TABLE_ORCHARD_IRONWOOD_MIGRATIONS,
+            ),
+            (
+                "orchard_ironwood_migration_crossing_values",
+                db::TABLE_ORCHARD_IRONWOOD_MIGRATION_CROSSING_VALUES,
+            ),
+            (
+                "orchard_ironwood_migration_prep_inputs",
+                db::TABLE_ORCHARD_IRONWOOD_MIGRATION_PREP_INPUTS,
+            ),
+            (
+                "orchard_ironwood_migration_prep_outputs",
+                db::TABLE_ORCHARD_IRONWOOD_MIGRATION_PREP_OUTPUTS,
+            ),
+            (
+                "orchard_ironwood_migration_prep_direct_funding",
+                db::TABLE_ORCHARD_IRONWOOD_MIGRATION_PREP_DIRECT_FUNDING,
+            ),
+            (
+                "orchard_ironwood_migration_transactions",
+                db::TABLE_ORCHARD_IRONWOOD_MIGRATION_TRANSACTIONS,
+            ),
+            (
+                "orchard_ironwood_migration_transaction_deps",
+                db::TABLE_ORCHARD_IRONWOOD_MIGRATION_TRANSACTION_DEPS,
+            ),
+            (
+                "orchard_ironwood_migration_spend_nullifiers",
+                db::TABLE_ORCHARD_IRONWOOD_MIGRATION_SPEND_NULLIFIERS,
+            ),
+            (
+                "idx_orchard_ironwood_migration_tx_due",
+                db::INDEX_ORCHARD_IRONWOOD_MIGRATION_TX_DUE,
+            ),
+            (
+                "idx_orchard_ironwood_migrations_account",
+                db::INDEX_ORCHARD_IRONWOOD_MIGRATIONS_ACCOUNT,
+            ),
+        ];
+
+        let mut stmt = conn
+            .prepare("SELECT sql FROM sqlite_master WHERE name = ? AND sql IS NOT NULL")
+            .unwrap();
+        for (name, expected) in expected {
+            let actual: String = stmt
+                .query_row([name], |row| row.get(0))
+                .unwrap_or_else(|e| panic!("the canonical DDL creates {name}: {e}"));
+            assert_eq!(normalize_sql(&actual), normalize_sql(expected));
         }
     }
 
@@ -1416,9 +1538,6 @@ mod tests {
     #[test]
     #[cfg(feature = "transparent-inputs")]
     fn account_produces_expected_ua_sequence() {
-        use zcash_client_backend::data_api::{AccountBirthday, AccountSource, WalletRead};
-        use zcash_primitives::block::BlockHash;
-
         let network = Network::MainNetwork;
         let data_file = NamedTempFile::new().unwrap();
         let mut db_data =

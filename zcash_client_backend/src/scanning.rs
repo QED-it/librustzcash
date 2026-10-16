@@ -1,9 +1,16 @@
 //! Tools for scanning a compact representation of the Zcash block chain.
 
-use std::collections::{HashMap, HashSet};
-use std::convert::TryFrom;
-use std::fmt::{self, Debug};
-use std::hash::Hash;
+// The `ScanError` accessors below match on its variants bare.
+use ScanError::*;
+
+use core::{
+    convert::TryFrom,
+    fmt::{self, Debug},
+};
+use std::{
+    collections::{HashMap, HashSet},
+    hash::Hash,
+};
 
 use incrementalmerkletree::{Marking, Position, Retention};
 use sapling::{SaplingIvk, note_encryption::SaplingDomain};
@@ -13,7 +20,7 @@ use zcash_keys::keys::UnifiedFullViewingKey;
 use zcash_note_encryption::{BatchDomain, Domain, ShieldedOutput};
 use zcash_primitives::transaction::TxId;
 use zcash_protocol::{
-    ShieldedProtocol,
+    ShieldedPool,
     consensus::{self, BlockHeight},
 };
 use zip32::Scope;
@@ -26,9 +33,10 @@ use crate::{
 };
 
 #[cfg(feature = "orchard")]
-use orchard::{flavor::OrchardVanilla, primitives::OrchardDomain};
+use orchard::note_encryption::OrchardDomain;
 
 pub(crate) mod compact;
+pub mod full;
 
 /// A key that can be used to perform trial decryption and nullifier
 /// computation for a [`CompactSaplingOutput`] or [`CompactOrchardAction`].
@@ -185,7 +193,52 @@ impl<AccountId> ScanningKeyOps<SaplingDomain, AccountId, sapling::Nullifier>
 }
 
 #[cfg(feature = "orchard")]
-impl<AccountId> ScanningKeyOps<OrchardDomain<OrchardVanilla>, AccountId, orchard::note::Nullifier>
+impl<AccountId> ScanningKeyOps<OrchardDomain, AccountId, orchard::note::Nullifier>
+    for ScanningKey<orchard::keys::IncomingViewingKey, orchard::keys::FullViewingKey, AccountId>
+{
+    fn prepare(&self) -> orchard::keys::PreparedIncomingViewingKey {
+        orchard::keys::PreparedIncomingViewingKey::new(&self.ivk)
+    }
+
+    fn nf(
+        &self,
+        note: &orchard::note::Note,
+        _position: Position,
+    ) -> Option<orchard::note::Nullifier> {
+        self.nk.as_ref().map(|key| note.nullifier(key))
+    }
+
+    fn account_id(&self) -> &AccountId {
+        &self.account_id
+    }
+
+    fn key_scope(&self) -> Option<Scope> {
+        self.key_scope
+    }
+}
+
+/// The note-encryption domain used to trial-decrypt Ironwood outputs.
+///
+/// Ironwood ([ZIP 2005], NU6.3) is a distinct shielded pool. Its notes are Orchard-shaped and use
+/// the Orchard commitment and nullifier types, and are decrypted with the same Orchard viewing
+/// keys, but they carry version 3 note plaintexts and so require the Ironwood note-encryption
+/// domain, which is distinct from [`OrchardDomain`] (that domain accepts only version 2
+/// plaintexts). This is why Ironwood is a separate pool rather than a variant of Orchard.
+///
+/// [ZIP 2005]: https://zips.z.cash/zip-2005
+#[cfg(feature = "orchard")]
+pub(crate) type IronwoodDomain = orchard::note_encryption::IronwoodDomain;
+
+/// The nullifier type for Ironwood notes. This is the Orchard nullifier type, which does not
+/// depend on the note plaintext version. See [`IronwoodDomain`].
+#[cfg(feature = "orchard")]
+pub(crate) type IronwoodNullifier = orchard::note::Nullifier;
+
+/// An Orchard viewing key trial-decrypts Ironwood outputs under the Ironwood note-encryption
+/// domain. The key material is the same as for Orchard; only the domain (and thus the accepted
+/// note plaintext version) differs.
+#[cfg(feature = "orchard")]
+impl<AccountId> ScanningKeyOps<IronwoodDomain, AccountId, orchard::note::Nullifier>
     for ScanningKey<orchard::keys::IncomingViewingKey, orchard::keys::FullViewingKey, AccountId>
 {
     fn prepare(&self) -> orchard::keys::PreparedIncomingViewingKey {
@@ -218,11 +271,12 @@ pub struct ScanningKeys<AccountId, IvkTag> {
     #[cfg(feature = "orchard")]
     orchard: HashMap<
         IvkTag,
-        Box<
-            dyn ScanningKeyOps<OrchardDomain<OrchardVanilla>, AccountId, orchard::note::Nullifier>
-                + Send
-                + Sync,
-        >,
+        Box<dyn ScanningKeyOps<OrchardDomain, AccountId, orchard::note::Nullifier> + Send + Sync>,
+    >,
+    #[cfg(feature = "orchard")]
+    ironwood: HashMap<
+        IvkTag,
+        Box<dyn ScanningKeyOps<IronwoodDomain, AccountId, IronwoodNullifier> + Send + Sync>,
     >,
 }
 
@@ -236,19 +290,22 @@ impl<AccountId, IvkTag> ScanningKeys<AccountId, IvkTag> {
         #[cfg(feature = "orchard")] orchard: HashMap<
             IvkTag,
             Box<
-                dyn ScanningKeyOps<
-                        OrchardDomain<OrchardVanilla>,
-                        AccountId,
-                        orchard::note::Nullifier,
-                    > + Send
+                dyn ScanningKeyOps<OrchardDomain, AccountId, orchard::note::Nullifier>
+                    + Send
                     + Sync,
             >,
+        >,
+        #[cfg(feature = "orchard")] ironwood: HashMap<
+            IvkTag,
+            Box<dyn ScanningKeyOps<IronwoodDomain, AccountId, IronwoodNullifier> + Send + Sync>,
         >,
     ) -> Self {
         Self {
             sapling,
             #[cfg(feature = "orchard")]
             orchard,
+            #[cfg(feature = "orchard")]
+            ironwood,
         }
     }
 
@@ -258,6 +315,8 @@ impl<AccountId, IvkTag> ScanningKeys<AccountId, IvkTag> {
             sapling: HashMap::new(),
             #[cfg(feature = "orchard")]
             orchard: HashMap::new(),
+            #[cfg(feature = "orchard")]
+            ironwood: HashMap::new(),
         }
     }
 
@@ -277,13 +336,24 @@ impl<AccountId, IvkTag> ScanningKeys<AccountId, IvkTag> {
         &self,
     ) -> &HashMap<
         IvkTag,
-        Box<
-            dyn ScanningKeyOps<OrchardDomain<OrchardVanilla>, AccountId, orchard::note::Nullifier>
-                + Send
-                + Sync,
-        >,
+        Box<dyn ScanningKeyOps<OrchardDomain, AccountId, orchard::note::Nullifier> + Send + Sync>,
     > {
         &self.orchard
+    }
+
+    /// Returns the Ironwood keys to be used for incoming note detection.
+    ///
+    /// Ironwood outputs are trial-decrypted with the account's Orchard viewing keys (see
+    /// [`orchard::note_encryption::IronwoodDomain`]), but are tracked as a separate pool from
+    /// Orchard.
+    #[cfg(feature = "orchard")]
+    pub fn ironwood(
+        &self,
+    ) -> &HashMap<
+        IvkTag,
+        Box<dyn ScanningKeyOps<IronwoodDomain, AccountId, IronwoodNullifier> + Send + Sync>,
+    > {
+        &self.ironwood
     }
 }
 
@@ -305,13 +375,15 @@ impl<AccountId: Copy + Eq + Hash + Send + Sync + 'static>
         let mut orchard: HashMap<
             (AccountId, Scope),
             Box<
-                dyn ScanningKeyOps<
-                        OrchardDomain<OrchardVanilla>,
-                        AccountId,
-                        orchard::note::Nullifier,
-                    > + Send
+                dyn ScanningKeyOps<OrchardDomain, AccountId, orchard::note::Nullifier>
+                    + Send
                     + Sync,
             >,
+        > = HashMap::new();
+        #[cfg(feature = "orchard")]
+        let mut ironwood: HashMap<
+            (AccountId, Scope),
+            Box<dyn ScanningKeyOps<IronwoodDomain, AccountId, IronwoodNullifier> + Send + Sync>,
         > = HashMap::new();
 
         for (account_id, ufvk) in ufvks {
@@ -342,6 +414,20 @@ impl<AccountId: Copy + Eq + Hash + Send + Sync + 'static>
                         }),
                     );
                 }
+
+                // Ironwood outputs are decrypted with the same Orchard viewing keys, but are
+                // tracked as a separate pool.
+                for scope in [Scope::External, Scope::Internal] {
+                    ironwood.insert(
+                        (account_id, scope),
+                        Box::new(ScanningKey {
+                            ivk: fvk.to_ivk(scope),
+                            nk: Some(fvk.clone()),
+                            account_id,
+                            key_scope: Some(scope),
+                        }),
+                    );
+                }
             }
         }
 
@@ -349,6 +435,8 @@ impl<AccountId: Copy + Eq + Hash + Send + Sync + 'static>
             sapling,
             #[cfg(feature = "orchard")]
             orchard,
+            #[cfg(feature = "orchard")]
+            ironwood,
         }
     }
 }
@@ -358,6 +446,8 @@ pub struct Nullifiers<AccountId> {
     sapling: Vec<(AccountId, sapling::Nullifier)>,
     #[cfg(feature = "orchard")]
     orchard: Vec<(AccountId, orchard::note::Nullifier)>,
+    #[cfg(feature = "orchard")]
+    ironwood: Vec<(AccountId, IronwoodNullifier)>,
 }
 
 impl<AccountId> Nullifiers<AccountId> {
@@ -367,17 +457,21 @@ impl<AccountId> Nullifiers<AccountId> {
             sapling: vec![],
             #[cfg(feature = "orchard")]
             orchard: vec![],
+            #[cfg(feature = "orchard")]
+            ironwood: vec![],
         }
     }
 
     /// Fetches the nullifiers for the unspent notes being tracked by the given wallet.
-    pub(crate) fn unspent<DbT: WalletRead<AccountId = AccountId>>(
+    pub fn unspent<DbT: WalletRead<AccountId = AccountId>>(
         db_data: &DbT,
     ) -> Result<Self, DbT::Error> {
         Ok(Self::new(
             db_data.get_sapling_nullifiers(NullifierQuery::Unspent)?,
             #[cfg(feature = "orchard")]
             db_data.get_orchard_nullifiers(NullifierQuery::Unspent)?,
+            #[cfg(feature = "orchard")]
+            db_data.get_ironwood_nullifiers(NullifierQuery::Unspent)?,
         ))
     }
 
@@ -385,11 +479,14 @@ impl<AccountId> Nullifiers<AccountId> {
     pub(crate) fn new(
         sapling: Vec<(AccountId, sapling::Nullifier)>,
         #[cfg(feature = "orchard")] orchard: Vec<(AccountId, orchard::note::Nullifier)>,
+        #[cfg(feature = "orchard")] ironwood: Vec<(AccountId, IronwoodNullifier)>,
     ) -> Self {
         Self {
             sapling,
             #[cfg(feature = "orchard")]
             orchard,
+            #[cfg(feature = "orchard")]
+            ironwood,
         }
     }
 
@@ -402,6 +499,12 @@ impl<AccountId> Nullifiers<AccountId> {
     #[cfg(feature = "orchard")]
     pub fn orchard(&self) -> &[(AccountId, orchard::note::Nullifier)] {
         self.orchard.as_ref()
+    }
+
+    /// Returns the Ironwood nullifiers for notes that the wallet is tracking.
+    #[cfg(feature = "orchard")]
+    pub fn ironwood(&self) -> &[(AccountId, IronwoodNullifier)] {
+        self.ironwood.as_ref()
     }
 
     /// Discards Sapling nullifiers from the tracked nullifier set, retaining only those that
@@ -433,6 +536,19 @@ impl<AccountId> Nullifiers<AccountId> {
     ) {
         self.orchard.extend(nfs);
     }
+
+    #[cfg(feature = "orchard")]
+    pub(crate) fn retain_ironwood(&mut self, f: impl Fn(&(AccountId, IronwoodNullifier)) -> bool) {
+        self.ironwood.retain(f);
+    }
+
+    #[cfg(feature = "orchard")]
+    pub(crate) fn extend_ironwood(
+        &mut self,
+        nfs: impl IntoIterator<Item = (AccountId, IronwoodNullifier)>,
+    ) {
+        self.ironwood.extend(nfs);
+    }
 }
 
 impl<AccountId: Copy> Nullifiers<AccountId> {
@@ -446,7 +562,7 @@ impl<AccountId: Copy> Nullifiers<AccountId> {
     ///   the set, so we don't bother .
     /// - Notes received by the wallet in this block will have their nullifiers added to
     ///   the set, enabling spend detection in subsequent blocks.
-    pub(crate) fn update_with(&mut self, scanned_block: &ScannedBlock<AccountId>) {
+    pub fn update_with(&mut self, scanned_block: &ScannedBlock<AccountId>) {
         let sapling_spent_nf: Vec<&sapling::Nullifier> = scanned_block
             .transactions()
             .iter()
@@ -474,18 +590,32 @@ impl<AccountId: Copy> Nullifiers<AccountId> {
                     .iter()
                     .flat_map(|out| out.nf().into_iter().map(|nf| (*out.account_id(), *nf)))
             }));
+
+            let ironwood_spent_nf: Vec<&IronwoodNullifier> = scanned_block
+                .transactions()
+                .iter()
+                .flat_map(|tx| tx.ironwood_spends().iter().map(|spend| spend.nf()))
+                .collect();
+
+            self.retain_ironwood(|(_, nf)| !ironwood_spent_nf.contains(&nf));
+            self.extend_ironwood(scanned_block.transactions().iter().flat_map(|tx| {
+                tx.ironwood_outputs()
+                    .iter()
+                    .flat_map(|out| out.nf().into_iter().map(|nf| (*out.account_id(), *nf)))
+            }));
         }
     }
 }
 
 /// Errors that may occur in chain scanning
 #[derive(Clone, Debug)]
+#[non_exhaustive]
 pub enum ScanError {
     /// The encoding of a compact Sapling output or compact Orchard action was invalid.
     EncodingInvalid {
         at_height: BlockHeight,
         txid: TxId,
-        pool_type: ShieldedProtocol,
+        pool_type: ShieldedPool,
         index: usize,
     },
 
@@ -503,7 +633,7 @@ pub enum ScanError {
     /// The note commitment tree size for the given protocol at the proposed new block is not equal
     /// to the size at the previous block plus the count of this block's outputs.
     TreeSizeMismatch {
-        protocol: ShieldedProtocol,
+        protocol: ShieldedPool,
         at_height: BlockHeight,
         given: u32,
         computed: u32,
@@ -513,7 +643,7 @@ pub enum ScanError {
     /// [`CompactBlock`] being scanned, making it impossible to construct the nullifier for a
     /// detected note.
     TreeSizeUnknown {
-        protocol: ShieldedProtocol,
+        protocol: ShieldedPool,
         at_height: BlockHeight,
     },
 
@@ -521,7 +651,14 @@ pub enum ScanError {
     /// that is invalidated by the data in the block itself. This may be caused by the presence
     /// of default values in the chain metadata.
     TreeSizeInvalid {
-        protocol: ShieldedProtocol,
+        protocol: ShieldedPool,
+        at_height: BlockHeight,
+    },
+
+    /// The size of the note commitment tree for the given protocol would exceed the
+    /// `u32` range as a result of applying the outputs in the block being scanned.
+    TreeSizeOverflow {
+        protocol: ShieldedPool,
         at_height: BlockHeight,
     },
 }
@@ -529,7 +666,6 @@ pub enum ScanError {
 impl ScanError {
     /// Returns whether this error is the result of a failed continuity check
     pub fn is_continuity_error(&self) -> bool {
-        use ScanError::*;
         match self {
             EncodingInvalid { .. } => false,
             PrevHashMismatch { .. } => true,
@@ -537,12 +673,12 @@ impl ScanError {
             TreeSizeMismatch { .. } => true,
             TreeSizeUnknown { .. } => false,
             TreeSizeInvalid { .. } => false,
+            TreeSizeOverflow { .. } => false,
         }
     }
 
     /// Returns the block height at which the scan error occurred
     pub fn at_height(&self) -> BlockHeight {
-        use ScanError::*;
         match self {
             EncodingInvalid { at_height, .. } => *at_height,
             PrevHashMismatch { at_height } => *at_height,
@@ -550,13 +686,13 @@ impl ScanError {
             TreeSizeMismatch { at_height, .. } => *at_height,
             TreeSizeUnknown { at_height, .. } => *at_height,
             TreeSizeInvalid { at_height, .. } => *at_height,
+            TreeSizeOverflow { at_height, .. } => *at_height,
         }
     }
 }
 
 impl fmt::Display for ScanError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        use ScanError::*;
         match &self {
             EncodingInvalid {
                 txid,
@@ -609,9 +745,20 @@ impl fmt::Display for ScanError {
                     "Received invalid (potentially default) {protocol:?} note commitment tree size metadata at height {at_height}"
                 )
             }
+            TreeSizeOverflow {
+                protocol,
+                at_height,
+            } => {
+                write!(
+                    f,
+                    "The {protocol:?} note commitment tree size at height {at_height} would exceed the `u32` range."
+                )
+            }
         }
     }
 }
+
+impl core::error::Error for ScanError {}
 
 /// Scans a [`CompactBlock`] with a set of [`ScanningKeys`].
 ///
@@ -632,7 +779,7 @@ where
     AccountId: Default + Eq + Hash + ConditionallySelectable + Send + Sync + 'static,
     IvkTag: Copy + std::hash::Hash + Eq + Send + 'static,
 {
-    compact::scan_block_with_runners::<_, _, _, (), ()>(
+    compact::scan_block_with_runners::<_, _, _, (), (), ()>(
         params,
         block,
         scanning_keys,
@@ -644,6 +791,9 @@ where
 
 /// Tracks the scanner's position within the note commitment trees, in order to calculate
 /// received note positions.
+///
+/// Construction for compact blocks is handled in the [`compact`] submodule, and for full
+/// blocks in the [`full`] submodule; each provides its own `PositionTracker` constructor.
 struct PositionTracker {
     sapling_tree_position: u32,
     sapling_final_tree_size: u32,
@@ -651,6 +801,10 @@ struct PositionTracker {
     orchard_tree_position: u32,
     #[cfg(feature = "orchard")]
     orchard_final_tree_size: u32,
+    #[cfg(feature = "orchard")]
+    ironwood_tree_position: u32,
+    #[cfg(feature = "orchard")]
+    ironwood_final_tree_size: u32,
 }
 
 impl PositionTracker {
@@ -666,26 +820,36 @@ impl PositionTracker {
             self.orchard_tree_position + u32::try_from(output_idx).unwrap(),
         ))
     }
+
+    #[cfg(feature = "orchard")]
+    fn ironwood_note_position(&self, output_idx: usize) -> Position {
+        Position::from(u64::from(
+            self.ironwood_tree_position + u32::try_from(output_idx).unwrap(),
+        ))
+    }
 }
 
 /// Check for spent notes. The comparison against known-unspent nullifiers is done
 /// in constant time.
-fn find_spent<
-    AccountId: ConditionallySelectable + Default,
-    Spend,
-    Nf: ConstantTimeEq + Copy,
-    WS,
->(
-    spends: &[Spend],
+fn find_spent<'a, I, AccountId, Spend, Nf, WS>(
+    spends: I,
     nullifiers: &[(AccountId, Nf)],
     extract_nf: impl Fn(&Spend) -> Nf,
     construct_wallet_spend: impl Fn(usize, Nf, AccountId) -> WS,
-) -> (Vec<WS>, Vec<Nf>) {
+) -> (Vec<WS>, Vec<Nf>)
+where
+    I: IntoIterator<Item = &'a Spend>,
+    I::IntoIter: ExactSizeIterator,
+    Spend: 'a,
+    AccountId: ConditionallySelectable + Default,
+    Nf: ConstantTimeEq + Copy,
+{
+    let spends = spends.into_iter();
     // TODO: this is O(|nullifiers| * |notes|); does using constant-time operations here really
     // make sense?
     let mut found_spent = vec![];
     let mut unlinked_nullifiers = Vec::with_capacity(spends.len());
-    for (index, spend) in spends.iter().enumerate() {
+    for (index, spend) in spends.enumerate() {
         let spend_nf = extract_nf(spend);
 
         // Find whether any tracked nullifier that matches this spend, and produce a
@@ -722,6 +886,7 @@ fn find_received<
     SK: ScanningKeyOps<D, AccountId, Nf>,
     Output: ShieldedOutput<D>,
     NoteCommitment,
+    Note,
 >(
     block_height: BlockHeight,
     last_commitments_in_block: bool,
@@ -736,8 +901,9 @@ fn find_received<
         &[(D, Output)],
     ) -> Vec<Option<((D::Note, D::Recipient, M), usize)>>,
     extract_note_commitment: impl Fn(&Output) -> NoteCommitment,
+    enrich_note: impl Fn(D::Note) -> Note,
 ) -> (
-    Vec<WalletOutput<D::Note, Nf, AccountId>>,
+    Vec<WalletOutput<Note, Nf, AccountId>>,
     Vec<(NoteCommitment, Retention<BlockHeight>)>,
 ) {
     // Check for incoming notes while incrementing tree and witnesses
@@ -817,7 +983,7 @@ fn find_received<
             shielded_outputs.push(WalletOutput::from_parts(
                 output_idx,
                 output.ephemeral_key(),
-                note,
+                enrich_note(note),
                 is_change,
                 note_commitment_tree_position,
                 nf,
@@ -973,6 +1139,8 @@ pub mod testing {
                         + cb.vtx.iter().map(|tx| tx.outputs.len() as u32).sum::<u32>(),
                     orchard_commitment_tree_size: initial_orchard_tree_size
                         + cb.vtx.iter().map(|tx| tx.actions.len() as u32).sum::<u32>(),
+                    // The test framework does not generate Ironwood notes.
+                    ironwood_commitment_tree_size: 0,
                 }
             });
 
@@ -982,8 +1150,7 @@ pub mod testing {
 
 #[cfg(test)]
 mod tests {
-    use std::sync::Arc;
-    use std::thread::spawn;
+    use std::{sync::Arc, thread::spawn};
 
     use super::ScanningKeys;
 

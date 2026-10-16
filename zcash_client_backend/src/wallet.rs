@@ -14,7 +14,7 @@ use zcash_keys::{address::Receiver, keys::OutgoingViewingKey};
 use zcash_note_encryption::EphemeralKeyBytes;
 use zcash_primitives::transaction::{TxId, fees::transparent as transparent_fees};
 use zcash_protocol::{
-    PoolType, ShieldedProtocol,
+    PoolType, ShieldedPool,
     consensus::{BlockHeight, TxIndex},
     value::{BalanceError, Zatoshis},
 };
@@ -34,13 +34,13 @@ use {::transparent::keys::NonHardenedChildIndex, std::time::SystemTime};
 #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct NoteId {
     txid: TxId,
-    protocol: ShieldedProtocol,
+    protocol: ShieldedPool,
     output_index: u16,
 }
 
 impl NoteId {
     /// Constructs a new `NoteId` from its parts.
-    pub fn new(txid: TxId, protocol: ShieldedProtocol, output_index: u16) -> Self {
+    pub fn new(txid: TxId, protocol: ShieldedPool, output_index: u16) -> Self {
         Self {
             txid,
             protocol,
@@ -54,7 +54,7 @@ impl NoteId {
     }
 
     /// Returns the shielded protocol used by this note.
-    pub fn protocol(&self) -> ShieldedProtocol {
+    pub fn protocol(&self) -> ShieldedPool {
         self.protocol
     }
 
@@ -65,13 +65,65 @@ impl NoteId {
     }
 }
 
-/// A type that represents the recipient of a transaction output:
+/// A reference to a transaction output received by the wallet, across all pools.
+#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord)]
+pub struct OutputRef {
+    txid: TxId,
+    pool: PoolType,
+    output_index: u32,
+}
+
+impl OutputRef {
+    /// Constructs a new `OutputRef` from its parts.
+    pub fn new(txid: TxId, pool: PoolType, output_index: u32) -> Self {
+        Self {
+            txid,
+            pool,
+            output_index,
+        }
+    }
+
+    /// Returns the ID of the transaction containing this output.
+    pub fn txid(&self) -> &TxId {
+        &self.txid
+    }
+
+    /// Returns the pool type of this output.
+    pub fn pool(&self) -> PoolType {
+        self.pool
+    }
+
+    /// Returns the index of this output within its transaction.
+    pub fn output_index(&self) -> u32 {
+        self.output_index
+    }
+}
+
+impl From<NoteId> for OutputRef {
+    fn from(note_id: NoteId) -> Self {
+        Self {
+            txid: note_id.txid,
+            pool: PoolType::Shielded(note_id.protocol),
+            output_index: note_id.output_index.into(),
+        }
+    }
+}
+
+pub use crate::data_api::locking::LockOwner;
+
+/// A type that represents the recipient of a transaction output.
 ///
-/// * a recipient address;
-/// * for external unified addresses, the pool to which the payment is sent;
-/// * for wallet-internal outputs, the internal account ID and metadata about the note.
-/// * if the `transparent-inputs` feature is enabled, for ephemeral transparent outputs, the
-///   internal account ID and metadata about the outpoint;
+/// Variants vary along two independent axes:
+///
+/// * **Relationship to the wallet**: whether the recipient address is [`Self::External`] to
+///   the wallet, an [`Self::EphemeralTransparent`] address of a wallet account (used
+///   transiently as a middle hop), or otherwise internal to a wallet account (recorded as
+///   [`Self::InternalShielded`] or [`Self::InternalTransparent`], depending on payload
+///   domain).
+/// * **Payload domain**: whether the output is shielded (in which case what is recorded is
+///   the decrypted [`Note`], since the recipient address is not itself externally
+///   meaningful) or transparent (in which case what is recorded is the on-chain-observable
+///   recipient address, since transparent outputs carry no analogous decryptable payload).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Recipient<AccountId> {
     /// An output sent to a recipient external to the wallet.
@@ -93,7 +145,7 @@ pub enum Recipient<AccountId> {
     /// a wallet account. Used to record the send side of a transparent output that
     /// the wallet both funded and received.
     ///
-    /// Distinct from [`Self::InternalAccount`] because for transparent outputs
+    /// Distinct from [`Self::InternalShielded`] because for transparent outputs
     /// the recipient address is observable on chain and must be recorded;
     /// additionally, the receiving account may not be known at the point the
     /// send is recorded. For shielded outputs the recipient address is not
@@ -108,7 +160,7 @@ pub enum Recipient<AccountId> {
     /// same-account outputs such as change (`external_address` is `None`) and
     /// for outputs received via an external IVK but funded by another wallet
     /// account, in which case `external_address` is the address that was paid.
-    InternalAccount {
+    InternalShielded {
         receiving_account: AccountId,
         external_address: Option<ZcashAddress>,
         note: Box<Note>,
@@ -122,35 +174,51 @@ pub enum Recipient<AccountId> {
 pub struct WalletTx<AccountId> {
     txid: TxId,
     block_index: TxIndex,
+    transparent_outputs: Vec<WalletTransparentOutput<AccountId>>,
     sapling_spends: Vec<WalletSaplingSpend<AccountId>>,
     sapling_outputs: Vec<WalletSaplingOutput<AccountId>>,
     #[cfg(feature = "orchard")]
     orchard_spends: Vec<WalletOrchardSpend<AccountId>>,
     #[cfg(feature = "orchard")]
     orchard_outputs: Vec<WalletOrchardOutput<AccountId>>,
+    #[cfg(feature = "orchard")]
+    ironwood_spends: Vec<WalletIronwoodSpend<AccountId>>,
+    #[cfg(feature = "orchard")]
+    ironwood_outputs: Vec<WalletIronwoodOutput<AccountId>>,
 }
 
 impl<AccountId> WalletTx<AccountId> {
     /// Constructs a new [`WalletTx`] from its constituent parts.
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         txid: TxId,
         block_index: TxIndex,
+        transparent_outputs: Vec<WalletTransparentOutput<AccountId>>,
         sapling_spends: Vec<WalletSaplingSpend<AccountId>>,
         sapling_outputs: Vec<WalletSaplingOutput<AccountId>>,
         #[cfg(feature = "orchard")] orchard_spends: Vec<
             WalletSpend<orchard::note::Nullifier, AccountId>,
         >,
         #[cfg(feature = "orchard")] orchard_outputs: Vec<WalletOrchardOutput<AccountId>>,
+        #[cfg(feature = "orchard")] ironwood_spends: Vec<
+            WalletSpend<orchard::note::Nullifier, AccountId>,
+        >,
+        #[cfg(feature = "orchard")] ironwood_outputs: Vec<WalletIronwoodOutput<AccountId>>,
     ) -> Self {
         Self {
             txid,
             block_index,
+            transparent_outputs,
             sapling_spends,
             sapling_outputs,
             #[cfg(feature = "orchard")]
             orchard_spends,
             #[cfg(feature = "orchard")]
             orchard_outputs,
+            #[cfg(feature = "orchard")]
+            ironwood_spends,
+            #[cfg(feature = "orchard")]
+            ironwood_outputs,
         }
     }
 
@@ -164,6 +232,11 @@ impl<AccountId> WalletTx<AccountId> {
     /// Returns the index of the transaction in the containing block.
     pub fn block_index(&self) -> TxIndex {
         self.block_index
+    }
+
+    /// Returns a record for each transparent coin received or produced by the wallet.
+    pub fn transparent_outputs(&self) -> &[WalletTransparentOutput<AccountId>] {
+        &self.transparent_outputs
     }
 
     /// Returns a record for each Sapling note belonging to the wallet that was spent in the
@@ -190,6 +263,20 @@ impl<AccountId> WalletTx<AccountId> {
     #[cfg(feature = "orchard")]
     pub fn orchard_outputs(&self) -> &[WalletOrchardOutput<AccountId>] {
         self.orchard_outputs.as_ref()
+    }
+
+    /// Returns a record for each Ironwood note belonging to the wallet that was spent in the
+    /// transaction.
+    #[cfg(feature = "orchard")]
+    pub fn ironwood_spends(&self) -> &[WalletIronwoodSpend<AccountId>] {
+        self.ironwood_spends.as_ref()
+    }
+
+    /// Returns a record for each Ironwood note received or produced by the wallet in the
+    /// transaction.
+    #[cfg(feature = "orchard")]
+    pub fn ironwood_outputs(&self) -> &[WalletIronwoodOutput<AccountId>] {
+        self.ironwood_outputs.as_ref()
     }
 }
 
@@ -380,7 +467,6 @@ impl<AccountId: Debug> transparent_fees::InputView for WalletTransparentOutput<A
         match self.known_input_size {
             Some(size) => transparent_fees::InputSize::Known(size),
             None => {
-                // Fall back to default: only P2PKH is recognized.
                 match zcash_script::script::PubKey::parse(&self.txout.script_pubkey().0)
                     .ok()
                     .as_ref()
@@ -388,6 +474,17 @@ impl<AccountId: Debug> transparent_fees::InputView for WalletTransparentOutput<A
                 {
                     Some(zcash_script::solver::ScriptKind::PubKeyHash { .. }) => {
                         transparent_fees::InputSize::STANDARD_P2PKH
+                    }
+                    Some(zcash_script::solver::ScriptKind::ScriptHash { .. }) => {
+                        // P2SH input size depends on the redeem script, which the
+                        // wallet must set via `with_known_input_size` (the SQLite
+                        // backend does this by reading the redeem script from the DB
+                        // and computing the exact size via
+                        // `p2sh_input_serialized_len`). Without it we cannot
+                        // determine the exact input size; return `Unknown` so the
+                        // estimator falls back to the consensus-maximum input size
+                        // rather than guessing.
+                        transparent_fees::InputSize::Unknown(self.outpoint.clone())
                     }
                     _ => transparent_fees::InputSize::Unknown(self.outpoint.clone()),
                 }
@@ -435,6 +532,13 @@ pub type WalletSaplingSpend<AccountId> = WalletSpend<sapling::Nullifier, Account
 /// A type alias for Orchard [`WalletSpend`]s.
 #[cfg(feature = "orchard")]
 pub type WalletOrchardSpend<AccountId> = WalletSpend<orchard::note::Nullifier, AccountId>;
+
+/// A type alias for Ironwood [`WalletSpend`]s.
+///
+/// Ironwood notes are Orchard-shaped and therefore share the Orchard nullifier type, but Ironwood
+/// is a distinct pool from Orchard.
+#[cfg(feature = "orchard")]
+pub type WalletIronwoodSpend<AccountId> = WalletSpend<orchard::note::Nullifier, AccountId>;
 
 /// An output that was successfully decrypted in the process of wallet scanning.
 #[derive(Clone)]
@@ -521,27 +625,24 @@ pub type WalletSaplingOutput<AccountId> =
 /// [`Action`]: orchard::Action
 #[cfg(feature = "orchard")]
 pub type WalletOrchardOutput<AccountId> =
-    WalletOutput<orchard::note::Note, orchard::note::Nullifier, AccountId>;
+    WalletOutput<(orchard::note::Note, orchard::ValuePool), orchard::note::Nullifier, AccountId>;
+
+/// The output part of an Ironwood [`Action`] that was decrypted in the process of scanning.
+///
+/// [`Action`]: orchard::Action
+#[cfg(feature = "orchard")]
+pub type WalletIronwoodOutput<AccountId> =
+    WalletOutput<(orchard::note::Note, orchard::ValuePool), orchard::note::Nullifier, AccountId>;
 
 /// An enumeration of supported shielded note types for use in [`ReceivedNote`]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Note {
     Sapling(sapling::Note),
     #[cfg(feature = "orchard")]
-    Orchard(orchard::Note),
-}
-
-impl From<sapling::Note> for Note {
-    fn from(note: sapling::Note) -> Self {
-        Note::Sapling(note)
-    }
-}
-
-#[cfg(feature = "orchard")]
-impl From<orchard::Note> for Note {
-    fn from(note: orchard::Note) -> Self {
-        Note::Orchard(note)
-    }
+    Orchard {
+        note: orchard::Note,
+        pool: orchard::ValuePool,
+    },
 }
 
 impl Note {
@@ -550,7 +651,7 @@ impl Note {
         match self {
             Note::Sapling(n) => Receiver::Sapling(n.recipient()),
             #[cfg(feature = "orchard")]
-            Note::Orchard(n) => Receiver::Orchard(n.recipient()),
+            Note::Orchard { note, .. } => Receiver::Orchard(note.recipient()),
         }
     }
 
@@ -560,19 +661,30 @@ impl Note {
                 "Sapling notes must have values in the range of valid non-negative ZEC values.",
             ),
             #[cfg(feature = "orchard")]
-            Note::Orchard(n) => Zatoshis::from_u64(n.value().inner()).expect(
+            Note::Orchard { note, .. } => Zatoshis::from_u64(note.value().inner()).expect(
                 "Orchard notes must have values in the range of valid non-negative ZEC values.",
             ),
         }
     }
 
-    /// Returns the shielded protocol used by this note.
-    pub fn protocol(&self) -> ShieldedProtocol {
+    /// Returns the shielded value pool to which this note belongs.
+    pub fn pool(&self) -> ShieldedPool {
         match self {
-            Note::Sapling(_) => ShieldedProtocol::Sapling,
+            Note::Sapling(_) => ShieldedPool::Sapling,
             #[cfg(feature = "orchard")]
-            Note::Orchard(_) => ShieldedProtocol::Orchard,
+            Note::Orchard { pool, .. } => shielded_pool_for_value_pool(*pool),
         }
+    }
+}
+
+/// Returns the shielded pool corresponding to an Orchard-protocol value pool. The Orchard protocol
+/// serves both the Orchard pool (version-2 notes) and the Ironwood pool (version-3 notes); this is
+/// the single point at which that classification is made.
+#[cfg(feature = "orchard")]
+pub(crate) fn shielded_pool_for_value_pool(pool: orchard::ValuePool) -> ShieldedPool {
+    match pool {
+        orchard::ValuePool::Orchard => ShieldedPool::Orchard,
+        orchard::ValuePool::Ironwood => ShieldedPool::Ironwood,
     }
 }
 
@@ -956,6 +1068,18 @@ impl TransparentAddressMetadata {
         }
     }
 
+    /// Returns a [`TransparentAddressMetadata`] with [`TransparentAddressSource::StandaloneAddress`]
+    /// source information for an imported bare transparent address and the specified exposure
+    /// height.
+    #[cfg(feature = "transparent-key-import")]
+    pub fn standalone_address(exposure: Exposure, next_check_time: Option<SystemTime>) -> Self {
+        Self {
+            source: TransparentAddressSource::StandaloneAddress,
+            exposure,
+            next_check_time,
+        }
+    }
+
     /// Returns the source metadata for the address.
     pub fn source(&self) -> &TransparentAddressSource {
         &self.source
@@ -1034,6 +1158,13 @@ pub enum TransparentAddressSource {
     /// This variant provides the redeem script directly.
     #[cfg(feature = "transparent-key-import")]
     StandaloneScript(script::Redeem),
+
+    /// The address was imported as a bare transparent address, without any associated key
+    /// material. The wallet watches for outputs received by the address, but holds neither
+    /// the public key (P2PKH) nor the redeem script (P2SH) from which it was derived, so
+    /// funds received by it cannot be spent unless that material is subsequently imported.
+    #[cfg(feature = "transparent-key-import")]
+    StandaloneAddress,
 }
 
 #[cfg(feature = "transparent-inputs")]
@@ -1047,6 +1178,8 @@ impl TransparentAddressSource {
             TransparentAddressSource::StandalonePubkey(_) => None,
             #[cfg(feature = "transparent-key-import")]
             TransparentAddressSource::StandaloneScript(_) => None,
+            #[cfg(feature = "transparent-key-import")]
+            TransparentAddressSource::StandaloneAddress => None,
         }
     }
 
@@ -1059,6 +1192,8 @@ impl TransparentAddressSource {
             TransparentAddressSource::StandalonePubkey(_) => None,
             #[cfg(feature = "transparent-key-import")]
             TransparentAddressSource::StandaloneScript(_) => None,
+            #[cfg(feature = "transparent-key-import")]
+            TransparentAddressSource::StandaloneAddress => None,
         }
     }
 
@@ -1072,6 +1207,104 @@ impl TransparentAddressSource {
             TransparentAddressSource::StandalonePubkey(_) => None,
             #[cfg(feature = "transparent-key-import")]
             TransparentAddressSource::StandaloneScript(redeem_script) => Some(redeem_script),
+            #[cfg(feature = "transparent-key-import")]
+            TransparentAddressSource::StandaloneAddress => None,
+        }
+    }
+}
+
+/// Property tests for [`OutputRef`], whose identity (txid, pool, output index) is the key the
+/// note-locking tables and the proposal double-spend check operate on.
+#[cfg(test)]
+mod output_ref_tests {
+    use proptest::prelude::*;
+    use zcash_protocol::{PoolType, ShieldedPool, TxId};
+
+    use super::{NoteId, OutputRef};
+
+    fn arb_shielded_pool() -> impl Strategy<Value = ShieldedPool> {
+        prop_oneof![
+            Just(ShieldedPool::Sapling),
+            Just(ShieldedPool::Orchard),
+            Just(ShieldedPool::Ironwood),
+        ]
+    }
+
+    fn arb_pool_type() -> impl Strategy<Value = PoolType> {
+        prop_oneof![
+            Just(PoolType::Transparent),
+            arb_shielded_pool().prop_map(PoolType::Shielded),
+        ]
+    }
+
+    fn arb_output_ref() -> impl Strategy<Value = OutputRef> {
+        (any::<[u8; 32]>(), arb_pool_type(), any::<u32>())
+            .prop_map(|(txid, pool, idx)| OutputRef::new(TxId::from_bytes(txid), pool, idx))
+    }
+
+    proptest! {
+        /// Converting a `NoteId` preserves every component: the note's pool maps into the
+        /// shielded arm of `PoolType`, and the `u16` output index widens losslessly.
+        #[test]
+        fn from_note_id_preserves_fields(
+            txid in any::<[u8; 32]>(),
+            pool in arb_shielded_pool(),
+            idx in any::<u16>(),
+        ) {
+            let txid = TxId::from_bytes(txid);
+            let output_ref = OutputRef::from(NoteId::new(txid, pool, idx));
+            prop_assert_eq!(output_ref.txid(), &txid);
+            prop_assert_eq!(output_ref.pool(), PoolType::Shielded(pool));
+            prop_assert_eq!(output_ref.output_index(), u32::from(idx));
+        }
+
+        /// Identity is exactly the (txid, pool, output index) triple: a reference equals
+        /// itself, differs from any single-field mutation of itself, and `Ord` agrees with
+        /// `Eq` (the `BTreeSet` double-spend check in proposal construction and the lock
+        /// tables both rely on this).
+        #[test]
+        fn identity_is_the_full_triple(a in arb_output_ref()) {
+            prop_assert_eq!(a, a);
+            prop_assert_eq!(a.cmp(&a), std::cmp::Ordering::Equal);
+
+            // A different output index is a different output.
+            let other_index = OutputRef::new(
+                *a.txid(),
+                a.pool(),
+                a.output_index().wrapping_add(1),
+            );
+            prop_assert_ne!(a, other_index);
+            prop_assert_ne!(a.cmp(&other_index), std::cmp::Ordering::Equal);
+
+            // A different pool is a different output, even at the same (txid, index): the
+            // same transaction may have outputs at the same index in several pools.
+            let other_pool = OutputRef::new(
+                *a.txid(),
+                match a.pool() {
+                    PoolType::Transparent => PoolType::SAPLING,
+                    PoolType::Shielded(_) => PoolType::Transparent,
+                },
+                a.output_index(),
+            );
+            prop_assert_ne!(a, other_pool);
+            prop_assert_ne!(a.cmp(&other_pool), std::cmp::Ordering::Equal);
+
+            // A different transaction is a different output.
+            let mut txid = <[u8; 32]>::from(*a.txid());
+            txid[0] = txid[0].wrapping_add(1);
+            let other_txid = OutputRef::new(TxId::from_bytes(txid), a.pool(), a.output_index());
+            prop_assert_ne!(a, other_txid);
+            prop_assert_ne!(a.cmp(&other_txid), std::cmp::Ordering::Equal);
+        }
+
+        /// Two independently drawn references are equal exactly when all three components
+        /// match.
+        #[test]
+        fn equality_is_component_wise(a in arb_output_ref(), b in arb_output_ref()) {
+            let components_equal = a.txid() == b.txid()
+                && a.pool() == b.pool()
+                && a.output_index() == b.output_index();
+            prop_assert_eq!(a == b, components_equal);
         }
     }
 }

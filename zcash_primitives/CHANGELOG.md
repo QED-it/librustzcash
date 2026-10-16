@@ -10,6 +10,199 @@ workspace.
 
 ## [Unreleased]
 
+## [0.30.1] - 2026-08-18
+
+### Added
+- `zcash_primitives::transaction::components::sapling::SPEND_DESCRIPTION_SIZE` and
+  `OUTPUT_DESCRIPTION_SIZE`, the sizes in bytes of a Sapling spend description and
+  output description in their v4 (pre-NU5) serialized forms. Each is the full
+  per-element cost on the wire in a version 4 transaction (the v5 form moves
+  proofs and signatures to bundle-level fields), so these are conservative upper
+  bounds: dividing a per-element byte budget by them yields a lower bound on the
+  number of spends or outputs that fit within that budget.
+- `zcash_primitives::transaction::components::sapling::testing::arb_bundle`, now
+  public behind the `test-dependencies` feature, generates a Sapling bundle with
+  arbitrary spends and outputs for cross-crate test strategies.
+- `zcash_primitives::transaction::components::orchard::SPEND_AUTH_SIG_SIZE` and
+  `BUNDLE_OVERHEAD`, the per-action spend authorization signature size and the
+  per-bundle overhead (excluding the proof and per-action data) for an
+  Orchard/Ironwood bundle.
+- `zcash_primitives::transaction::components::sapling::BUNDLE_OVERHEAD`, the
+  per-bundle overhead of a Sapling bundle (value balance, binding signature, and
+  CompactSize prefixes).
+- `zcash_primitives::transaction::fees::zip317::MAX_TRANSPARENT_INPUT_SIZE`,
+  `TRANSPARENT_BUNDLE_OVERHEAD`, and `TX_HEADER_SIZE`, the consensus-maximum
+  transparent input size, the transparent bundle overhead, and the fixed
+  transaction header size used in serialized-size estimation.
+
+## [0.30.0] - 2026-07-23
+
+### Added
+- `zcash_primitives::transaction::components::orchard::ACTION_SIZE`, the size in
+  bytes of an Orchard action description as encoded in a transaction. It excludes
+  the action's spend authorization signature and its share of the bundle's proof,
+  which are encoded separately, so dividing a size budget by it yields an upper
+  bound on the number of actions that fit within that budget.
+- `zcash_primitives::transaction::builder::DeferredPcztBuilder`, a builder for
+  V6 (NU6.3 onward) PCZTs whose Orchard-family anchors — and real-spend
+  witnesses — are deferred to proving time (ZIP 374): spends are added as bare
+  `(fvk, note)` pairs (via `orchard`'s new deferred-anchor builder support),
+  the emitted PCZT carries absent anchor and witness fields, and the real
+  values are installed after signing through the PCZT `Updater` role.
+  Restricted to the Orchard and Ironwood pools (Sapling nullifiers commit to
+  note positions, so Sapling spends cannot be signed before their witnesses
+  are final).
+- `zcash_primitives::transaction::builder::Error::AnchorDeferralUnsupported`
+- `zcash_primitives::transaction::builder::cached_orchard_proving_key`, the
+  process-wide, per-circuit-version Orchard proving-key cache, now public so
+  other proving code in the workspace (such as the pool-migration engine) can
+  share it instead of rebuilding the expensive proving key.
+- `zcash_primitives::transaction::builder::BundlePadding`, the transactional
+  bundle padding (`bundle_required` / `pad_to_minimum`) for an Orchard-family
+  pool, with `BundlePadding::{DEFAULT, UNPADDED}` matching the corresponding
+  `orchard::builder::BundleType` constants. Unlike `BundleType` it cannot
+  express a coinbase bundle.
+
+### Changed
+- Migrated to `zcash_transparent 0.10.0`.
+- `zcash_primitives::transaction::builder::BuildConfig::Standard` now carries
+  separate `orchard_padding` and `ironwood_padding` fields (of the new
+  `BundlePadding` type) in place of `orchard_pool_bundle_type`, selecting the
+  transactional bundle padding independently for each Orchard protocol value
+  pool. `BundlePadding`, unlike `orchard::builder::BundleType`, cannot select a
+  coinbase bundle: whether a transaction is coinbase is a property of the whole
+  transaction, chosen by the `BuildConfig` variant, so it can no longer be set
+  per pool. Set both fields to the same value to pad both pools alike.
+- `zcash_primitives::transaction::builder::Builder::build` no longer
+  reconstructs the Orchard proving key on every call. When the `std` feature is
+  enabled the key is now built lazily and cached process-wide (keyed by circuit
+  version), so building many transactions in a process reuses a single key
+  instead of rebuilding this expensive object each time.
+
+## [0.29.0] - 2026-07-09
+
+### Added
+- `zcash_primitives::transaction::components::orchard::bundle_version_for_branch`
+
+### Changed
+- MSRV is now 1.88
+- Migrated to `zcash_protocol 0.10.0`, `zcash_transparent 0.9.0`.
+- Migrated to `orchard 0.15`.
+- `zcash_primitives::transaction::components::orchard::read_v5_bundle` now takes
+  the consensus branch ID under which the transaction was constructed instead of
+  an `orchard::bundle::BundleVersion`; the Orchard bundle version is derived
+  from the branch ID via `bundle_version_for_branch`. A transaction whose
+  consensus branch ID predates NU5 is now rejected as invalid data if it
+  contains a non-empty Orchard bundle.
+- `zcash_primitives::transaction::components::orchard::read_v6_bundle` now takes
+  the consensus branch ID and the `orchard::ValuePool` identifying the bundle
+  slot to read, instead of an `orchard::bundle::BundleVersion`; the slot's
+  bundle version is derived via `bundle_version_for_branch`. A non-empty bundle
+  in a slot whose value pool is not supported under the transaction's consensus
+  branch ID (the Orchard pool prior to NU5; the Ironwood pool prior to NU6.3)
+  is now rejected as invalid data.
+- `zcash_primitives::transaction::builder::BuildConfig::Standard` now carries an
+  `orchard_pool_bundle_type` field selecting the transactional bundle type for the
+  Orchard and Ironwood bundles. Pass `orchard::builder::BundleType::DEFAULT` to keep
+  the previous (padded) behavior.
+
+## [0.29.0-pre.0] - 2026-06-30
+
+### Added
+- `zcash_primitives::block::Block::from_parts` (behind the `test-dependencies`
+  feature flag).
+- `zcash_primitives::transaction`:
+  - `TxVersion::V6`, the NU6.3 transaction format supporting Transparent,
+    Sapling, Orchard, and Ironwood bundles.
+  - `TxVersion::has_ironwood`
+  - `TransactionData::from_parts_v6`, for constructing v6 transactions with
+    separate Orchard and Ironwood bundles.
+  - `TransactionData::ironwood_bundle`, for accessing the Ironwood bundle on a
+    transaction.
+  - `TxDigests::ironwood_digest`, for carrying the Ironwood bundle digest.
+  - `TransactionDigest::{IronwoodDigest, digest_ironwood}`, for digest
+    implementations that commit to Ironwood bundles.
+- `zcash_primitives::transaction::builder::Builder::add_orchard_change_output`,
+  for constructing wallet-controlled Orchard change outputs.
+- `zcash_primitives::transaction::builder` Ironwood support:
+  - `BuildConfig::Standard::ironwood_anchor`, the anchor used to construct the
+    Ironwood bundle.
+  - `Builder::{add_ironwood_spend, add_ironwood_output}`, which build the
+    Ironwood bundle alongside the Orchard bundle and require
+    `orchard::note::NoteVersion::V3` notes.
+  - `BuildResult::ironwood_meta` and `PcztParts::ironwood`/`PcztResult::ironwood_meta`,
+    exposing the Ironwood bundle and its build metadata.
+  - `Error::{IronwoodBuild, IronwoodSpend, IronwoodSpendUnsupportedNoteVersion,
+    IronwoodRecipient, IronwoodBuilderNotAvailable}`.
+- `zcash_primitives::transaction::builder`:
+  - `Builder::with_expiry_height`, for overriding the expiry height of the
+    transaction under construction. For non-coinbase transactions, setting this
+    to `BlockHeight::from(0)` disables transaction expiry.
+  - `Error::CoinbaseExpiryHeightMismatch`, returned when a coinbase builder's
+    expiry height is overridden to a value that does not match its target block
+    height.
+
+### Changed
+- Migrated to `zcash_protocol 0.10.0-pre.0`, `zcash_transparent 0.9.0-pre.0`.
+- `zcash_primitives::transaction::builder`:
+  - NU6.3 standard builders use the NU6.3 Orchard pool restrictions when
+    constructing V6 transactions.
+  - NU6.3 coinbase builders no longer expose Orchard outputs.
+- `TransactionDigest::digest_orchard` now receives `TxVersion`, so digest
+  implementations can distinguish Orchard commitments by transaction format.
+- `TransactionDigest::digest_sapling` now receives `TxVersion`, so digest
+  implementations can distinguish Sapling commitments by transaction format.
+- Updated the `orchard` dependency to the `feat/ironwood` revision `cbb6ed1`,
+  which gives every `Bundle` an explicit `BundleVersion` (distinguishing value
+  pool, protocol version, and bundle version) and lifts `Flags` out of
+  `BundleType`. Cross-address transfers are restricted to the Ironwood pool (an
+  Orchard v6 bundle can no longer set the cross-address flag). The bundle
+  (de)serialization helpers
+  `zcash_primitives::transaction::components::orchard::{read_v5_bundle,
+  read_v6_bundle, read_flags}` now take a `BundleVersion` argument, while
+  `write_v6_bundle` derives the version from the bundle.
+- `zcash_primitives::transaction::fees::FeeRule::fee_required` now takes an
+  additional `ironwood_action_count: usize` argument following
+  `orchard_action_count`. Implementors and callers must thread through the
+  number of Ironwood actions; pass `0` for transactions without an Ironwood
+  bundle. Under ZIP 317 each Ironwood action is charged one marginal fee, the
+  same as an Orchard action.
+- `TransactionData::from_parts_v6` is now also available behind
+  `zcash_unstable = "nu7"`, and includes the ZIP 233 amount argument when the
+  `zip-233` feature is enabled.
+- `TransactionData::{map_bundles, try_map_bundles}`: the `f_orchard` argument
+  is now `FnMut` instead of `FnOnce`, and is applied to the Ironwood bundle in
+  addition to the Orchard bundle. Callers whose `f_orchard` closures capture by
+  move, or that must not apply to the Ironwood bundle, must be updated.
+- `TransactionDigest::combine` now takes an additional `ironwood_digest`
+  argument.
+- The `TransactionDigest::HeaderDigest` associated type of
+  `BlockTxCommitmentDigester` is now `(TxVersion, BranchId)` (was `BranchId`).
+
+### Removed
+- All support for Transparent Zcash Extensions (TZEs), which was only ever
+  available behind the `--cfg zcash_unstable="zfuture"` development flag and has
+  been determined never to land. This removes the `zfuture` configuration and
+  everything it gated, including:
+  - `zcash_primitives::extensions` (the `transparent` extension traits and
+    types).
+  - `zcash_primitives::transaction::components::tze` and
+    `zcash_primitives::transaction::fees::tze`.
+  - `zcash_primitives::transaction::TxVersion::ZFuture`,
+    `TransactionData::{from_parts_zfuture, tze_bundle}`,
+    `TransactionData::write_tze`, `TransactionDigest::{TzeDigest, digest_tze}`,
+    and `TxDigests`/`TransactionDigest` no longer carry TZE digests.
+  - `zcash_primitives::transaction::builder::Builder::{build_zfuture,
+    get_fee_zfuture}`, the `ExtensionTxBuilder` implementation, and
+    `transaction::builder::Error::TzeBuild`.
+  - `zcash_primitives::transaction::fees::FutureFeeRule` and
+    `fees::FeeRule::fee_required_zfuture`.
+- `zcash_primitives::transaction::builder::BuildConfig::orchard_builder_config`
+
+### Fixed
+- V6 transaction IDs and authorizing commitments now use the v6 Sapling,
+  Orchard, and Ironwood digest domains.
+
 ## [0.28.0] - 2026-06-02
 
 ### Added
@@ -34,7 +227,6 @@ workspace.
   arbitrary data (GHSA-2x4w-pxqw-58v9). Proof-size enforcement is `Strict` for
   transactions parsed under NU6.2 and later consensus branches, and `Unenforced`
   for earlier branches to preserve the ability to parse historical transactions.
-
 ## [0.27.1] - 2026-05-14
 
 ### Fixed
@@ -185,8 +377,8 @@ workspace.
   `test-dependencies` feature to provide access to test vectors.
 
 ### Changed
-- This release provides pre-release support for some planned Network Upgrade 7
-  features under the `zcash_unstable=nu7` configuration flag. This
+- This release provides pre-release support for some planned Ironwood / NU6.3
+  features under the `zcash_unstable="nu6.3"` configuration flag. This
   configuration flag guards SemVer-breaking changes that will appear in a
   future `zcash_primitives` release.
 
