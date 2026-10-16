@@ -933,6 +933,12 @@ criteria = "safe-to-deploy"
 delta = "0.5.6 -> 0.5.7"
 notes = "The new uses of unsafe to access getsockopt/setsockopt look reasonable."
 
+[[audits.spin]]
+who = "Kris Nuttycombe <kris@nutty.land>"
+criteria = "safe-to-deploy"
+delta = "0.9.8 -> 0.9.9"
+notes = "Fix for https://rustsec.org/advisories/RUSTSEC-2023-0031.html"
+
 [[audits.strum]]
 who = "Jack Grigg <jack@electriccoin.co>"
 criteria = "safe-to-deploy"
@@ -2316,6 +2322,12 @@ user-id = 169181 # Kris Nuttycombe (nuttycom)
 start = "2023-03-22"
 end = "2025-04-22"
 
+[[trusted.zcash_pool_migration]]
+criteria = "safe-to-deploy"
+user-id = 169181 # Kris Nuttycombe (nuttycom)
+start = "2026-07-24"
+end = "2027-07-24"
+
 [[trusted.zcash_primitives]]
 criteria = "safe-to-deploy"
 user-id = 6289 # Jack Grigg (str4d)
@@ -2428,4 +2440,4 @@ end = "2026-02-21"
 criteria = "safe-to-deploy"
 user-id = 169181 # Kris Nuttycombe (nuttycom)
 start = "2024-01-15"
-end = "2026-07-16"
+end = "2027-08-19"
