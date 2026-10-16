@@ -34,8 +34,26 @@ audit-as-crates-io = true
 [policy.f4jumble]
 audit-as-crates-io = true
 
+[policy.halo2_gadgets]
+audit-as-crates-io = false
+
+[policy.halo2_poseidon]
+audit-as-crates-io = false
+
+[policy.halo2_proofs]
+audit-as-crates-io = false
+
+[policy.orchard]
+audit-as-crates-io = false
+
 [policy.pczt]
 audit-as-crates-io = true
+
+[policy.sapling-crypto]
+audit-as-crates-io = false
+
+[policy.sinsemilla]
+audit-as-crates-io = false
 
 [policy.zcash]
 audit-as-crates-io = true
@@ -58,6 +76,12 @@ audit-as-crates-io = true
 [policy.zcash_keys]
 audit-as-crates-io = true
 
+[policy.zcash_note_encryption]
+audit-as-crates-io = false
+
+[policy.zcash_pool_migration]
+audit-as-crates-io = true
+
 [policy.zcash_primitives]
 audit-as-crates-io = true
 
@@ -66,6 +90,9 @@ audit-as-crates-io = true
 
 [policy.zcash_protocol]
 audit-as-crates-io = true
+
+[policy.zcash_spec]
+audit-as-crates-io = false
 
 [policy.zcash_transparent]
 audit-as-crates-io = true
@@ -889,6 +916,10 @@ criteria = "safe-to-deploy"
 version = "1.0.10"
 criteria = "safe-to-deploy"
 
+[[exemptions.pastey]]
+version = "0.2.3"
+criteria = "safe-to-deploy"
+
 [[exemptions.pbkdf2]]
 version = "0.12.2"
 criteria = "safe-to-deploy"
@@ -983,10 +1014,6 @@ criteria = "safe-to-deploy"
 
 [[exemptions.proc-macro-crate]]
 version = "1.2.1"
-criteria = "safe-to-deploy"
-
-[[exemptions.proc-macro2]]
-version = "1.0.103"
 criteria = "safe-to-deploy"
 
 [[exemptions.proptest]]
@@ -1349,10 +1376,6 @@ criteria = "safe-to-deploy"
 version = "0.6.8"
 criteria = "safe-to-deploy"
 
-[[exemptions.toml_datetime]]
-version = "0.7.3"
-criteria = "safe-to-deploy"
-
 [[exemptions.toml_edit]]
 version = "0.19.15"
 criteria = "safe-to-deploy"
@@ -1362,10 +1385,6 @@ version = "0.22.22"
 criteria = "safe-to-deploy"
 
 [[exemptions.toml_parser]]
-version = "1.0.4"
-criteria = "safe-to-deploy"
-
-[[exemptions.toml_writer]]
 version = "1.0.4"
 criteria = "safe-to-deploy"
 
@@ -1450,6 +1469,10 @@ version = "0.28.0"
 criteria = "safe-to-deploy"
 
 [[exemptions.tor-guardmgr]]
+version = "0.35.0"
+criteria = "safe-to-deploy"
+
+[[exemptions.tor-hsclient]]
 version = "0.35.0"
 criteria = "safe-to-deploy"
 

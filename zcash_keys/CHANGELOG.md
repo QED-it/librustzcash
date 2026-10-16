@@ -9,6 +9,21 @@ workspace.
 
 ## [Unreleased]
 
+### Changed
+- The `orchard` and `sapling` features are now enabled by default. Consumers
+  that require a smaller feature set should disable default features and enable
+  only the features they need.
+
+## [0.16.1] - 2026-07-28
+
+### Added
+- `impl Debug for zcash_keys::keys::transparent::gap_limits::GapAddressesError`
+
+## [0.16.0] - 2026-07-24
+
+### Changed
+- Migrated to `zcash_transparent 0.10.0`.
+
 ## [0.15.0] - 2026-07-09
 
 ### Changed
