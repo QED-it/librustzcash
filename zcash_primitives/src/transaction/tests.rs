@@ -1049,8 +1049,6 @@ fn zip_0244() {
             txdata.sprout_bundle().cloned(),
             txdata.sapling_bundle().cloned(),
             txdata.orchard_bundle().cloned(),
-            #[cfg(zcash_unstable = "nu7")]
-            txdata.issue_bundle().cloned(),
         );
         (tdata, txdata.digest(TxIdDigester))
     }
@@ -1283,8 +1281,6 @@ fn zip_0233() {
             txdata.sprout_bundle().cloned(),
             txdata.sapling_bundle().cloned(),
             txdata.orchard_bundle().cloned(),
-            #[cfg(zcash_unstable = "nu7")]
-            txdata.issue_bundle().cloned(),
         );
 
         (tdata, txdata.digest(TxIdDigester))
