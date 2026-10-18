@@ -841,8 +841,6 @@ fn fake_transparent_coinbase_tx(
         None,
         None,
         None,
-        #[cfg(zcash_unstable = "nu7")]
-        None,
     )
     .freeze()
     .unwrap()

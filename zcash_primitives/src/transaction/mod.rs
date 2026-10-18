@@ -429,7 +429,6 @@ impl<A: Authorization> TransactionData<A> {
         sprout_bundle: Option<sprout::Bundle>,
         sapling_bundle: Option<sapling::Bundle<A::SaplingAuth, ZatBalance>>,
         orchard_bundle: Option<orchard::Bundle<A::OrchardAuth, ZatBalance>>,
-        #[cfg(zcash_unstable = "nu7")] issue_bundle: Option<IssueBundle<A::IssueAuth>>,
     ) -> Self {
         TransactionData {
             version,
@@ -444,7 +443,7 @@ impl<A: Authorization> TransactionData<A> {
             orchard_bundle,
             ironwood_bundle: None,
             #[cfg(zcash_unstable = "nu7")]
-            issue_bundle,
+            issue_bundle: None,
         }
     }
 
@@ -470,7 +469,6 @@ impl<A: Authorization> TransactionData<A> {
         sapling_bundle: Option<sapling::Bundle<A::SaplingAuth, ZatBalance>>,
         orchard_bundle: Option<orchard::Bundle<A::OrchardAuth, ZatBalance>>,
         ironwood_bundle: Option<orchard::Bundle<A::OrchardAuth, ZatBalance>>,
-        #[cfg(zcash_unstable = "nu7")] issue_bundle: Option<IssueBundle<A::IssueAuth>>,
     ) -> Self {
         TransactionData {
             version: TxVersion::V6,
@@ -485,6 +483,41 @@ impl<A: Authorization> TransactionData<A> {
             orchard_bundle,
             ironwood_bundle,
             #[cfg(zcash_unstable = "nu7")]
+            issue_bundle: None,
+        }
+    }
+
+    /// Constructs a V7 [`TransactionData`] from its constituent parts, including the
+    /// Ironwood and issuance bundles.
+    ///
+    /// The v7 Ironwood slot carries the ZSA bundle, so `ironwood_bundle` must be built for
+    /// [`orchard::bundle::BundleVersion::zsa`]. The fields are otherwise as in
+    /// [`Self::from_parts_v6`].
+    #[cfg(zcash_unstable = "nu7")]
+    #[allow(clippy::too_many_arguments)]
+    pub fn from_parts_v7(
+        consensus_branch_id: BranchId,
+        lock_time: u32,
+        expiry_height: BlockHeight,
+        #[cfg(feature = "zip-233")] zip233_amount: Zatoshis,
+        transparent_bundle: Option<transparent::Bundle<A::TransparentAuth>>,
+        sapling_bundle: Option<sapling::Bundle<A::SaplingAuth, ZatBalance>>,
+        orchard_bundle: Option<orchard::Bundle<A::OrchardAuth, ZatBalance>>,
+        ironwood_bundle: Option<orchard::Bundle<A::OrchardAuth, ZatBalance>>,
+        issue_bundle: Option<IssueBundle<A::IssueAuth>>,
+    ) -> Self {
+        TransactionData {
+            version: TxVersion::V7,
+            consensus_branch_id,
+            lock_time,
+            expiry_height,
+            #[cfg(feature = "zip-233")]
+            zip233_amount,
+            transparent_bundle,
+            sprout_bundle: None,
+            sapling_bundle,
+            orchard_bundle,
+            ironwood_bundle,
             issue_bundle,
         }
     }

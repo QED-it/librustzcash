@@ -609,8 +609,6 @@ impl Pczt {
                 sapling_bundle,
                 orchard_bundle,
                 ironwood_bundle,
-                #[cfg(zcash_unstable = "nu7")]
-                None,
             ),
             _ => TransactionData::from_parts(
                 version,
@@ -623,8 +621,6 @@ impl Pczt {
                 None,
                 sapling_bundle,
                 orchard_bundle,
-                #[cfg(zcash_unstable = "nu7")]
-                None,
             ),
         };
 

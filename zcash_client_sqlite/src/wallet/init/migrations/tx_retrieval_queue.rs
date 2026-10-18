@@ -405,8 +405,6 @@ mod tests {
             None,
             None,
             None,
-            #[cfg(zcash_unstable = "nu7")]
-            None,
         ));
 
         // Check that we can apply this migration.
