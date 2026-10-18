@@ -10,6 +10,75 @@ workspace.
 
 ## [Unreleased]
 
+## [0.30.1] - 2026-08-18
+
+### Added
+- `zcash_primitives::transaction::components::sapling::SPEND_DESCRIPTION_SIZE` and
+  `OUTPUT_DESCRIPTION_SIZE`, the sizes in bytes of a Sapling spend description and
+  output description in their v4 (pre-NU5) serialized forms. Each is the full
+  per-element cost on the wire in a version 4 transaction (the v5 form moves
+  proofs and signatures to bundle-level fields), so these are conservative upper
+  bounds: dividing a per-element byte budget by them yields a lower bound on the
+  number of spends or outputs that fit within that budget.
+- `zcash_primitives::transaction::components::sapling::testing::arb_bundle`, now
+  public behind the `test-dependencies` feature, generates a Sapling bundle with
+  arbitrary spends and outputs for cross-crate test strategies.
+- `zcash_primitives::transaction::components::orchard::SPEND_AUTH_SIG_SIZE` and
+  `BUNDLE_OVERHEAD`, the per-action spend authorization signature size and the
+  per-bundle overhead (excluding the proof and per-action data) for an
+  Orchard/Ironwood bundle.
+- `zcash_primitives::transaction::components::sapling::BUNDLE_OVERHEAD`, the
+  per-bundle overhead of a Sapling bundle (value balance, binding signature, and
+  CompactSize prefixes).
+- `zcash_primitives::transaction::fees::zip317::MAX_TRANSPARENT_INPUT_SIZE`,
+  `TRANSPARENT_BUNDLE_OVERHEAD`, and `TX_HEADER_SIZE`, the consensus-maximum
+  transparent input size, the transparent bundle overhead, and the fixed
+  transaction header size used in serialized-size estimation.
+
+## [0.30.0] - 2026-07-23
+
+### Added
+- `zcash_primitives::transaction::components::orchard::ACTION_SIZE`, the size in
+  bytes of an Orchard action description as encoded in a transaction. It excludes
+  the action's spend authorization signature and its share of the bundle's proof,
+  which are encoded separately, so dividing a size budget by it yields an upper
+  bound on the number of actions that fit within that budget.
+- `zcash_primitives::transaction::builder::DeferredPcztBuilder`, a builder for
+  V6 (NU6.3 onward) PCZTs whose Orchard-family anchors — and real-spend
+  witnesses — are deferred to proving time (ZIP 374): spends are added as bare
+  `(fvk, note)` pairs (via `orchard`'s new deferred-anchor builder support),
+  the emitted PCZT carries absent anchor and witness fields, and the real
+  values are installed after signing through the PCZT `Updater` role.
+  Restricted to the Orchard and Ironwood pools (Sapling nullifiers commit to
+  note positions, so Sapling spends cannot be signed before their witnesses
+  are final).
+- `zcash_primitives::transaction::builder::Error::AnchorDeferralUnsupported`
+- `zcash_primitives::transaction::builder::cached_orchard_proving_key`, the
+  process-wide, per-circuit-version Orchard proving-key cache, now public so
+  other proving code in the workspace (such as the pool-migration engine) can
+  share it instead of rebuilding the expensive proving key.
+- `zcash_primitives::transaction::builder::BundlePadding`, the transactional
+  bundle padding (`bundle_required` / `pad_to_minimum`) for an Orchard-family
+  pool, with `BundlePadding::{DEFAULT, UNPADDED}` matching the corresponding
+  `orchard::builder::BundleType` constants. Unlike `BundleType` it cannot
+  express a coinbase bundle.
+
+### Changed
+- Migrated to `zcash_transparent 0.10.0`.
+- `zcash_primitives::transaction::builder::BuildConfig::Standard` now carries
+  separate `orchard_padding` and `ironwood_padding` fields (of the new
+  `BundlePadding` type) in place of `orchard_pool_bundle_type`, selecting the
+  transactional bundle padding independently for each Orchard protocol value
+  pool. `BundlePadding`, unlike `orchard::builder::BundleType`, cannot select a
+  coinbase bundle: whether a transaction is coinbase is a property of the whole
+  transaction, chosen by the `BuildConfig` variant, so it can no longer be set
+  per pool. Set both fields to the same value to pad both pools alike.
+- `zcash_primitives::transaction::builder::Builder::build` no longer
+  reconstructs the Orchard proving key on every call. When the `std` feature is
+  enabled the key is now built lazily and cached process-wide (keyed by circuit
+  version), so building many transactions in a process reuses a single key
+  instead of rebuilding this expensive object each time.
+
 ## [0.29.0] - 2026-07-09
 
 ### Added

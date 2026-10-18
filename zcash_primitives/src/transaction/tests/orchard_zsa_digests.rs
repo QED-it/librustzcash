@@ -5,7 +5,7 @@
 // that ZSA is v7. Regenerating them from QED-it/zcash-test-vectors waits for the decision on which
 // transaction format and version ZSA targets, so `zsa_zip_0244` is ignored for now.
 
-use std::vec::Vec;
+use alloc::vec::Vec;
 
 use crate::transaction::tests::data::zip_0244::TestVector;
 
