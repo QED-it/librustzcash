@@ -127,7 +127,7 @@ use zcash_keys::{
 use zcash_primitives::{
     block::BlockHash,
     merkle_tree::{HashSer, read_commitment_tree},
-    transaction::{Transaction, TransactionData, builder::DEFAULT_TX_EXPIRY_DELTA, fees::zip317},
+    transaction::{Transaction, builder::DEFAULT_TX_EXPIRY_DELTA, fees::zip317},
 };
 use zcash_protocol::{
     PoolType, ShieldedPool, TxId,
@@ -3133,21 +3133,11 @@ fn parse_tx<P: consensus::Parameters>(
 
         let expiry_height = tx_data.expiry_height();
         if expiry_height > BlockHeight::from(0) {
-            TransactionData::from_parts(
-                tx_data.version(),
-                BranchId::for_height(params, expiry_height),
-                tx_data.lock_time(),
-                expiry_height,
-                #[cfg(all(zcash_unstable = "nu7", feature = "zip-233"))]
-                tx_data.zip233_amount(),
-                tx_data.transparent_bundle().cloned(),
-                tx_data.sprout_bundle().cloned(),
-                tx_data.sapling_bundle().cloned(),
-                tx_data.orchard_bundle().cloned(),
-            )
-            .freeze()
-            .map(|t| (expiry_height, t))
-            .map_err(SqliteClientError::from)
+            // Read the bytes again with the branch the expiry height implies, rather than
+            // rebuilding the transaction from its parts, which does not carry the Ironwood slot.
+            Transaction::read(tx_bytes, BranchId::for_height(params, expiry_height))
+                .map(|t| (expiry_height, t))
+                .map_err(SqliteClientError::from)
         } else {
             Err(SqliteClientError::CorruptedData(
                 "Consensus branch ID not known, cannot parse this transaction until it is mined"
