@@ -976,6 +976,29 @@ impl<P, U> Builder<P, U> {
                     None,
                 ));
             }
+
+            // The v7 Ironwood slot carries the ZSA bundle, so a version that requires another
+            // bundle version cannot take over a slot that is already in use.
+            #[cfg(zcash_unstable = "nu7")]
+            if ironwood_bundle_version(version) != ironwood_bundle_version(self.tx_version)
+                && self.ironwood_in_use()
+            {
+                return Err(Error::TargetIncompatible(
+                    self.consensus_branch_id,
+                    version,
+                    None,
+                ));
+            }
+        }
+
+        // The issuance bundle is carried by the v7 format alone.
+        #[cfg(zcash_unstable = "nu7")]
+        if self.issuance_builder.is_some() && !version.has_orchard_zsa() {
+            return Err(Error::TargetIncompatible(
+                self.consensus_branch_id,
+                version,
+                None,
+            ));
         }
 
         Ok(())
@@ -991,6 +1014,18 @@ impl<P, U> Builder<P, U> {
     /// added after this call.
     pub fn propose_version<FE>(&mut self, version: TxVersion) -> Result<(), Error<FE>> {
         self.check_version_compatibility(version)?;
+
+        // The Ironwood builder is created for the bundle version that the transaction version
+        // implies, so another version needs another builder. The slot is unused here, because
+        // the check above refuses such a version over a slot in use.
+        #[cfg(zcash_unstable = "nu7")]
+        {
+            let bundle_version = ironwood_bundle_version(version);
+            if bundle_version != ironwood_bundle_version(self.tx_version) {
+                self.ironwood_builder = self.build_config.ironwood_builder(bundle_version);
+            }
+        }
+
         self.tx_version = version;
         Ok(())
     }
@@ -2697,6 +2732,45 @@ mod tests {
             builder.add_ironwood_spend::<Infallible>(fvk, note, merkle_path),
             Err(Error::IronwoodSpendUnsupportedNoteVersion(
                 orchard::note::NoteVersion::V2
+            ))
+        );
+    }
+
+    /// The v7 Ironwood slot carries the ZSA bundle, so a lower version proposed after an
+    /// Ironwood output has been added must be refused rather than pair the two.
+    #[test]
+    #[cfg(all(feature = "circuits", zcash_unstable = "nu7"))]
+    fn propose_version_rejects_v6_after_an_ironwood_output() {
+        let mut builder = Builder::new(
+            nu7_test_network(),
+            11u32.into(),
+            BuildConfig::Standard {
+                sapling_anchor: None,
+                orchard_anchor: None,
+                ironwood_anchor: Some(orchard::Anchor::empty_tree()),
+                orchard_padding: BundlePadding::DEFAULT,
+                ironwood_padding: BundlePadding::DEFAULT,
+            },
+        );
+        let sk = orchard::keys::SpendingKey::from_bytes([7; 32]).unwrap();
+        let recipient = orchard::keys::FullViewingKey::from(&sk)
+            .address_at(0u32, orchard::keys::Scope::External);
+        builder
+            .add_ironwood_output::<Infallible>(
+                None,
+                recipient,
+                Zatoshis::const_from_u64(10_000),
+                AssetBase::zatoshi(),
+                MemoBytes::empty(),
+            )
+            .unwrap();
+
+        assert_matches!(
+            builder.propose_version::<Infallible>(TxVersion::V6),
+            Err(Error::TargetIncompatible(
+                BranchId::Nu7,
+                TxVersion::V6,
+                None
             ))
         );
     }
