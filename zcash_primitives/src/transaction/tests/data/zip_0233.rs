@@ -2,6 +2,9 @@
 
 // From https://github.com/zcash/zcash-test-vectors/blob/master/zcash_test_vectors/zip_0233.py
 
+// These are upstream's v6 (Ironwood, ZIP 229) vectors, which the fork used to overwrite with its
+// own ZSA ones. The fork's set now lives in `tests/zsa_zip_0233.rs` and is tested separately.
+
 pub(crate) struct TestVector {
     pub(crate) tx: &'static [u8],
     pub(crate) txid: [u8; 32],

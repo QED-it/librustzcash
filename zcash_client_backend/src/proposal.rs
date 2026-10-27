@@ -862,7 +862,7 @@ mod tests {
     use orchard::{
         ValuePool,
         keys::{FullViewingKey, SpendingKey},
-        note::{Note as OrchardNote, NoteVersion, RandomSeed, Rho},
+        note::{AssetBase, Note as OrchardNote, NoteVersion, RandomSeed, Rho},
         value::NoteValue,
     };
     use proptest::prelude::*;
@@ -887,6 +887,7 @@ mod tests {
         Option::from(OrchardNote::from_parts(
             recipient,
             NoteValue::from_raw(value),
+            AssetBase::zatoshi(),
             rho,
             rseed,
             version,

@@ -8,7 +8,7 @@ use ::transparent::{
     sighash::SighashType,
     zip48,
 };
-use orchard::tree::MerkleHashOrchard;
+use orchard::{note::AssetBase, note_encryption::OrchardDomain, tree::MerkleHashOrchard};
 use pczt::{
     Pczt,
     roles::{
@@ -46,6 +46,12 @@ use zcash_script::script::{self, Evaluable};
 
 static ORCHARD_PROVING_KEY: OnceLock<orchard::circuit::ProvingKey> = OnceLock::new();
 static POST_NU6_3_ORCHARD_PROVING_KEY: OnceLock<orchard::circuit::ProvingKey> = OnceLock::new();
+
+/// This is a helper function for testing that indicates no assets are newly created.
+#[cfg(all(test, zcash_unstable = "nu7"))]
+fn no_new_assets(_: &AssetBase) -> bool {
+    false
+}
 
 fn orchard_proving_key() -> &'static orchard::circuit::ProvingKey {
     ORCHARD_PROVING_KEY.get_or_init(|| {
@@ -144,7 +150,12 @@ fn transparent_to_orchard() {
         )
         .unwrap();
     let PcztResult { pczt_parts, .. } = builder
-        .build_for_pczt(rng, &zip317::FeeRule::standard())
+        .build_for_pczt(
+            rng,
+            &zip317::FeeRule::standard(),
+            #[cfg(zcash_unstable = "nu7")]
+            no_new_assets,
+        )
         .unwrap();
 
     // Create the base PCZT.
@@ -335,7 +346,12 @@ fn transparent_p2sh_multisig_to_orchard() {
         )
         .unwrap();
     let PcztResult { pczt_parts, .. } = builder
-        .build_for_pczt(rng, &zip317::FeeRule::standard())
+        .build_for_pczt(
+            rng,
+            &zip317::FeeRule::standard(),
+            #[cfg(zcash_unstable = "nu7")]
+            no_new_assets,
+        )
         .unwrap();
 
     // Create the base PCZT.
@@ -549,7 +565,12 @@ fn sapling_to_orchard() {
         sapling_meta,
         ..
     } = builder
-        .build_for_pczt(OsRng, &zip317::FeeRule::standard())
+        .build_for_pczt(
+            OsRng,
+            &zip317::FeeRule::standard(),
+            #[cfg(zcash_unstable = "nu7")]
+            no_new_assets,
+        )
         .unwrap();
 
     // Create the base PCZT.
@@ -648,14 +669,20 @@ fn orchard_to_orchard() {
         )
         .unwrap();
         orchard_builder
-            .add_output(None, recipient, value, Memo::Empty.encode().into_bytes())
+            .add_output(
+                None,
+                recipient,
+                value,
+                AssetBase::zatoshi(),
+                Memo::Empty.encode().into_bytes(),
+            )
             .unwrap();
         let (bundle, meta) = orchard_builder.build::<i64>(&mut rng).unwrap().unwrap();
         let action = bundle
             .actions()
             .get(meta.output_action_index(0).unwrap())
             .unwrap();
-        let domain = orchard::note_encryption::OrchardDomain::for_action(action);
+        let domain = OrchardDomain::for_action(action);
         let (note, _, _) = try_note_decryption(&domain, &orchard_ivk.prepare(), action).unwrap();
         note
     };
@@ -713,7 +740,12 @@ fn orchard_to_orchard() {
         orchard_meta,
         ..
     } = builder
-        .build_for_pczt(OsRng, &zip317::FeeRule::standard())
+        .build_for_pczt(
+            OsRng,
+            &zip317::FeeRule::standard(),
+            #[cfg(zcash_unstable = "nu7")]
+            no_new_assets,
+        )
         .unwrap();
 
     // Create the base PCZT.
@@ -860,7 +892,13 @@ fn orchard_low_level_signer_uses_preverified_signing_parse() {
         )
         .unwrap();
         orchard_builder
-            .add_output(None, recipient, value, Memo::Empty.encode().into_bytes())
+            .add_output(
+                None,
+                recipient,
+                value,
+                AssetBase::zatoshi(),
+                Memo::Empty.encode().into_bytes(),
+            )
             .unwrap();
         let (bundle, meta) = orchard_builder.build::<i64>(&mut rng).unwrap().unwrap();
         let action = bundle
@@ -925,7 +963,12 @@ fn orchard_low_level_signer_uses_preverified_signing_parse() {
         orchard_meta,
         ..
     } = builder
-        .build_for_pczt(OsRng, &zip317::FeeRule::standard())
+        .build_for_pczt(
+            OsRng,
+            &zip317::FeeRule::standard(),
+            #[cfg(zcash_unstable = "nu7")]
+            |_| false,
+        )
         .unwrap();
 
     // Create the base PCZT, and finalize the I/O.
@@ -1093,12 +1136,19 @@ fn pczt_with_anchor(pool: ShieldedPool) -> Pczt {
             Some(orchard_ovk),
             recipient,
             Zatoshis::const_from_u64(985_000),
+            #[cfg(zcash_unstable = "nu7")]
+            AssetBase::zatoshi(),
             MemoBytes::empty(),
         )
         .unwrap();
 
     let PcztResult { pczt_parts, .. } = builder
-        .build_for_pczt(OsRng, &zip317::FeeRule::standard())
+        .build_for_pczt(
+            OsRng,
+            &zip317::FeeRule::standard(),
+            #[cfg(zcash_unstable = "nu7")]
+            |_| false,
+        )
         .unwrap();
 
     IoFinalizer::new(Creator::build_from_parts(pczt_parts).unwrap())
@@ -1231,7 +1281,12 @@ fn redacted_sapling_anchor_can_be_restored_after_signing() {
         sapling_meta,
         ..
     } = builder
-        .build_for_pczt(OsRng, &zip317::FeeRule::standard())
+        .build_for_pczt(
+            OsRng,
+            &zip317::FeeRule::standard(),
+            #[cfg(zcash_unstable = "nu7")]
+            |_| false,
+        )
         .unwrap();
 
     let pczt = IoFinalizer::new(Creator::build_from_parts(pczt_parts).unwrap())
@@ -1391,7 +1446,12 @@ fn wallet_can_set_sapling_witness_after_signing() {
         sapling_meta,
         ..
     } = builder
-        .build_for_pczt(OsRng, &zip317::FeeRule::standard())
+        .build_for_pczt(
+            OsRng,
+            &zip317::FeeRule::standard(),
+            #[cfg(zcash_unstable = "nu7")]
+            |_| false,
+        )
         .unwrap();
 
     let pczt = IoFinalizer::new(Creator::build_from_parts(pczt_parts).unwrap())
@@ -1533,7 +1593,13 @@ fn redacted_orchard_anchor_can_be_restored_after_signing() {
         )
         .unwrap();
         orchard_builder
-            .add_output(None, recipient, value, Memo::Empty.encode().into_bytes())
+            .add_output(
+                None,
+                recipient,
+                value,
+                AssetBase::zatoshi(),
+                Memo::Empty.encode().into_bytes(),
+            )
             .unwrap();
         let (bundle, meta) = orchard_builder.build::<i64>(&mut rng).unwrap().unwrap();
         let action = bundle
@@ -1581,6 +1647,8 @@ fn redacted_orchard_anchor_can_be_restored_after_signing() {
             Some(orchard_ovk),
             recipient,
             Zatoshis::const_from_u64(980_000),
+            #[cfg(zcash_unstable = "nu7")]
+            AssetBase::zatoshi(),
             MemoBytes::empty(),
         )
         .unwrap();
@@ -1589,7 +1657,12 @@ fn redacted_orchard_anchor_can_be_restored_after_signing() {
         orchard_meta,
         ..
     } = builder
-        .build_for_pczt(OsRng, &zip317::FeeRule::standard())
+        .build_for_pczt(
+            OsRng,
+            &zip317::FeeRule::standard(),
+            #[cfg(zcash_unstable = "nu7")]
+            |_| false,
+        )
         .unwrap();
 
     let pczt = IoFinalizer::new(Creator::build_from_parts(pczt_parts).unwrap())
@@ -1680,7 +1753,13 @@ fn wallet_can_set_orchard_witness_after_signing() {
         )
         .unwrap();
         orchard_builder
-            .add_output(None, recipient, value, Memo::Empty.encode().into_bytes())
+            .add_output(
+                None,
+                recipient,
+                value,
+                AssetBase::zatoshi(),
+                Memo::Empty.encode().into_bytes(),
+            )
             .unwrap();
         let (bundle, meta) = orchard_builder.build::<i64>(&mut rng).unwrap().unwrap();
         let action = bundle
@@ -1740,7 +1819,12 @@ fn wallet_can_set_orchard_witness_after_signing() {
         orchard_meta,
         ..
     } = builder
-        .build_for_pczt(OsRng, &zip317::FeeRule::standard())
+        .build_for_pczt(
+            OsRng,
+            &zip317::FeeRule::standard(),
+            #[cfg(zcash_unstable = "nu7")]
+            |_| false,
+        )
         .unwrap();
 
     let pczt = IoFinalizer::new(Creator::build_from_parts(pczt_parts).unwrap())
@@ -1851,7 +1935,13 @@ fn wallet_can_set_ironwood_witness_after_signing() {
         )
         .unwrap();
         orchard_builder
-            .add_output(None, recipient, value, Memo::Empty.encode().into_bytes())
+            .add_output(
+                None,
+                recipient,
+                value,
+                AssetBase::zatoshi(),
+                Memo::Empty.encode().into_bytes(),
+            )
             .unwrap();
         let (bundle, meta) = orchard_builder.build::<i64>(&mut rng).unwrap().unwrap();
         let action = bundle
@@ -1904,6 +1994,8 @@ fn wallet_can_set_ironwood_witness_after_signing() {
             Some(orchard_ovk),
             recipient,
             Zatoshis::const_from_u64(990_000),
+            #[cfg(zcash_unstable = "nu7")]
+            AssetBase::zatoshi(),
             MemoBytes::empty(),
         )
         .unwrap();
@@ -1912,7 +2004,12 @@ fn wallet_can_set_ironwood_witness_after_signing() {
         ironwood_meta,
         ..
     } = builder
-        .build_for_pczt(OsRng, &zip317::FeeRule::standard())
+        .build_for_pczt(
+            OsRng,
+            &zip317::FeeRule::standard(),
+            #[cfg(zcash_unstable = "nu7")]
+            |_| false,
+        )
         .unwrap();
 
     let pczt = IoFinalizer::new(Creator::build_from_parts(pczt_parts).unwrap())
@@ -2020,7 +2117,13 @@ fn ironwood_low_level_signer_uses_preverified_signing_parse() {
         )
         .unwrap();
         orchard_builder
-            .add_output(None, recipient, value, Memo::Empty.encode().into_bytes())
+            .add_output(
+                None,
+                recipient,
+                value,
+                AssetBase::zatoshi(),
+                Memo::Empty.encode().into_bytes(),
+            )
             .unwrap();
         let (bundle, meta) = orchard_builder.build::<i64>(&mut rng).unwrap().unwrap();
         let action = bundle
@@ -2070,6 +2173,8 @@ fn ironwood_low_level_signer_uses_preverified_signing_parse() {
             Some(orchard_ovk),
             recipient,
             Zatoshis::const_from_u64(990_000),
+            #[cfg(zcash_unstable = "nu7")]
+            AssetBase::zatoshi(),
             MemoBytes::empty(),
         )
         .unwrap();
@@ -2078,7 +2183,12 @@ fn ironwood_low_level_signer_uses_preverified_signing_parse() {
         ironwood_meta,
         ..
     } = builder
-        .build_for_pczt(OsRng, &zip317::FeeRule::standard())
+        .build_for_pczt(
+            OsRng,
+            &zip317::FeeRule::standard(),
+            #[cfg(zcash_unstable = "nu7")]
+            |_| false,
+        )
         .unwrap();
 
     // Create the base PCZT, and finalize the I/O.
