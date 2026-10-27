@@ -43,10 +43,6 @@ audit-as-crates-io = false
 [policy.halo2_proofs]
 audit-as-crates-io = false
 
-[policy.incrementalmerkletree]
-
-[policy.incrementalmerkletree-testing]
-
 [policy.orchard]
 audit-as-crates-io = false
 
@@ -55,8 +51,6 @@ audit-as-crates-io = true
 
 [policy.sapling-crypto]
 audit-as-crates-io = false
-
-[policy.shardtree]
 
 [policy.sinsemilla]
 audit-as-crates-io = false
@@ -97,15 +91,11 @@ audit-as-crates-io = true
 [policy.zcash_protocol]
 audit-as-crates-io = true
 
-[policy.zcash_script]
-
 [policy.zcash_spec]
 audit-as-crates-io = false
 
 [policy.zcash_transparent]
 audit-as-crates-io = true
-
-[policy.zewif]
 
 [policy.zip321]
 audit-as-crates-io = true
