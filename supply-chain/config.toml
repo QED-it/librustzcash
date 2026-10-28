@@ -67,7 +67,7 @@ audit-as-crates-io = true
 [policy.zcash_client_sqlite]
 audit-as-crates-io = true
 
-[policy.zcash_encoding]
+[policy."zcash_encoding:0.5.0"]
 audit-as-crates-io = true
 
 [policy.zcash_history]
