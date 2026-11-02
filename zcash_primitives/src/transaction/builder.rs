@@ -568,10 +568,15 @@ impl<P, U> Builder<P, U> {
         })
     }
 
-    /// Returns `true` if any Ironwood spend, output, or change output has been
+    /// Returns `true` if any Ironwood spend, output, change output or burn has been
     /// added to this builder (i.e. the transaction will carry an Ironwood bundle).
     fn ironwood_in_use(&self) -> bool {
         self.ironwood_builder.as_ref().is_some_and(|b| {
+            #[cfg(zcash_unstable = "nu7")]
+            if !b.burn().is_empty() {
+                return true;
+            }
+
             !b.spends().is_empty() || !b.outputs().is_empty() || !b.changes().is_empty()
         })
     }
