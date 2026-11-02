@@ -664,13 +664,18 @@ impl<P, U> Builder<P, U> {
         self.check_version_compatibility(version)?;
 
         // The Ironwood builder is created for the bundle version that the transaction version
-        // implies, so another version needs another builder. The slot is unused here, because
-        // the check above refuses such a version over a slot in use.
+        // implies, so another version needs another builder and a version without the slot needs
+        // none. The slot is unused here, because the check above refuses such a version over a
+        // slot in use.
         #[cfg(zcash_unstable = "nu7")]
         {
             let bundle_version = ironwood_bundle_version(version);
             if bundle_version != ironwood_bundle_version(self.tx_version) {
-                self.ironwood_builder = self.build_config.ironwood_builder(bundle_version);
+                self.ironwood_builder = if version.has_ironwood() {
+                    self.build_config.ironwood_builder(bundle_version)
+                } else {
+                    None
+                };
             }
         }
 
