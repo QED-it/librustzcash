@@ -213,6 +213,8 @@ where
                     .collect::<Result<Vec<_>, _>>()?,
             );
 
+            // FIXME: ZSA notes in a v7 Ironwood slot need the ZSA domain, which a compact action
+            // would have to select by ciphertext length. They are missed here too, as in `full`.
             #[cfg(feature = "orchard")]
             self.ironwood.add_outputs(
                 block_hash,
@@ -919,7 +921,7 @@ mod tests {
         ) {
             use orchard::{
                 keys::Scope,
-                note::{ExtractedNoteCommitment, Note, NoteVersion, RandomSeed, Rho},
+                note::{AssetBase, ExtractedNoteCommitment, Note, NoteVersion, RandomSeed, Rho},
                 note_encryption::{IronwoodDomain, IronwoodNoteEncryption},
                 value::NoteValue,
             };
@@ -966,6 +968,7 @@ mod tests {
             let note = Note::from_parts(
                 recipient,
                 NoteValue::from_raw(value),
+                AssetBase::zatoshi(),
                 rho,
                 rseed,
                 NoteVersion::V3,
@@ -984,7 +987,7 @@ mod tests {
                 nullifier: nf_old.to_bytes().to_vec(),
                 cmx: cmx.to_bytes().to_vec(),
                 ephemeral_key: ephemeral_key.0.to_vec(),
-                ciphertext: enc_ciphertext[..52].to_vec(),
+                ciphertext: enc_ciphertext.as_ref()[..52].to_vec(),
             };
 
             let mut ctx = CompactTx::default();

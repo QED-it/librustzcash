@@ -8,6 +8,9 @@ use ::sapling::bundle::GrothProofBytes;
 
 use super::sighash_v6::v6_signature_hash;
 
+#[cfg(zcash_unstable = "nu7")]
+use super::sighash_v7::v7_signature_hash;
+
 pub enum SignableInput<'a> {
     Shielded,
     Transparent(transparent::sighash::SignableInput<'a>),
@@ -51,5 +54,8 @@ pub fn signature_hash<
         TxVersion::V5 => v5_signature_hash(tx, signable_input, txid_parts),
 
         TxVersion::V6 => v6_signature_hash(tx, signable_input, txid_parts),
+
+        #[cfg(zcash_unstable = "nu7")]
+        TxVersion::V7 => v7_signature_hash(tx, signable_input, txid_parts),
     })
 }

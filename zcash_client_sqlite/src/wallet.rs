@@ -2874,6 +2874,8 @@ fn parse_tx<P: consensus::Parameters>(
 
         let expiry_height = tx_data.expiry_height();
         if expiry_height > BlockHeight::from(0) {
+            // TODO: this drops the Ironwood slot, and with it a v7 transaction's ZSA and
+            // issuance bundles. Take upstream's fix for zcash/librustzcash#2987 when it lands.
             TransactionData::from_parts(
                 tx_data.version(),
                 BranchId::for_height(params, expiry_height),

@@ -16,6 +16,8 @@ use zip32::Scope;
 
 use crate::data_api::DecryptedTransaction;
 
+#[cfg(all(feature = "orchard", zcash_unstable = "nu7"))]
+use orchard::note_encryption::ZSAVersion;
 #[cfg(feature = "orchard")]
 use orchard::note_encryption::{
     DomainVersion, IronwoodVersion, NoteEncryptionDomain, OrchardVersion,
@@ -282,11 +284,28 @@ pub fn decrypt_transaction<'a, P: consensus::Parameters, AccountId: Copy>(
         .ironwood_bundle()
         .iter()
         .flat_map(|bundle| {
+            // In a v7 transaction the Ironwood slot carries a ZSA bundle, whose notes use the
+            // ZSA encryption domain rather than the Ironwood one.
+            // Each instantiation has its own opaque iterator type, so collect to a common one.
+            #[cfg(zcash_unstable = "nu7")]
+            if bundle.bundle_version() == orchard::bundle::BundleVersion::zsa() {
+                return decrypt_orchard_protocol_bundle::<ZSAVersion, _>(
+                    ufvks,
+                    bundle,
+                    orchard::ValuePool::Ironwood,
+                )
+                // The wallet records a note's value but not its asset and reads it back as ZEC,
+                // so another asset would be counted as that much ZEC and could never be spent.
+                // FIXME: report these notes once the wallet can store a note's asset.
+                .filter(|output| bool::from(output.note().0.asset().is_zatoshi()))
+                .collect::<Vec<_>>();
+            }
             decrypt_orchard_protocol_bundle::<IronwoodVersion, _>(
                 ufvks,
                 bundle,
                 orchard::ValuePool::Ironwood,
             )
+            .collect::<Vec<_>>()
         })
         .collect();
 
