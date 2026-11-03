@@ -24,6 +24,7 @@ use zcash_protocol::{
     consensus::{BlockHeight, TxIndex},
     memo::MemoBytes,
     value::{BalanceError, Zatoshis},
+    zip318::Zip318Classification,
 };
 use zip32::Scope;
 
@@ -151,6 +152,13 @@ pub trait LowLevelWalletRead {
 
     /// A wallet-internal transaction identifier.
     type TxRef: Copy + Eq + Hash;
+
+    /// Returns the height to which the wallet has been fully scanned: the greatest height
+    /// for which the wallet has trial-decrypted this and all preceding blocks above the
+    /// wallet's birthday height, or `Ok(None)` if no such height exists.
+    fn block_fully_scanned_height(
+        &self,
+    ) -> Result<Option<zcash_protocol::consensus::BlockHeight>, Self::Error>;
 
     /// Returns the set of account identifiers for accounts that spent notes and/or UTXOs in the
     /// construction of the given transaction.
@@ -383,6 +391,28 @@ pub trait LowLevelWalletWrite: LowLevelWalletRead {
         status: TransactionStatus,
     ) -> Result<(), Self::Error>;
 
+    /// Records how a transaction classifies against [ZIP 318], so that a wallet can label a
+    /// migration transaction in its history without consulting a migration plan.
+    ///
+    /// A store persists this rather than recomputing it, because the evidence it rests on is only
+    /// all present at once while the transaction is being decrypted. A store that has not been
+    /// given a classification for a transaction MUST report it as
+    /// [`Zip318Classification::Unknown`] rather than as
+    /// [`Nonconforming`](Zip318Classification::Nonconforming): the two mean "we never looked" and
+    /// "we looked and it is not one", and presenting the first as the second asserts a judgement
+    /// the wallet has not made.
+    ///
+    /// This is called at most once per transaction. Every input to the classification is fixed by
+    /// the time a transaction is decrypted, so the value never needs revisiting; in particular it
+    /// does not depend on the mined height, which would otherwise make it change under the store.
+    ///
+    /// [ZIP 318]: https://zips.z.cash/zip-0318
+    fn put_zip318_classification(
+        &mut self,
+        tx_ref: Self::TxRef,
+        classification: Zip318Classification,
+    ) -> Result<(), Self::Error>;
+
     /// Adds information about a received Sapling note to the wallet, or updates any existing
     /// record for that output.
     fn put_received_sapling_note<T: ReceivedSaplingOutput<AccountId = Self::AccountId>>(
@@ -611,6 +641,15 @@ pub trait LowLevelWalletWrite: LowLevelWalletRead {
         dependent_tx_ref: Option<Self::TxRef>,
     ) -> Result<(), Self::Error>;
 
+    /// Adds a [`TransactionDataRequest::GetStatus`] request for a transaction whose mined status
+    /// cannot be learned through ordinary compact-block scanning.
+    ///
+    /// The request intent must remain durable while the transaction is mined, so that it becomes
+    /// active again if a chain rewind un-mines the transaction.
+    ///
+    /// [`TransactionDataRequest::GetStatus`]: super::TransactionDataRequest
+    fn queue_tx_status(&mut self, txid: TxId) -> Result<(), Self::Error>;
+
     /// Adds a [`TransactionDataRequest::TransactionsInvolvingAddress`] request to the transaction
     /// data request queue. When the transparent output of `tx_ref` at output index `output_index`
     /// (which must have been received at `receiving_address`) is detected as having been spent,
@@ -643,8 +682,9 @@ pub trait LowLevelWalletWrite: LowLevelWalletRead {
         d_tx: &super::DecryptedTransaction<Transaction, Self::AccountId>,
     ) -> Result<(), Self::Error>;
 
-    /// Deletes all [`TransactionDataRequest::Enhancement`] requests for the given transaction ID
-    /// from the transaction data request queue.
+    /// Deletes the [`TransactionDataRequest::Enhancement`] request for the given transaction ID
+    /// from the transaction data request queue, without removing any durable status-observation
+    /// intent for the transaction.
     ///
     /// [`TransactionDataRequest::Enhancement`]: super::TransactionDataRequest
     fn delete_retrieval_queue_entries(&mut self, txid: TxId) -> Result<(), Self::Error>;
