@@ -805,7 +805,7 @@ impl<P: consensus::Parameters> Builder<P, ()> {
         first_issuance: bool,
     ) -> Result<(), Error<FE>> {
         if !self.tx_version.has_orchard_zsa() {
-            return Err(Error::OrchardBuild(BundleTypeNotSatisfiable));
+            return Err(Error::IronwoodBuild(BundleTypeNotSatisfiable));
         }
 
         if self.issuance_builder.is_some() {
@@ -837,7 +837,7 @@ impl<P: consensus::Parameters> Builder<P, ()> {
         first_issuance: bool,
     ) -> Result<(), Error<FE>> {
         if !self.tx_version.has_orchard_zsa() {
-            return Err(Error::OrchardBuild(BundleTypeNotSatisfiable));
+            return Err(Error::IronwoodBuild(BundleTypeNotSatisfiable));
         }
 
         self.issuance_builder
@@ -853,7 +853,7 @@ impl<P: consensus::Parameters> Builder<P, ()> {
     #[cfg(zcash_unstable = "nu7")]
     pub fn finalize_asset<FE>(&mut self, asset_desc_hash: &[u8; 32]) -> Result<(), Error<FE>> {
         if !self.tx_version.has_orchard_zsa() {
-            return Err(Error::OrchardBuild(BundleTypeNotSatisfiable));
+            return Err(Error::IronwoodBuild(BundleTypeNotSatisfiable));
         }
 
         self.issuance_builder
@@ -1516,7 +1516,7 @@ impl<P: consensus::Parameters, U: sapling::builder::ProverProgress> Builder<P, U
         let issue_bundle_awaiting_sighash = match self.issuance_builder {
             Some(b) => {
                 let nullifier =
-                    first_nullifier(&ironwood_bundle).ok_or(Error::<FE>::OrchardBuild(
+                    first_nullifier(&ironwood_bundle).ok_or(Error::<FE>::IronwoodBuild(
                         orchard::builder::BuildError::BundleTypeNotSatisfiable,
                     ))?;
                 Some(b.update_rho(nullifier, &mut rng))
