@@ -669,18 +669,15 @@ impl<P, U> Builder<P, U> {
         self.check_version_compatibility(version)?;
 
         // The Ironwood builder is created for the bundle version that the transaction version
-        // implies, so another version needs another builder and a version without the slot needs
-        // none. The slot is unused here, because the check above refuses such a version over a
-        // slot in use.
+        // implies, so another version needs another builder. A version without the slot keeps the
+        // builder it has, because such a version is refused only when the slot is in use, and the
+        // build repeats that check. The slot is unused here, because the check above refuses such
+        // a version over a slot in use.
         #[cfg(zcash_unstable = "nu7")]
         {
             let bundle_version = ironwood_bundle_version(version);
             if bundle_version != ironwood_bundle_version(self.tx_version) {
-                self.ironwood_builder = if version.has_ironwood() {
-                    self.build_config.ironwood_builder(bundle_version)
-                } else {
-                    None
-                };
+                self.ironwood_builder = self.build_config.ironwood_builder(bundle_version);
             }
         }
 
@@ -2341,6 +2338,50 @@ mod tests {
                 None
             ))
         );
+    }
+
+    /// An empty builder taken through any pair of proposals must keep an Ironwood slot whose
+    /// bundle version matches the final transaction version. v5 and v6 imply the same bundle
+    /// version and v7 another one, so each case records the version it expects, which is
+    /// compared as soon as orchard's builder reports it.
+    #[test]
+    #[cfg(all(feature = "circuits", zcash_unstable = "nu7"))]
+    fn propose_version_rebuilds_the_ironwood_slot_for_every_pair() {
+        let cases = [
+            (
+                TxVersion::V5,
+                Some(orchard::bundle::BundleVersion::ironwood_v3()),
+            ),
+            (
+                TxVersion::V6,
+                Some(orchard::bundle::BundleVersion::ironwood_v3()),
+            ),
+            (TxVersion::V7, Some(orchard::bundle::BundleVersion::zsa())),
+        ];
+
+        for (from, _) in cases {
+            for (to, expected) in cases {
+                let mut builder = Builder::new(
+                    nu7_test_network(),
+                    11u32.into(),
+                    BuildConfig::Standard {
+                        sapling_anchor: None,
+                        orchard_anchor: None,
+                        ironwood_anchor: Some(orchard::Anchor::empty_tree()),
+                        orchard_pool_bundle_type: orchard::builder::BundleType::DEFAULT,
+                    },
+                );
+                builder.propose_version::<Infallible>(from).unwrap();
+                builder.propose_version::<Infallible>(to).unwrap();
+
+                assert_eq!(builder.tx_version, to, "{from:?} then {to:?}");
+                assert_eq!(
+                    builder.ironwood_builder.is_some(),
+                    expected.is_some(),
+                    "{from:?} then {to:?}"
+                );
+            }
+        }
     }
 
     #[test]
