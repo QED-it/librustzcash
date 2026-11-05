@@ -1027,6 +1027,9 @@ impl<P: consensus::Parameters, U> Builder<P, U> {
     /// [`orchard::note::NoteVersion::ZSA`] in a v7 transaction, and
     /// [`orchard::note::NoteVersion::V3`] otherwise. A non-ZEC `asset` is therefore
     /// accepted only by a v7 transaction.
+    // FIXME: `value` is `Zatoshis`, so a non-ZEC asset is capped at MAX_MONEY, while ZIP 227 caps
+    // an asset's total supply at 2^64 - 1. Take the wider value in a separate
+    // `add_ironwood_output_zsa`, which also returns this method to upstream's ZEC-only shape.
     pub fn add_ironwood_output<FE>(
         &mut self,
         ovk: Option<orchard::keys::OutgoingViewingKey>,
