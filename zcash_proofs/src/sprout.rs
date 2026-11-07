@@ -1,11 +1,10 @@
 //! APIs for creating and verifying Sprout proofs.
 
-use bellman::{
-    gadgets::multipack,
-    groth16::{self, Parameters, PreparedVerifyingKey, Proof, create_random_proof},
-};
+use bellman::gadgets::multipack;
 use bls12_381::Bls12;
+use groth16::{self, Parameters, PreparedVerifyingKey, Proof, create_random_proof};
 use rand_core::OsRng;
+use zcash_primitives::rand_compat::Rng010;
 
 use crate::circuit::sprout::*;
 
@@ -128,7 +127,7 @@ pub fn create_proof(
     };
 
     // Initialize secure RNG
-    let mut rng = OsRng;
+    let mut rng = Rng010(OsRng);
 
     create_random_proof(js, proving_key, &mut rng).expect("proving should not fail")
 }
