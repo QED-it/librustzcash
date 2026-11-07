@@ -2143,7 +2143,11 @@ where
     }
     let sapling_extsks = &[
         spending_keys.usk.sapling().clone(),
-        spending_keys.usk.sapling().derive_internal(),
+        spending_keys
+            .usk
+            .sapling()
+            .derive_internal()
+            .expect("the derivation path yields a valid key"),
     ];
     #[cfg(feature = "orchard")]
     let orchard_saks = &[spending_keys.usk.orchard().into()];
