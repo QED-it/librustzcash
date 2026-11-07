@@ -88,12 +88,19 @@ use {
 
 #[cfg(feature = "orchard")]
 use {
-    super::ORCHARD_SHARD_HEIGHT, crate::proto::compact_formats::CompactOrchardAction,
-    ::orchard::tree::MerkleHashOrchard, group::ff::PrimeField, pasta_curves::pallas,
+    super::ORCHARD_SHARD_HEIGHT,
+    crate::proto::compact_formats::CompactOrchardAction,
+    ::orchard::tree::MerkleHashOrchard,
+    // Orchard is still on `ff` 0.13 through `pasta_curves`, while this crate's `ff` is 0.14.
+    pasta_curves::{group::ff::Field as _, group::ff::PrimeField, pallas},
 };
 
 pub mod pool;
+// Test support shared with `zcash_client_sqlite`, like the rest of this module, but not part
+// of the public API: it exists only while the workspace carries two `rand` majors.
 pub mod sapling;
+#[doc(hidden)]
+pub mod sapling_rand;
 
 #[cfg(feature = "orchard")]
 pub mod orchard;
