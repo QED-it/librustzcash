@@ -161,9 +161,9 @@ pub fn decrypt_transaction<'a, P: consensus::Parameters, AccountId: Copy>(
                 .flat_map(|(account, dfvk)| {
                     let sapling_domain = SaplingDomain::new(zip212_enforcement);
                     let ivk_external =
-                        PreparedIncomingViewingKey::new(&dfvk.to_ivk(Scope::External));
+                        PreparedIncomingViewingKey::new(&dfvk.to_ivk(zip32_03::Scope::External));
                     let ivk_internal =
-                        PreparedIncomingViewingKey::new(&dfvk.to_ivk(Scope::Internal));
+                        PreparedIncomingViewingKey::new(&dfvk.to_ivk(zip32_03::Scope::Internal));
                     let ovk = dfvk.fvk().ovk;
 
                     bundle

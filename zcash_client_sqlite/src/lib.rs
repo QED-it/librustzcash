@@ -159,6 +159,7 @@ pub mod util;
 pub mod wallet;
 #[cfg(feature = "zewif")]
 pub mod zewif;
+mod zip32_compat;
 
 #[cfg(test)]
 mod testing;

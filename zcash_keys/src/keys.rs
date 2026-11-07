@@ -48,7 +48,9 @@ pub mod sapling {
     pub use sapling::zip32::{
         DiversifiableFullViewingKey, ExtendedFullViewingKey, ExtendedSpendingKey,
     };
-    use zip32::{AccountId, ChildIndex};
+    use zip32::AccountId;
+    // `sapling-crypto` 0.8 derives over `zip32` 0.3; this crate's own `zip32` is still 0.2.
+    use zip32_03::ChildIndex;
 
     /// Derives the ZIP 32 [`ExtendedSpendingKey`] for a given coin type and account from the
     /// given seed.
@@ -1272,8 +1274,9 @@ impl UnifiedFullViewingKey {
         if let Some(ovk) = input_sources
             .contains(&PoolType::SAPLING)
             .then(|| {
-                self.sapling()
-                    .map(|k| OutgoingViewingKey::from(k.to_ovk(scope)))
+                self.sapling().map(|k| {
+                    OutgoingViewingKey::from(k.to_ovk(crate::zip32_compat::scope_03(scope)))
+                })
             })
             .flatten()
         {
@@ -1644,7 +1647,10 @@ impl UnifiedIncomingViewingKey {
                 // If a Sapling receiver type is requested, we must be able to construct an
                 // address; if we're unable to do so, then no Unified Address exists at this
                 // diversifier and we use `?` to early-return from this method.
-                sapling = match (request.sapling, divk.address_at(_j)) {
+                sapling = match (
+                    request.sapling,
+                    divk.address_at(crate::zip32_compat::diversifier_index_03(_j)),
+                ) {
                     (Require | Allow, Some(addr)) => Ok(Some(addr)),
                     (Require, None) => {
                         Err(AddressGenerationError::InvalidSaplingDiversifierIndex(_j))
@@ -1761,7 +1767,8 @@ impl UnifiedIncomingViewingKey {
         let sapling_di = ua
             .sapling()
             .zip(self.sapling().as_ref())
-            .and_then(|(receiver, ivk)| ivk.decrypt_diversifier(receiver));
+            .and_then(|(receiver, ivk)| ivk.decrypt_diversifier(receiver))
+            .map(crate::zip32_compat::diversifier_index_02);
 
         #[cfg(not(feature = "orchard"))]
         let orchard_di: Option<DiversifierIndex> = None;
@@ -2096,7 +2103,12 @@ mod tests {
             // The test vectors contain some diversifier indices that do not generate
             // valid Sapling addresses, so skip those.
             #[cfg(feature = "sapling")]
-            if ufvk.sapling().unwrap().address(d_idx).is_none() {
+            if ufvk
+                .sapling()
+                .unwrap()
+                .address(crate::zip32_compat::diversifier_index_03(d_idx))
+                .is_none()
+            {
                 continue;
             }
 
@@ -2283,7 +2295,13 @@ mod tests {
             // The test vectors contain some diversifier indices that do not generate
             // valid Sapling addresses, so skip those.
             #[cfg(feature = "sapling")]
-            if uivk.sapling().as_ref().unwrap().address_at(d_idx).is_none() {
+            if uivk
+                .sapling()
+                .as_ref()
+                .unwrap()
+                .address_at(crate::zip32_compat::diversifier_index_03(d_idx))
+                .is_none()
+            {
                 continue;
             }
 

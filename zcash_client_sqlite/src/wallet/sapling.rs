@@ -306,6 +306,7 @@ pub(crate) fn ensure_address<
         let to = output.note().recipient();
         let diversifier_index = ivk
             .decrypt_diversifier(&to)
+            .map(crate::zip32_compat::diversifier_index_02)
             .expect("address corresponds to account");
 
         let ua = account
