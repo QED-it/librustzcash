@@ -11,7 +11,7 @@ use std::{
 };
 use zcash_address::unified::{self, Encoding};
 
-use sapling::{self, Node, note::ExtractedNoteCommitment, note_encryption::COMPACT_NOTE_SIZE};
+use sapling::{self, Node, note::ExtractedNoteCommitment};
 use zcash_note_encryption::EphemeralKeyBytes;
 use zcash_primitives::{
     block::{BlockHash, BlockHeader},
@@ -177,7 +177,8 @@ impl<Proof> From<&sapling::bundle::OutputDescription<Proof>>
         compact_formats::CompactSaplingOutput {
             cmu: out.cmu().to_bytes().to_vec(),
             ephemeral_key: out.ephemeral_key().as_ref().to_vec(),
-            ciphertext: out.enc_ciphertext().0[..COMPACT_NOTE_SIZE].to_vec(),
+            ciphertext: out.enc_ciphertext()[..sapling::note_encryption::COMPACT_NOTE_SIZE]
+                .to_vec(),
         }
     }
 }

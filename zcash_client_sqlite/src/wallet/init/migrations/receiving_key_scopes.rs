@@ -311,7 +311,6 @@ mod tests {
         memo::MemoBytes,
         value::Zatoshis,
     };
-    use zip32::Scope;
 
     use crate::{
         AccountRef, TxRef, WalletDb,

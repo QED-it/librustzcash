@@ -631,7 +631,7 @@ impl Bundle {
                     proof_generation_key: spend
                         .proof_generation_key()
                         .as_ref()
-                        .map(|key| (key.ak.to_bytes(), key.nsk.to_bytes())),
+                        .map(|key| (key.ak().to_bytes(), key.nsk().to_bytes())),
                     witness: spend.witness().as_ref().map(|witness| {
                         (
                             u32::try_from(u64::from(witness.position()))
@@ -689,7 +689,7 @@ impl Bundle {
             value_sum: bundle.value_sum().to_raw(),
             anchor: (bundle.anchor().to_bytes() != DEFAULT_ANCHOR)
                 .then_some(bundle.anchor().to_bytes()),
-            bsk: bundle.bsk().map(|bsk| bsk.into()),
+            bsk: bundle.bsk().as_ref().map(|bsk| bsk.to_bytes()),
         }
     }
 }

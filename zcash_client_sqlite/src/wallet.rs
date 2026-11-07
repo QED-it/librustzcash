@@ -5445,7 +5445,9 @@ mod tests {
         assert_eq!(block_fully_scanned(&st), None);
 
         // Scan a block above the wallet's birthday height.
-        let not_our_key = ExtendedSpendingKey::master(&[]).to_diversifiable_full_viewing_key();
+        let not_our_key = ExtendedSpendingKey::master(&[])
+            .expect("the derivation path yields a valid key")
+            .to_diversifiable_full_viewing_key();
         let not_our_value = Zatoshis::const_from_u64(10000);
         let start_height = st.sapling_activation_height();
         let _ = st.generate_block_at(

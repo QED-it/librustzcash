@@ -1,5 +1,4 @@
 use criterion::{BenchmarkId, Criterion, Throughput, criterion_group, criterion_main};
-use ff::Field;
 use rand_core::OsRng;
 use sapling::{
     self, Diversifier, SaplingIvk,

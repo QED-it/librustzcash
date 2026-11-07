@@ -2674,7 +2674,8 @@ mod tests {
     #[test]
     #[cfg(feature = "circuits")]
     fn binding_sig_present_if_shielded_spend() {
-        let extsk = ExtendedSpendingKey::master(&[]);
+        let extsk =
+            ExtendedSpendingKey::master(&[]).expect("the derivation path yields a valid key");
         let dfvk = extsk.to_diversifiable_full_viewing_key();
         let to = dfvk.default_address().1;
 
@@ -2735,7 +2736,8 @@ mod tests {
         let mut rng = OsRng;
 
         // Just use the master key as the ExtendedSpendingKey for this test
-        let extsk = ExtendedSpendingKey::master(&[]);
+        let extsk =
+            ExtendedSpendingKey::master(&[]).expect("the derivation path yields a valid key");
         let tx_height = TEST_NETWORK
             .activation_height(NetworkUpgrade::Sapling)
             .unwrap();
