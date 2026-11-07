@@ -23,12 +23,14 @@ zcash_address.workspace = true
 zcash_encoding.workspace = true
 zcash_protocol.workspace = true
 zip32.workspace = true
+zip32_03.workspace = true
 
 # Dependencies exposed in a public API:
 nonempty.workspace = true
 
 # - CSPRNG
 rand_core.workspace = true
+rand_core_010.workspace = true
 
 # - Encodings
 bech32.workspace = true

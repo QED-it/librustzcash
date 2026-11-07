@@ -33,6 +33,7 @@ zcash_primitives = { workspace = true, features = ["std", "circuits"] }
 zcash_protocol.workspace = true
 zcash_script.workspace = true
 zip32.workspace = true
+zip32_03.workspace = true
 zip321.workspace = true
 transparent.workspace = true
 pczt = { workspace = true, optional = true }
@@ -45,6 +46,7 @@ nonempty.workspace = true
 
 # - CSPRNG
 rand_core.workspace = true
+rand_core_010.workspace = true
 
 # - Encodings
 base64.workspace = true
