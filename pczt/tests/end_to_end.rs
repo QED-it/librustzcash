@@ -1,5 +1,6 @@
 use std::num::NonZeroU8;
 use std::sync::OnceLock;
+use zcash_primitives::rand_compat::Rng010;
 
 use ::transparent::{
     address::{Script, TransparentAddress},
@@ -496,7 +497,7 @@ fn sapling_to_orchard() {
             )
             .unwrap();
         let (bundle, meta) = sapling_builder
-            .build::<LocalTxProver, LocalTxProver, _, i64>(&[], &mut rng)
+            .build::<LocalTxProver, LocalTxProver, _, i64>(&[], &mut Rng010(&mut rng))
             .unwrap()
             .unwrap();
         let output = bundle
@@ -1222,7 +1223,7 @@ fn redacted_sapling_anchor_can_be_restored_after_signing() {
             )
             .unwrap();
         let (bundle, meta) = sapling_builder
-            .build::<LocalTxProver, LocalTxProver, _, i64>(&[], &mut rng)
+            .build::<LocalTxProver, LocalTxProver, _, i64>(&[], &mut Rng010(&mut rng))
             .unwrap()
             .unwrap();
         let output = bundle
@@ -1382,7 +1383,7 @@ fn wallet_can_set_sapling_witness_after_signing() {
             )
             .unwrap();
         let (bundle, meta) = sapling_builder
-            .build::<LocalTxProver, LocalTxProver, _, i64>(&[], &mut rng)
+            .build::<LocalTxProver, LocalTxProver, _, i64>(&[], &mut Rng010(&mut rng))
             .unwrap()
             .unwrap();
         let output = bundle

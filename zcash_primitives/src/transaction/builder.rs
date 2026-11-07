@@ -5,6 +5,8 @@ use core::fmt;
 
 use rand_core::{CryptoRng, RngCore};
 
+use crate::rand_compat::Rng010;
+
 use ::sapling::{Note, PaymentAddress, builder::SaplingMetadata};
 use ::transparent::{
     address::TransparentAddress, builder::TransparentBuilder, bundle::TxOut, coinbase,
@@ -1461,7 +1463,7 @@ impl<P: consensus::Parameters, U: sapling::builder::ProverProgress> Builder<P, U
             .sapling_builder
             .and_then(|builder| {
                 builder
-                    .build::<SP, OP, _, _>(sapling_extsks, &mut rng)
+                    .build::<SP, OP, _, _>(sapling_extsks, Rng010(&mut rng))
                     .map_err(Error::SaplingBuild)
                     .transpose()
                     .map(|res| {
@@ -1473,7 +1475,7 @@ impl<P: consensus::Parameters, U: sapling::builder::ProverProgress> Builder<P, U
                                 bundle.create_proofs(
                                     spend_prover,
                                     output_prover,
-                                    &mut rng,
+                                    Rng010(&mut rng),
                                     self._progress_notifier,
                                 ),
                                 sapling_meta,
@@ -1572,11 +1574,17 @@ impl<P: consensus::Parameters, U: sapling::builder::ProverProgress> Builder<P, U
 
         let sapling_asks = sapling_extsks
             .iter()
-            .map(|extsk| extsk.expsk.ask.clone())
+            .map(|extsk| extsk.expsk().ask().clone())
             .collect::<Vec<_>>();
         let sapling_bundle = unauthed_tx
             .sapling_bundle
-            .map(|b| b.apply_signatures(&mut rng, *shielded_sig_commitment.as_ref(), &sapling_asks))
+            .map(|b| {
+                b.apply_signatures(
+                    Rng010(&mut rng),
+                    *shielded_sig_commitment.as_ref(),
+                    &sapling_asks,
+                )
+            })
             .transpose()
             .map_err(Error::SaplingBuild)?;
 
@@ -1698,7 +1706,7 @@ impl<P: consensus::Parameters, U> Builder<P, U> {
             .sapling_builder
             .map(|builder| {
                 builder
-                    .build_for_pczt(&mut rng)
+                    .build_for_pczt(Rng010(&mut rng))
                     .map_err(Error::SaplingBuild)
             })
             .transpose()?
@@ -1850,6 +1858,7 @@ mod tests {
     #[cfg(feature = "circuits")]
     use {
         super::{Builder, Error},
+        crate::rand_compat::Rng010,
         crate::transaction::builder::BuildConfig,
         ::sapling::{Node, Rseed, zip32::ExtendedSpendingKey},
         ::transparent::{address::TransparentAddress, builder::TransparentSigningSet},
@@ -2673,7 +2682,7 @@ mod tests {
 
         let note1 = to.create_note(
             sapling::value::NoteValue::from_raw(50000),
-            Rseed::BeforeZip212(jubjub::Fr::random(&mut rng)),
+            Rseed::BeforeZip212(jubjub::Fr::random(&mut Rng010(&mut rng))),
         );
         let cmu1 = Node::from_cmu(&note1.cmu());
         let mut tree = CommitmentTree::<Node, 32>::empty();
@@ -2851,7 +2860,7 @@ mod tests {
 
         let note1 = to.create_note(
             sapling::value::NoteValue::from_raw(59999),
-            Rseed::BeforeZip212(jubjub::Fr::random(&mut rng)),
+            Rseed::BeforeZip212(jubjub::Fr::random(&mut Rng010(&mut rng))),
         );
         let cmu1 = Node::from_cmu(&note1.cmu());
         let mut tree = CommitmentTree::<Node, 32>::empty();
@@ -2950,7 +2959,7 @@ mod tests {
 
         let note2 = to.create_note(
             sapling::value::NoteValue::from_raw(1),
-            Rseed::BeforeZip212(jubjub::Fr::random(&mut rng)),
+            Rseed::BeforeZip212(jubjub::Fr::random(&mut Rng010(&mut rng))),
         );
         let cmu2 = Node::from_cmu(&note2.cmu());
         tree.append(cmu2).unwrap();

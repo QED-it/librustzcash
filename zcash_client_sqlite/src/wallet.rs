@@ -5533,7 +5533,7 @@ mod tests {
                 let sapling_activation_height =
                     network.activation_height(NetworkUpgrade::Sapling).unwrap();
                 let (prior_sapling_roots, sapling_initial_tree) =
-                    Frontier::random_with_prior_subtree_roots(
+                    zcash_client_backend::data_api::testing::sapling_rand::random_sapling_frontier_with_prior_subtree_roots(
                         rng,
                         initial_sapling_tree_size.into(),
                         NonZeroU8::new(16).unwrap(),
@@ -5690,7 +5690,7 @@ mod tests {
                 let sapling_activation_height =
                     network.activation_height(NetworkUpgrade::Sapling).unwrap();
                 let (prior_sapling_roots, sapling_initial_tree) =
-                    Frontier::random_with_prior_subtree_roots(
+                    zcash_client_backend::data_api::testing::sapling_rand::random_sapling_frontier_with_prior_subtree_roots(
                         rng,
                         initial_sapling_tree_size.into(),
                         NonZeroU8::new(16).unwrap(),
@@ -5864,7 +5864,7 @@ mod tests {
                 let sapling_activation_height =
                     network.activation_height(NetworkUpgrade::Sapling).unwrap();
                 let (prior_sapling_roots, sapling_initial_tree) =
-                    Frontier::random_with_prior_subtree_roots(
+                    zcash_client_backend::data_api::testing::sapling_rand::random_sapling_frontier_with_prior_subtree_roots(
                         rng,
                         initial_sapling_tree_size.into(),
                         NonZeroU8::new(16).unwrap(),

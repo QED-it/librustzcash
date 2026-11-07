@@ -17,6 +17,8 @@ use blake2b_simd::Hash as Blake2bHash;
 use orchard::primitives::redpallas;
 use rand_core::OsRng;
 
+use crate::rand_compat::Rng010;
+
 use ::transparent::sighash::{SIGHASH_ANYONECANPAY, SIGHASH_NONE, SIGHASH_SINGLE};
 use zcash_primitives::transaction::{
     TransactionData, TxDigests, sighash::SignableInput, txid::TxIdDigester,
@@ -224,7 +226,7 @@ impl Signer {
         ask: &sapling::keys::SpendAuthorizingKey,
     ) -> Result<(), Error> {
         self.generate_or_apply_sapling_signature(index, |spend, shielded_sighash| {
-            spend.sign(shielded_sighash, ask, OsRng)
+            spend.sign(shielded_sighash, ask, Rng010(OsRng))
         })
     }
 

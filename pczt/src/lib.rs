@@ -53,6 +53,14 @@ use {
     },
 };
 
+#[cfg(any(
+    feature = "io-finalizer",
+    feature = "prover",
+    feature = "signer",
+    feature = "tx-extractor"
+))]
+mod rand_compat;
+
 pub mod roles;
 
 pub mod common;

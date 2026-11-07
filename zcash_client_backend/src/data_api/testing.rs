@@ -29,6 +29,7 @@ use zcash_keys::{
     keys::{UnifiedAddressRequest, UnifiedFullViewingKey, UnifiedSpendingKey},
 };
 use zcash_note_encryption::Domain;
+use zcash_primitives::rand_compat::Rng010;
 use zcash_primitives::{
     block::BlockHash,
     transaction::{Transaction, TxId, components::sapling::zip212_enforcement, fees::FeeRule},
@@ -709,7 +710,7 @@ where
                     prior_cached_block.chain_state.final_sapling_tree().clone(),
                     |mut acc, _| {
                         acc.append(::sapling::Node::from_scalar(bls12_381::Scalar::random(
-                            &mut self.rng,
+                            &mut Rng010(&mut self.rng),
                         )));
                         acc
                     },
@@ -1743,6 +1744,7 @@ impl<Cache, DsFactory> TestBuilder<Cache, DsFactory> {
     /// use std::num::NonZeroU8;
     ///
     /// use incrementalmerkletree::frontier::Frontier;
+    /// use zcash_client_backend::data_api::testing::sapling_rand::random_sapling_frontier_with_prior_subtree_roots;
     /// use zcash_primitives::block::BlockHash;
     /// use zcash_protocol::consensus::{NetworkUpgrade, Parameters};
     /// use zcash_client_backend::data_api::{
@@ -1768,7 +1770,7 @@ impl<Cache, DsFactory> TestBuilder<Cache, DsFactory> {
     ///
     ///         // Construct a fake chain state for the end of block 300
     ///         let (prior_sapling_roots, sapling_initial_tree) =
-    ///             Frontier::random_with_prior_subtree_roots(
+    ///             random_sapling_frontier_with_prior_subtree_roots(
     ///                 rng,
     ///                 initial_sapling_tree_size.into(),
     ///                 NonZeroU8::new(16).unwrap(),
@@ -2463,7 +2465,7 @@ fn compact_sapling_output<P: consensus::Parameters, R: RngCore + CryptoRng>(
     sender_ovk: Option<::sapling::keys::OutgoingViewingKey>,
     rng: &mut R,
 ) -> (CompactSaplingOutput, ::sapling::Note) {
-    let rseed = generate_random_rseed(zip212_enforcement(params, height), rng);
+    let rseed = generate_random_rseed(zip212_enforcement(params, height), &mut Rng010(&mut *rng));
     let note = ::sapling::Note::from_parts(
         recipient,
         ::sapling::value::NoteValue::from_raw(value.into_u64()),
@@ -2473,7 +2475,7 @@ fn compact_sapling_output<P: consensus::Parameters, R: RngCore + CryptoRng>(
         sender_ovk,
         note.clone(),
         MemoBytes::empty().into_bytes(),
-        rng,
+        &mut Rng010(&mut *rng),
     );
     let cmu = note.cmu().to_bytes().to_vec();
     let ephemeral_key = SaplingDomain::epk_bytes(encryptor.epk()).0.to_vec();

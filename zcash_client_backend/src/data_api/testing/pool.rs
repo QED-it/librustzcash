@@ -8,6 +8,8 @@ use std::{
 
 use assert_matches::assert_matches;
 use incrementalmerkletree::{Level, Position, frontier::Frontier};
+
+use super::sapling_rand::random_sapling_frontier_with_prior_subtree_roots;
 use rand::{Rng, RngCore};
 use secrecy::Secret;
 use shardtree::error::ShardTreeError;
@@ -3761,7 +3763,7 @@ pub fn birthday_in_anchor_shard<T: ShieldedPoolTester>(
             // Construct a fake chain state for the end of the block with the given
             // birthday_offset from the Nu5 birthday.
             let (prior_sapling_roots, sapling_initial_tree) =
-                Frontier::random_with_prior_subtree_roots(
+                random_sapling_frontier_with_prior_subtree_roots(
                     rng,
                     frontier_tree_size.into(),
                     NonZeroU8::new(16).unwrap(),
@@ -4695,7 +4697,11 @@ pub fn truncate_to_chain_state_below_birthday<T: ShieldedPoolTester, Dsf>(
             let birthday_height = network.activation_height(NetworkUpgrade::Sapling).unwrap() + 200;
 
             let (prior_sapling_roots, sapling_initial_tree) =
-                Frontier::random_with_prior_subtree_roots(rng, 1u64, NonZeroU8::new(16).unwrap());
+                random_sapling_frontier_with_prior_subtree_roots(
+                    rng,
+                    1u64,
+                    NonZeroU8::new(16).unwrap(),
+                );
             let prior_sapling_roots = prior_sapling_roots
                 .into_iter()
                 .map(|root| CommitmentTreeRoot::from_parts(birthday_height - 100, root))
@@ -4849,7 +4855,7 @@ pub fn truncate_to_chain_state_above_scanned<T: ShieldedPoolTester, Dsf>(
     // unknown.
     let target_height = max_scanned + 50;
     let shard_2_tree_size: u64 = (0x2 << 16) + 2;
-    let (_, shard2_sapling_frontier) = Frontier::random_with_prior_subtree_roots(
+    let (_, shard2_sapling_frontier) = random_sapling_frontier_with_prior_subtree_roots(
         st.rng_mut(),
         shard_2_tree_size,
         NonZeroU8::new(16).unwrap(),
@@ -5280,7 +5286,7 @@ where
             let birthday_height = network.activation_height(NetworkUpgrade::Nu5).unwrap() + 1000;
 
             let (prior_sapling_roots, sapling_initial_tree) =
-                Frontier::random_with_prior_subtree_roots(
+                random_sapling_frontier_with_prior_subtree_roots(
                     rng,
                     initial_tree_size.into(),
                     NonZeroU8::new(SHARD_HEIGHT as u8).unwrap(),
@@ -5544,7 +5550,7 @@ where
             let birthday_height = network.activation_height(NetworkUpgrade::Nu5).unwrap() + 1000;
 
             let (prior_sapling_roots, sapling_initial_tree) =
-                Frontier::random_with_prior_subtree_roots(
+                random_sapling_frontier_with_prior_subtree_roots(
                     rng,
                     initial_tree_size.into(),
                     NonZeroU8::new(SHARD_HEIGHT as u8).unwrap(),
