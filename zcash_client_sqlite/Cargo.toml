@@ -34,6 +34,7 @@ zcash_primitives.workspace = true
 zcash_protocol.workspace = true
 zcash_script.workspace = true
 zip32.workspace = true
+zip32_03.workspace = true
 transparent.workspace = true
 
 # Dependencies exposed in a public API:
