@@ -67,6 +67,7 @@ pub mod proto;
 pub mod scan;
 pub mod scanning;
 pub mod wallet;
+mod zip32_compat;
 
 #[cfg(any(feature = "sync", feature = "sync-decryptor"))]
 pub mod sync;

@@ -53,7 +53,14 @@ fn main() {
         return;
     };
 
-    let (diversifier_index, address) = extfvk.find_address(opts.diversifier_index).unwrap();
+    // `sapling-crypto` 0.8 takes and returns `zip32` 0.3's diversifier index, while this
+    // crate is still on 0.2. Both are the same eleven bytes.
+    let (diversifier_index, address) = extfvk
+        .find_address(zip32_03::DiversifierIndex::from(
+            *opts.diversifier_index.as_bytes(),
+        ))
+        .unwrap();
+    let diversifier_index = DiversifierIndex::from(*diversifier_index.as_bytes());
     println!(
         "# Diversifier index: {}",
         encode_diversifier_index(&diversifier_index)

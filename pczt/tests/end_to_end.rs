@@ -547,7 +547,7 @@ fn sapling_to_orchard() {
         .unwrap();
     builder
         .add_orchard_output::<zip317::FeeRule>(
-            Some(sapling_dfvk.to_ovk(zip32::Scope::External).0.into()),
+            Some(sapling_dfvk.to_ovk(zip32_03::Scope::External).0.into()),
             recipient,
             Zatoshis::const_from_u64(100_000),
             MemoBytes::empty(),
@@ -555,7 +555,7 @@ fn sapling_to_orchard() {
         .unwrap();
     builder
         .add_sapling_output::<zip317::FeeRule>(
-            Some(sapling_dfvk.to_ovk(zip32::Scope::Internal)),
+            Some(sapling_dfvk.to_ovk(zip32_03::Scope::Internal)),
             sapling_internal_dfvk.find_address(0u32.into()).unwrap().1,
             Zatoshis::const_from_u64(880_000),
             MemoBytes::empty(),
@@ -1271,7 +1271,7 @@ fn redacted_sapling_anchor_can_be_restored_after_signing() {
         .unwrap();
     builder
         .add_sapling_output::<zip317::FeeRule>(
-            Some(sapling_dfvk.to_ovk(zip32::Scope::Internal)),
+            Some(sapling_dfvk.to_ovk(zip32_03::Scope::Internal)),
             sapling_internal_dfvk.find_address(0u32.into()).unwrap().1,
             Zatoshis::const_from_u64(990_000),
             MemoBytes::empty(),
@@ -1436,7 +1436,7 @@ fn wallet_can_set_sapling_witness_after_signing() {
         .unwrap();
     builder
         .add_sapling_output::<zip317::FeeRule>(
-            Some(sapling_dfvk.to_ovk(zip32::Scope::Internal)),
+            Some(sapling_dfvk.to_ovk(zip32_03::Scope::Internal)),
             sapling_internal_dfvk.find_address(0u32.into()).unwrap().1,
             Zatoshis::const_from_u64(990_000),
             MemoBytes::empty(),

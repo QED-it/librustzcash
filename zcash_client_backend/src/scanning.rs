@@ -384,8 +384,8 @@ impl<AccountId: Copy + Eq + Hash + Send + Sync + 'static>
                     sapling.insert(
                         (account_id, scope),
                         Box::new(ScanningKey {
-                            ivk: dfvk.to_ivk(scope),
-                            nk: Some(dfvk.to_nk(scope)),
+                            ivk: dfvk.to_ivk(crate::zip32_compat::scope_03(scope)),
+                            nk: Some(dfvk.to_nk(crate::zip32_compat::scope_03(scope))),
                             account_id,
                             key_scope: Some(scope),
                         }),

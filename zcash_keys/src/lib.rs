@@ -28,3 +28,4 @@ pub mod encoding;
     feature = "transparent-inputs"
 ))]
 pub mod keys;
+mod zip32_compat;
