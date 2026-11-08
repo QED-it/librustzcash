@@ -1001,6 +1001,11 @@ criteria = "safe-to-run"
 version = "5.3.0"
 criteria = "safe-to-deploy"
 
+[[exemptions.r-efi]]
+version = "6.0.0"
+criteria = "safe-to-deploy"
+notes = "Arrives through getrandom 0.4.3 with rand_core 0.10; this entry goes away once orchard 0.16 puts the workspace on one rand major."
+
 [[exemptions.radium]]
 version = "0.7.0"
 criteria = "safe-to-deploy"
