@@ -87,7 +87,7 @@ nonempty = { version = "0.11", default-features = false }
 # CSPRNG
 rand = { version = "0.8", default-features = false }
 rand_core = { version = "0.6", default-features = false }
-# Sapling moved to rand_core 0.10 while Orchard 0.15 is still on 0.6.
+# TODO: Drop this renamed dependency once orchard 0.16 puts both pools on rand_core 0.10.
 rand_core_010 = { package = "rand_core", version = "0.10", default-features = false }
 rand_distr = { version = "0.4", default-features = false }
 
@@ -184,7 +184,7 @@ aes = "0.8"
 bip0039 = { version = "0.12" }
 fpe = { version = "0.6", default-features = false, features = ["alloc"] }
 zip32 = { version = "0.2", default-features = false }
-# Sapling moved to zip32 0.3 while Orchard 0.15 is still on 0.2; see rand_compat/zip32_compat.
+# TODO: Drop this renamed dependency once orchard 0.16 puts both pools on zip32 0.3.
 zip32_03 = { package = "zip32", version = "0.3", default-features = false }
 
 # ZeWIF wallet interchange

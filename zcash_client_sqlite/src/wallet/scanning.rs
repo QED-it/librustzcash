@@ -783,6 +783,7 @@ pub(crate) mod tests {
                     network.activation_height(NetworkUpgrade::Sapling).unwrap();
                 // Construct a fake chain state for the end of block 300
                 let (prior_sapling_roots, sapling_initial_tree) =
+                    // TODO: Call the plain frontier helper again after orchard 0.16.
                     zcash_client_backend::data_api::testing::sapling_rand::random_sapling_frontier_with_prior_subtree_roots(
                         rng,
                         initial_sapling_tree_size.into(),
@@ -965,6 +966,7 @@ pub(crate) mod tests {
                 // Construct a fake chain state for the end of the block with the given
                 // birthday_offset from the end of the last shard.
                 let (prior_sapling_roots, sapling_initial_tree) =
+                    // TODO: Call the plain frontier helper again after orchard 0.16.
                     zcash_client_backend::data_api::testing::sapling_rand::random_sapling_frontier_with_prior_subtree_roots(
                         rng,
                         (frontier_position + 1).into(),
@@ -1219,6 +1221,7 @@ pub(crate) mod tests {
                 // Construct a fake chain state for the end of the block with the given
                 // birthday_offset from the Nu5 birthday.
                 let (prior_sapling_roots, sapling_initial_tree) =
+                    // TODO: Call the plain frontier helper again after orchard 0.16.
                     zcash_client_backend::data_api::testing::sapling_rand::random_sapling_frontier_with_prior_subtree_roots(
                         rng,
                         frontier_tree_size.into(),
@@ -1421,6 +1424,7 @@ pub(crate) mod tests {
                 // Construct a fake chain state for the end of the block with the given
                 // birthday_offset from the Nu5 birthday.
                 let (prior_sapling_roots, sapling_initial_tree) =
+                    // TODO: Call the plain frontier helper again after orchard 0.16.
                     zcash_client_backend::data_api::testing::sapling_rand::random_sapling_frontier_with_prior_subtree_roots(
                         rng,
                         frontier_tree_size.into(),

@@ -5,7 +5,7 @@
 //! function parameters, never in a type that is stored or returned, so a wrapper at each
 //! call boundary is enough.
 //!
-//! TODO: Remove once the workspace moves to `rand` 0.10.
+//! TODO: Delete this module once orchard 0.16 puts the workspace on one rand major.
 
 use core::convert::Infallible;
 
