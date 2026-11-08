@@ -177,10 +177,6 @@ criteria = "safe-to-deploy"
 version = "0.11.0"
 criteria = "safe-to-deploy"
 
-[[exemptions.bellman]]
-version = "0.14.0"
-criteria = "safe-to-deploy"
-
 [[exemptions.bincode]]
 version = "2.0.1"
 criteria = "safe-to-deploy"
@@ -211,10 +207,6 @@ criteria = "safe-to-deploy"
 
 [[exemptions.block-buffer]]
 version = "0.11.0-rc.3"
-criteria = "safe-to-deploy"
-
-[[exemptions.bls12_381]]
-version = "0.8.0"
 criteria = "safe-to-deploy"
 
 [[exemptions.bs58]]
@@ -509,10 +501,6 @@ criteria = "safe-to-run"
 version = "5.3.1"
 criteria = "safe-to-deploy"
 
-[[exemptions.ff]]
-version = "0.13.0"
-criteria = "safe-to-deploy"
-
 [[exemptions.figment]]
 version = "0.10.19"
 criteria = "safe-to-deploy"
@@ -583,10 +571,6 @@ criteria = "safe-to-deploy"
 
 [[exemptions.glob-match]]
 version = "0.2.1"
-criteria = "safe-to-deploy"
-
-[[exemptions.group]]
-version = "0.13.0"
 criteria = "safe-to-deploy"
 
 [[exemptions.gumdrop]]
@@ -703,10 +687,6 @@ criteria = "safe-to-deploy"
 
 [[exemptions.js-sys]]
 version = "0.3.65"
-criteria = "safe-to-deploy"
-
-[[exemptions.jubjub]]
-version = "0.10.0"
 criteria = "safe-to-deploy"
 
 [[exemptions.kqueue]]
@@ -859,10 +839,6 @@ criteria = "safe-to-deploy"
 
 [[exemptions.p521]]
 version = "0.13.3"
-criteria = "safe-to-deploy"
-
-[[exemptions.pairing]]
-version = "0.23.0"
 criteria = "safe-to-deploy"
 
 [[exemptions.parking]]
@@ -1035,10 +1011,6 @@ criteria = "safe-to-deploy"
 
 [[exemptions.rdrand]]
 version = "0.8.3"
-criteria = "safe-to-deploy"
-
-[[exemptions.reddsa]]
-version = "0.5.1"
 criteria = "safe-to-deploy"
 
 [[exemptions.redox_syscall]]
