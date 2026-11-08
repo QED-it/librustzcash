@@ -21,6 +21,7 @@ zcash_protocol = { workspace = true, default-features = false }
 
 blake2b_simd = { workspace = true, optional = true }
 rand_core = { workspace = true, optional = true }
+# TODO: Drop this renamed dependency and its feature wiring when orchard 0.16 lands.
 rand_core_010 = { workspace = true, optional = true }
 
 # Encoding

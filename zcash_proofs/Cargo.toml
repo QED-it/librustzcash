@@ -29,6 +29,7 @@ group.workspace = true
 jubjub.workspace = true
 minreq = { version = "2", features = ["https"], optional = true }
 rand_core.workspace = true
+# TODO: Drop this renamed dependency and its feature wiring when orchard 0.16 lands.
 rand_core_010.workspace = true
 sapling.workspace = true
 tracing.workspace = true

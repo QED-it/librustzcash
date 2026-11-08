@@ -28,4 +28,5 @@ pub mod encoding;
     feature = "transparent-inputs"
 ))]
 pub mod keys;
+// TODO: Remove this declaration along with the module when orchard 0.16 lands.
 mod zip32_compat;

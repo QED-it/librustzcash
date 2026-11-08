@@ -5,7 +5,7 @@
 //! `rand` 0.10 `StandardUniform` impl for `Node`. The orphan rule forbids writing the
 //! missing impl here, so the frontier is generated for a local newtype and converted.
 //!
-//! TODO: Remove once the workspace moves to `rand` 0.10.
+//! TODO: Delete this helper once orchard 0.16 makes the upstream one usable again.
 
 use core::num::NonZeroU8;
 

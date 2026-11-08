@@ -67,6 +67,7 @@ pub mod proto;
 pub mod scan;
 pub mod scanning;
 pub mod wallet;
+// TODO: Remove this declaration along with the module when orchard 0.16 lands.
 mod zip32_compat;
 
 #[cfg(any(feature = "sync", feature = "sync-decryptor"))]

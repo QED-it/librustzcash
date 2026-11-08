@@ -27,6 +27,7 @@ pub(crate) mod encoding;
 pub mod merkle_tree;
 // Not part of the public API: a version bridge that exists only while the workspace carries
 // two `rand_core` majors. `zcash_proofs`, `zcash_client_backend` and `pczt` need it.
+// TODO: Remove this declaration along with the module when orchard 0.16 lands.
 #[doc(hidden)]
 pub mod rand_compat;
 pub mod sighash_versioning;

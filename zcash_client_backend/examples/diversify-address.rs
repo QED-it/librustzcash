@@ -53,8 +53,7 @@ fn main() {
         return;
     };
 
-    // `sapling-crypto` 0.8 takes and returns `zip32` 0.3's diversifier index, while this
-    // crate is still on 0.2. Both are the same eleven bytes.
+    // TODO: Drop both conversions once orchard 0.16 puts this crate on zip32 0.3.
     let (diversifier_index, address) = extfvk
         .find_address(zip32_03::DiversifierIndex::from(
             *opts.diversifier_index.as_bytes(),

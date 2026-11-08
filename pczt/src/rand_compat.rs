@@ -3,7 +3,7 @@
 //! See `zcash_primitives::rand_compat`; this crate carries its own copy because the roles
 //! that need it are enabled by features that do not pull in `zcash_primitives`.
 //!
-//! TODO: Remove once the workspace moves to `rand` 0.10.
+//! TODO: Delete this copy of the adapter once orchard 0.16 unifies the rand majors.
 
 use core::convert::Infallible;
 

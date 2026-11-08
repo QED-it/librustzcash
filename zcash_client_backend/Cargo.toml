@@ -33,6 +33,7 @@ zcash_primitives = { workspace = true, features = ["std", "circuits"] }
 zcash_protocol.workspace = true
 zcash_script.workspace = true
 zip32.workspace = true
+# TODO: Drop this renamed dependency and its feature wiring when orchard 0.16 lands.
 zip32_03.workspace = true
 zip321.workspace = true
 transparent.workspace = true

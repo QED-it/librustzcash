@@ -4,7 +4,7 @@
 //! 0.2. The shared items are plain data - a two-variant enum and two integer newtypes - so
 //! each one converts by value rather than needing a wrapper.
 //!
-//! TODO: Remove once the workspace moves to `zip32` 0.3.
+//! TODO: Delete this module once orchard 0.16 puts the workspace on one zip32 major.
 
 /// Converts a key scope to the version `sapling-crypto` expects.
 pub(crate) fn scope_03(scope: zip32::Scope) -> zip32_03::Scope {
