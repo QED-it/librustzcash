@@ -671,18 +671,15 @@ impl<P, U> Builder<P, U> {
         self.check_version_compatibility(version)?;
 
         // The Ironwood builder is created for the bundle version that the transaction version
-        // implies, so another version needs another builder and a version without the slot needs
-        // none. The slot is unused here, because the check above refuses such a version over a
-        // slot in use.
+        // implies, so another version needs another builder. A version without the slot keeps the
+        // builder it has, because such a version is refused only when the slot is in use, and the
+        // build repeats that check. The slot is unused here, because the check above refuses such
+        // a version over a slot in use.
         #[cfg(zcash_unstable = "nu7")]
         {
             let bundle_version = ironwood_bundle_version(version);
             if bundle_version != ironwood_bundle_version(self.tx_version) {
-                self.ironwood_builder = if version.has_ironwood() {
-                    self.build_config.ironwood_builder(bundle_version)
-                } else {
-                    None
-                };
+                self.ironwood_builder = self.build_config.ironwood_builder(bundle_version);
             }
         }
 
@@ -810,7 +807,7 @@ impl<P: consensus::Parameters> Builder<P, ()> {
         first_issuance: bool,
     ) -> Result<(), Error<FE>> {
         if !self.tx_version.has_orchard_zsa() {
-            return Err(Error::OrchardBuild(BundleTypeNotSatisfiable));
+            return Err(Error::IronwoodBuild(BundleTypeNotSatisfiable));
         }
 
         if self.issuance_builder.is_some() {
@@ -842,7 +839,7 @@ impl<P: consensus::Parameters> Builder<P, ()> {
         first_issuance: bool,
     ) -> Result<(), Error<FE>> {
         if !self.tx_version.has_orchard_zsa() {
-            return Err(Error::OrchardBuild(BundleTypeNotSatisfiable));
+            return Err(Error::IronwoodBuild(BundleTypeNotSatisfiable));
         }
 
         self.issuance_builder
@@ -858,7 +855,7 @@ impl<P: consensus::Parameters> Builder<P, ()> {
     #[cfg(zcash_unstable = "nu7")]
     pub fn finalize_asset<FE>(&mut self, asset_desc_hash: &[u8; 32]) -> Result<(), Error<FE>> {
         if !self.tx_version.has_orchard_zsa() {
-            return Err(Error::OrchardBuild(BundleTypeNotSatisfiable));
+            return Err(Error::IronwoodBuild(BundleTypeNotSatisfiable));
         }
 
         self.issuance_builder
@@ -1032,6 +1029,9 @@ impl<P: consensus::Parameters, U> Builder<P, U> {
     /// [`orchard::note::NoteVersion::ZSA`] in a v7 transaction, and
     /// [`orchard::note::NoteVersion::V3`] otherwise. A non-ZEC `asset` is therefore
     /// accepted only by a v7 transaction.
+    // FIXME: `value` is `Zatoshis`, so a non-ZEC asset is capped at MAX_MONEY, while ZIP 227 caps
+    // an asset's total supply at 2^64 - 1. Take the wider value in a separate
+    // `add_ironwood_output_zsa`, which also returns this method to upstream's ZEC-only shape.
     pub fn add_ironwood_output<FE>(
         &mut self,
         ovk: Option<orchard::keys::OutgoingViewingKey>,
@@ -1521,7 +1521,7 @@ impl<P: consensus::Parameters, U: sapling::builder::ProverProgress> Builder<P, U
         let issue_bundle_awaiting_sighash = match self.issuance_builder {
             Some(b) => {
                 let nullifier =
-                    first_nullifier(&ironwood_bundle).ok_or(Error::<FE>::OrchardBuild(
+                    first_nullifier(&ironwood_bundle).ok_or(Error::<FE>::IronwoodBuild(
                         orchard::builder::BuildError::BundleTypeNotSatisfiable,
                     ))?;
                 Some(b.update_rho(nullifier, &mut rng))
@@ -2350,6 +2350,50 @@ mod tests {
                 None
             ))
         );
+    }
+
+    /// An empty builder taken through any pair of proposals must keep an Ironwood slot whose
+    /// bundle version matches the final transaction version. v5 and v6 imply the same bundle
+    /// version and v7 another one, so each case records the version it expects, which is
+    /// compared as soon as orchard's builder reports it.
+    #[test]
+    #[cfg(all(feature = "circuits", zcash_unstable = "nu7"))]
+    fn propose_version_rebuilds_the_ironwood_slot_for_every_pair() {
+        let cases = [
+            (
+                TxVersion::V5,
+                Some(orchard::bundle::BundleVersion::ironwood_v3()),
+            ),
+            (
+                TxVersion::V6,
+                Some(orchard::bundle::BundleVersion::ironwood_v3()),
+            ),
+            (TxVersion::V7, Some(orchard::bundle::BundleVersion::zsa())),
+        ];
+
+        for (from, _) in cases {
+            for (to, expected) in cases {
+                let mut builder = Builder::new(
+                    nu7_test_network(),
+                    11u32.into(),
+                    BuildConfig::Standard {
+                        sapling_anchor: None,
+                        orchard_anchor: None,
+                        ironwood_anchor: Some(orchard::Anchor::empty_tree()),
+                        orchard_pool_bundle_type: orchard::builder::BundleType::DEFAULT,
+                    },
+                );
+                builder.propose_version::<Infallible>(from).unwrap();
+                builder.propose_version::<Infallible>(to).unwrap();
+
+                assert_eq!(builder.tx_version, to, "{from:?} then {to:?}");
+                assert_eq!(
+                    builder.ironwood_builder.is_some(),
+                    expected.is_some(),
+                    "{from:?} then {to:?}"
+                );
+            }
+        }
     }
 
     #[test]
