@@ -432,6 +432,8 @@ fn orchard_action_count(
         bundle_version.default_flags()
     };
 
+    // FIXME: under NU7 this counts the whole bundle with one `max`, while the ZSA builder pads
+    // each asset on its own, so the fee of a bundle with several assets is too low. Fixed in #381.
     bundle_type.num_actions(flags, num_spends, num_outputs)
 }
 
