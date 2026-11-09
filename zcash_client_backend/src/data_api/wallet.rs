@@ -107,7 +107,7 @@ use zcash_script::script::{self as zs_script, Evaluable};
 use {
     crate::data_api::error::PcztError,
     bip32::ChildNumber,
-    orchard::primitives::OrchardDomain,
+    orchard::note_encryption::OrchardDomain,
     pczt::roles::{
         creator::Creator, io_finalizer::IoFinalizer, spend_finalizer::SpendFinalizer,
         tx_extractor::TransactionExtractor, updater::Updater,
@@ -120,9 +120,9 @@ use {
 };
 
 #[cfg(feature = "orchard")]
+#[cfg(zcash_unstable = "nu7")]
 use orchard::note::AssetBase;
 
-#[cfg(feature = "unstable")]
 use zcash_primitives::transaction::TxVersion;
 
 pub mod input_selection;
@@ -1724,7 +1724,6 @@ where
                     external_ovk.map(|k| k.into()),
                     to,
                     payment_amount,
-                    AssetBase::zatoshi(),
                     memo.clone(),
                 )?;
                 orchard_output_meta.push((
@@ -1749,6 +1748,8 @@ where
                     external_ovk.map(|k| k.into()),
                     to,
                     payment_amount,
+                    #[cfg(zcash_unstable = "nu7")]
+                    AssetBase::zatoshi(),
                     memo.clone(),
                 )?;
                 ironwood_output_meta.push((
@@ -1945,6 +1946,7 @@ where
                         internal_ovk.map(|k| k.into()),
                         change_address,
                         change_value.value(),
+                        #[cfg(zcash_unstable = "nu7")]
                         AssetBase::zatoshi(),
                         memo.clone(),
                     )?;
@@ -2182,7 +2184,6 @@ where
                     .orchard_bundle()
                     .and_then(|bundle| {
                         bundle
-                            .as_vanilla_bundle()
                             .decrypt_output_with_key(output_index, &orchard_internal_ivk)
                             .or_else(|| {
                                 bundle.decrypt_output_with_key(output_index, &orchard_external_ivk)
@@ -2818,6 +2819,7 @@ where
                 orchard::Note::from_parts(
                     recipient,
                     value,
+                    orchard::note::AssetBase::zatoshi(),
                     rho,
                     rseed,
                     orchard::note::NoteVersion::V2,

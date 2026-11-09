@@ -41,8 +41,11 @@ use transparent::bundle::OutPoint;
 
 #[cfg(feature = "orchard")]
 use {
-    orchard::{flavor::OrchardVanilla, primitives::OrchardPrimitives, tree::MerkleHashOrchard},
-    zcash_note_encryption::note_bytes::NoteBytesData,
+    orchard::{
+        note_encryption::{CompactNoteCiphertextBytes, OrchardDomain},
+        tree::MerkleHashOrchard,
+    },
+    zcash_note_encryption::{ShieldedOutput, note_bytes::NoteBytes},
 };
 
 #[rustfmt::skip]
@@ -215,24 +218,18 @@ impl compact_formats::CompactSaplingSpend {
 }
 
 #[cfg(feature = "orchard")]
-impl TryFrom<&compact_formats::CompactOrchardAction>
-    for orchard::primitives::CompactAction<OrchardVanilla>
-{
+impl TryFrom<&compact_formats::CompactOrchardAction> for orchard::note_encryption::CompactAction {
     type Error = CompactFormatError;
 
     fn try_from(value: &compact_formats::CompactOrchardAction) -> Result<Self, Self::Error> {
-        Ok(
-            orchard::primitives::CompactAction::<OrchardVanilla>::from_parts(
-                value.nf()?,
-                value.cmx()?,
-                value.ephemeral_key()?,
-                NoteBytesData(
-                    value.ciphertext[..]
-                        .try_into()
-                        .map_err(CompactFormatError::InvalidLength)?,
-                ),
-            ),
-        )
+        Ok(orchard::note_encryption::CompactAction::from_parts(
+            value.nf()?,
+            value.cmx()?,
+            value.ephemeral_key()?,
+            // The variant is selected by length: a Vanilla or a ZSA compact ciphertext.
+            CompactNoteCiphertextBytes::from_slice(&value.ciphertext)
+                .ok_or(CompactFormatError::InvalidValue)?,
+        ))
     }
 }
 
@@ -283,15 +280,15 @@ impl<A: sapling::bundle::Authorization> From<&sapling::bundle::SpendDescription<
 }
 
 #[cfg(feature = "orchard")]
-impl<SpendAuth, D: OrchardPrimitives> From<&orchard::Action<SpendAuth, D>>
-    for compact_formats::CompactOrchardAction
-{
-    fn from(action: &orchard::Action<SpendAuth, D>) -> compact_formats::CompactOrchardAction {
+impl<SpendAuth> From<&orchard::Action<SpendAuth>> for compact_formats::CompactOrchardAction {
+    fn from(action: &orchard::Action<SpendAuth>) -> compact_formats::CompactOrchardAction {
         compact_formats::CompactOrchardAction {
             nullifier: action.nullifier().to_bytes().to_vec(),
             cmx: action.cmx().to_bytes().to_vec(),
             ephemeral_key: action.encrypted_note().epk_bytes.to_vec(),
-            ciphertext: action.encrypted_note().enc_ciphertext.as_ref()[..D::COMPACT_NOTE_SIZE]
+            // The compact prefix length follows the note version, so let the action report it.
+            ciphertext: ShieldedOutput::<OrchardDomain>::enc_ciphertext_compact(action)
+                .as_ref()
                 .to_vec(),
         }
     }

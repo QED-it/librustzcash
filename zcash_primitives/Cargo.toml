@@ -40,7 +40,7 @@ memuse.workspace = true
 ff.workspace = true
 jubjub.workspace = true
 nonempty.workspace = true
-orchard.workspace = true
+orchard = { workspace = true, features = ["zsa-issuance"] }
 sapling.workspace = true
 
 # - Note Commitment Trees
@@ -95,7 +95,7 @@ zip32.workspace = true
 pprof = { version = "0.15", features = ["criterion", "flamegraph"] }
 
 [features]
-default = ["multicore", "std", "circuits", "zsa-issuance"]
+default = ["multicore", "std", "circuits"]
 std = [
     "document-features",
     "redjubjub/std",
@@ -107,9 +107,6 @@ zip-233 = []
 
 ## Enables creating proofs
 circuits = ["orchard/circuit", "sapling/circuit"]
-
-## Enables ZSA issuance support in Orchard
-zsa-issuance = ["orchard/zsa-issuance"]
 
 ## Enables multithreading support for creating proofs.
 multicore = ["orchard/multicore", "sapling/multicore"]

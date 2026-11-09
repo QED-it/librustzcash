@@ -247,6 +247,10 @@ mod tests {
                 0,
                 orchard_action_count,
                 ironwood_action_count,
+                #[cfg(zcash_unstable = "nu7")]
+                0,
+                #[cfg(zcash_unstable = "nu7")]
+                0,
             )
             .unwrap()
     }

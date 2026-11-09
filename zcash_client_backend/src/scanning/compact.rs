@@ -24,8 +24,7 @@ use crate::{
 
 #[cfg(feature = "orchard")]
 use orchard::{
-    flavor::OrchardVanilla,
-    primitives::{CompactAction, OrchardDomain},
+    note_encryption::{CompactAction, OrchardDomain},
     tree::MerkleHashOrchard,
 };
 
@@ -50,17 +49,13 @@ type TaggedSaplingBatchRunner<IvkTag, Tasks> = BatchRunner<
 >;
 
 #[cfg(feature = "orchard")]
-type TaggedOrchardBatch<IvkTag> = Batch<
-    IvkTag,
-    OrchardDomain<OrchardVanilla>,
-    orchard::primitives::CompactAction<OrchardVanilla>,
-    CompactDecryptor,
->;
+type TaggedOrchardBatch<IvkTag> =
+    Batch<IvkTag, OrchardDomain, orchard::note_encryption::CompactAction, CompactDecryptor>;
 #[cfg(feature = "orchard")]
 type TaggedOrchardBatchRunner<IvkTag, Tasks> = BatchRunner<
     IvkTag,
-    OrchardDomain<OrchardVanilla>,
-    orchard::primitives::CompactAction<OrchardVanilla>,
+    OrchardDomain,
+    orchard::note_encryption::CompactAction,
     CompactDecryptor,
     Tasks,
 >;
@@ -218,6 +213,8 @@ where
                     .collect::<Result<Vec<_>, _>>()?,
             );
 
+            // FIXME: ZSA notes in a v7 Ironwood slot need the ZSA domain, which a compact action
+            // would have to select by ciphertext length. They are missed here too, as in `full`.
             #[cfg(feature = "orchard")]
             self.ironwood.add_outputs(
                 block_hash,
@@ -924,7 +921,7 @@ mod tests {
         ) {
             use orchard::{
                 keys::Scope,
-                note::{ExtractedNoteCommitment, Note, NoteVersion, RandomSeed, Rho},
+                note::{AssetBase, ExtractedNoteCommitment, Note, NoteVersion, RandomSeed, Rho},
                 note_encryption::{IronwoodDomain, IronwoodNoteEncryption},
                 value::NoteValue,
             };
@@ -971,6 +968,7 @@ mod tests {
             let note = Note::from_parts(
                 recipient,
                 NoteValue::from_raw(value),
+                AssetBase::zatoshi(),
                 rho,
                 rseed,
                 NoteVersion::V3,
@@ -989,7 +987,7 @@ mod tests {
                 nullifier: nf_old.to_bytes().to_vec(),
                 cmx: cmx.to_bytes().to_vec(),
                 ephemeral_key: ephemeral_key.0.to_vec(),
-                ciphertext: enc_ciphertext[..52].to_vec(),
+                ciphertext: enc_ciphertext.as_ref()[..52].to_vec(),
             };
 
             let mut ctx = CompactTx::default();

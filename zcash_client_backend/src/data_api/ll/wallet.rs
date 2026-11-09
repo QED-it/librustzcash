@@ -912,7 +912,7 @@ where
         d_tx.tx()
             .orchard_bundle()
             .iter()
-            .flat_map(|b| b.as_vanilla_bundle().actions().iter())
+            .flat_map(|b| b.actions().iter())
             .map(|action| action.nullifier()),
         #[cfg(feature = "orchard")]
         d_tx.tx()

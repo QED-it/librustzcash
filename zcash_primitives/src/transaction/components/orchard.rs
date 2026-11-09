@@ -243,6 +243,8 @@ pub fn read_v7_bundle<R: Read>(
     }
     let flags = read_flags(&mut reader, BundleVersion::zsa())?;
     let anchor = read_anchor(&mut reader)?;
+    // FIXME: once a nonzero height is allowed (ZIP 228 swaps), the transaction expiry height must
+    // be nonzero too and at most the smallest nonzero height of its action groups.
     let n_ag_expiry_height = reader.read_u32_le()?;
     if n_ag_expiry_height != 0 {
         return Err(io::Error::new(

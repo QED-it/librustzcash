@@ -2874,6 +2874,8 @@ fn parse_tx<P: consensus::Parameters>(
 
         let expiry_height = tx_data.expiry_height();
         if expiry_height > BlockHeight::from(0) {
+            // TODO: this drops the Ironwood slot, and with it a v7 transaction's ZSA and
+            // issuance bundles. Take upstream's fix for zcash/librustzcash#2987 when it lands.
             TransactionData::from_parts(
                 tx_data.version(),
                 BranchId::for_height(params, expiry_height),
@@ -2885,8 +2887,6 @@ fn parse_tx<P: consensus::Parameters>(
                 tx_data.sprout_bundle().cloned(),
                 tx_data.sapling_bundle().cloned(),
                 tx_data.orchard_bundle().cloned(),
-                #[cfg(zcash_unstable = "nu7")]
-                tx_data.issue_bundle().cloned(),
             )
             .freeze()
             .map(|t| (expiry_height, t))
@@ -3395,7 +3395,7 @@ pub(crate) fn store_transaction_to_be_sent<P: consensus::Parameters>(
         #[cfg(feature = "orchard")]
         {
             detectable_via_scanning = true;
-            for action in _bundle.as_vanilla_bundle().actions() {
+            for action in _bundle.actions() {
                 orchard::mark_orchard_note_spent(conn, tx_ref, action.nullifier())?;
             }
         }

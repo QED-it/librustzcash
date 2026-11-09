@@ -88,8 +88,7 @@ use {
 #[cfg(feature = "orchard")]
 use {
     super::ORCHARD_SHARD_HEIGHT, crate::proto::compact_formats::CompactOrchardAction,
-    ::orchard::flavor::OrchardVanilla, ::orchard::tree::MerkleHashOrchard, group::ff::PrimeField,
-    pasta_curves::pallas,
+    ::orchard::tree::MerkleHashOrchard, group::ff::PrimeField, pasta_curves::pallas,
 };
 
 pub mod pool;
@@ -2503,11 +2502,12 @@ fn compact_orchard_action<R: RngCore + CryptoRng>(
 ) -> (CompactOrchardAction, ::orchard::Note) {
     use zcash_note_encryption::ShieldedOutput;
 
-    let (compact_action, note) = ::orchard::primitives::fake_compact_action::<_, OrchardVanilla>(
+    let (compact_action, note) = ::orchard::note_encryption::testing::fake_compact_action(
         rng,
         nf_old,
         recipient,
         ::orchard::value::NoteValue::from_raw(value.into_u64()),
+        ::orchard::note::NoteVersion::V2,
         sender_ovk.cloned(),
     );
 
@@ -2516,16 +2516,17 @@ fn compact_orchard_action<R: RngCore + CryptoRng>(
             nullifier: compact_action.nullifier().to_bytes().to_vec(),
             cmx: compact_action.cmx().to_bytes().to_vec(),
             ephemeral_key:
-                ShieldedOutput::<::orchard::note_encryption::OrchardDomain, 52>::ephemeral_key(
+                ShieldedOutput::<::orchard::note_encryption::OrchardDomain>::ephemeral_key(
                     &compact_action,
                 )
                 .0
                 .to_vec(),
             ciphertext:
-                ShieldedOutput::<::orchard::note_encryption::OrchardDomain, 52>::enc_ciphertext(
+                ShieldedOutput::<::orchard::note_encryption::OrchardDomain>::enc_ciphertext_compact(
                     &compact_action,
-                )[..52]
-                    .to_vec(),
+                )
+                .as_ref()
+                .to_vec(),
         },
         note,
     )
@@ -2543,7 +2544,7 @@ fn compact_ironwood_action<R: RngCore + CryptoRng>(
     sender_ovk: Option<&::orchard::keys::OutgoingViewingKey>,
     rng: &mut R,
 ) -> (CompactOrchardAction, ::orchard::Note) {
-    use ::orchard::note::{ExtractedNoteCommitment, Note, NoteVersion, RandomSeed, Rho};
+    use ::orchard::note::{AssetBase, ExtractedNoteCommitment, Note, NoteVersion, RandomSeed, Rho};
     use ::orchard::note_encryption::{IronwoodDomain, IronwoodNoteEncryption};
     use zcash_note_encryption::Domain;
 
@@ -2561,6 +2562,7 @@ fn compact_ironwood_action<R: RngCore + CryptoRng>(
     let note = Note::from_parts(
         recipient,
         ::orchard::value::NoteValue::from_raw(value.into_u64()),
+        AssetBase::zatoshi(),
         rho,
         rseed,
         NoteVersion::V3,
@@ -2576,7 +2578,7 @@ fn compact_ironwood_action<R: RngCore + CryptoRng>(
             nullifier: nf_old.to_bytes().to_vec(),
             cmx: cmx.to_bytes().to_vec(),
             ephemeral_key: ephemeral_key.0.to_vec(),
-            ciphertext: enc_ciphertext[..52].to_vec(),
+            ciphertext: enc_ciphertext.as_ref()[..52].to_vec(),
         },
         note,
     )
@@ -2701,7 +2703,7 @@ fn fake_compact_block_from_tx(
 
     #[cfg(feature = "orchard")]
     if let Some(bundle) = tx.orchard_bundle() {
-        for action in bundle.as_vanilla_bundle().actions() {
+        for action in bundle.actions() {
             ctx.actions.push(action.into());
         }
     }

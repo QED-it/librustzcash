@@ -42,8 +42,12 @@ pub const V6_TX_VERSION: u32 = 6;
 pub const V6_VERSION_GROUP_ID: u32 = 0xD884B698;
 
 /// Transaction version 7, specified in [ZIP 230](https://zips.z.cash/zip-0230).
+// FIXME: ZIP 230 is still a draft; this follows the current version and must be revisited when the
+// ZIP is updated.
 #[cfg(zcash_unstable = "nu7")]
 pub const V7_TX_VERSION: u32 = 7;
 /// The version group ID for Zcash v7 transactions.
+// FIXME: ZIP 230 has not assigned a version group ID yet, so this is a placeholder. Test vectors
+// that encode it must be regenerated once the real value is known.
 #[cfg(zcash_unstable = "nu7")]
 pub const V7_VERSION_GROUP_ID: u32 = 0x7777_7777;

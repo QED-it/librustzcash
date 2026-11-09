@@ -428,7 +428,6 @@ impl<A: Authorization> TransactionData<A> {
         sprout_bundle: Option<sprout::Bundle>,
         sapling_bundle: Option<sapling::Bundle<A::SaplingAuth, ZatBalance>>,
         orchard_bundle: Option<orchard::Bundle<A::OrchardAuth, ZatBalance>>,
-        #[cfg(zcash_unstable = "nu7")] issue_bundle: Option<IssueBundle<A::IssueAuth>>,
     ) -> Self {
         TransactionData {
             version,
@@ -443,7 +442,7 @@ impl<A: Authorization> TransactionData<A> {
             orchard_bundle,
             ironwood_bundle: None,
             #[cfg(zcash_unstable = "nu7")]
-            issue_bundle,
+            issue_bundle: None,
         }
     }
 
@@ -469,7 +468,6 @@ impl<A: Authorization> TransactionData<A> {
         sapling_bundle: Option<sapling::Bundle<A::SaplingAuth, ZatBalance>>,
         orchard_bundle: Option<orchard::Bundle<A::OrchardAuth, ZatBalance>>,
         ironwood_bundle: Option<orchard::Bundle<A::OrchardAuth, ZatBalance>>,
-        #[cfg(zcash_unstable = "nu7")] issue_bundle: Option<IssueBundle<A::IssueAuth>>,
     ) -> Self {
         TransactionData {
             version: TxVersion::V6,
@@ -484,6 +482,41 @@ impl<A: Authorization> TransactionData<A> {
             orchard_bundle,
             ironwood_bundle,
             #[cfg(zcash_unstable = "nu7")]
+            issue_bundle: None,
+        }
+    }
+
+    /// Constructs a V7 [`TransactionData`] from its constituent parts, including the
+    /// Ironwood and issuance bundles.
+    ///
+    /// The v7 Ironwood slot carries the ZSA bundle, so `ironwood_bundle` must be built for
+    /// [`orchard::bundle::BundleVersion::zsa`]. The fields are otherwise as in
+    /// [`Self::from_parts_v6`].
+    #[cfg(zcash_unstable = "nu7")]
+    #[allow(clippy::too_many_arguments)]
+    pub fn from_parts_v7(
+        consensus_branch_id: BranchId,
+        lock_time: u32,
+        expiry_height: BlockHeight,
+        #[cfg(feature = "zip-233")] zip233_amount: Zatoshis,
+        transparent_bundle: Option<transparent::Bundle<A::TransparentAuth>>,
+        sapling_bundle: Option<sapling::Bundle<A::SaplingAuth, ZatBalance>>,
+        orchard_bundle: Option<orchard::Bundle<A::OrchardAuth, ZatBalance>>,
+        ironwood_bundle: Option<orchard::Bundle<A::OrchardAuth, ZatBalance>>,
+        issue_bundle: Option<IssueBundle<A::IssueAuth>>,
+    ) -> Self {
+        TransactionData {
+            version: TxVersion::V7,
+            consensus_branch_id,
+            lock_time,
+            expiry_height,
+            #[cfg(feature = "zip-233")]
+            zip233_amount,
+            transparent_bundle,
+            sprout_bundle: None,
+            sapling_bundle,
+            orchard_bundle,
+            ironwood_bundle,
             issue_bundle,
         }
     }
@@ -603,7 +636,11 @@ impl<A: Authorization> TransactionData<A> {
             ),
             digester.digest_sapling(self.version, self.sapling_bundle.as_ref()),
             digester.digest_orchard(self.version, self.orchard_bundle.as_ref()),
-            digester.digest_ironwood(self.ironwood_bundle.as_ref()),
+            digester.digest_ironwood(
+                #[cfg(zcash_unstable = "nu7")]
+                self.version,
+                self.ironwood_bundle.as_ref(),
+            ),
             #[cfg(zcash_unstable = "nu7")]
             digester.digest_issue(self.issue_bundle.as_ref()),
         )
@@ -1377,9 +1414,11 @@ pub trait TransactionDigest<A: Authorization> {
     /// version 6 transaction ID combination substitutes the empty Ironwood bundle digest for
     /// `None`. Transaction commitment digesters may instead return an empty authorizing data
     /// digest when no Ironwood bundle is present, and may use a different anchor commitment
-    /// policy than transaction ID digesters.
+    /// policy than transaction ID digesters. The transaction version selects the empty digest's
+    /// domain, which is the ZSA one in v7.
     fn digest_ironwood(
         &self,
+        #[cfg(zcash_unstable = "nu7")] version: TxVersion,
         ironwood_bundle: Option<&orchard::Bundle<A::OrchardAuth, ZatBalance>>,
     ) -> Self::IronwoodDigest;
 
@@ -1439,7 +1478,7 @@ pub mod testing {
             BranchId::Nu6_2 => Just(TxVersion::V5).boxed(),
             BranchId::Nu6_3 => Just(TxVersion::V6).boxed(),
             #[cfg(zcash_unstable = "nu7")]
-            BranchId::Nu7 => Just(TxVersion::V6).boxed(),
+            BranchId::Nu7 => Just(TxVersion::V7).boxed(),
         }
     }
 
@@ -1449,7 +1488,7 @@ pub mod testing {
             version in arb_tx_version(consensus_branch_id)
         )(
             lock_time in any::<u32>(),
-            expiry_height in if version == TxVersion::V6 { Just(0u32).boxed() } else { any::<u32>().boxed() },
+            expiry_height in any::<u32>(),
             transparent_bundle in transparent::arb_bundle(),
             sapling_bundle in sapling::arb_bundle_for_version(version),
             orchard_bundle in orchard::arb_bundle_for_version(version),
@@ -1478,7 +1517,7 @@ pub mod testing {
             version in arb_tx_version(consensus_branch_id)
         )(
             lock_time in any::<u32>(),
-            expiry_height in if version == TxVersion::V6 { Just(0u32).boxed() } else { any::<u32>().boxed() },
+            expiry_height in any::<u32>(),
             zip233_amount in 0..=MAX_MONEY,
             transparent_bundle in transparent::arb_bundle(),
             sapling_bundle in sapling::arb_bundle_for_version(version),
