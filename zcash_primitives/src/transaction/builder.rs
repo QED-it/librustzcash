@@ -413,9 +413,7 @@ fn orchard_action_count(
     is_coinbase: bool,
     bundle_version: orchard::bundle::BundleVersion,
 ) -> Result<usize, &'static str> {
-    #[cfg(not(zcash_unstable = "nu7"))]
     let num_spends = builder.spends().len();
-    #[cfg(not(zcash_unstable = "nu7"))]
     let num_outputs = builder
         .outputs()
         .len()
@@ -436,30 +434,22 @@ fn orchard_action_count(
         bundle_version.default_flags()
     };
 
-    // The ZSA builder pads each asset on its own, so with more than one asset the count follows
-    // the assets of the requested spends and outputs rather than their totals.
-    #[cfg(zcash_unstable = "nu7")]
-    let count = bundle_type.num_actions_zsa(
-        flags,
-        builder
-            .spends()
-            .iter()
-            .map(orchard::builder::InputView::asset),
-        builder
-            .outputs()
-            .iter()
-            .map(orchard::builder::OutputView::asset)
-            .chain(
-                builder
-                    .changes()
-                    .iter()
-                    .map(orchard::builder::OutputView::asset),
-            ),
-    );
-    #[cfg(not(zcash_unstable = "nu7"))]
-    let count = bundle_type.num_actions(flags, num_spends, num_outputs);
+    let count = bundle_type.num_actions(flags, num_spends, num_outputs)?;
 
-    count
+    // The ZSA builder pads each asset on its own, so a bundle carrying more than one asset has
+    // more actions than the totals imply.
+    #[cfg(zcash_unstable = "nu7")]
+    let count = count.max(
+        builder
+            .spend_output_counts()
+            .values()
+            .try_fold(0usize, |acc, (spends, outputs)| {
+                acc.checked_add((*spends).max(*outputs))
+            })
+            .ok_or("the per-asset action counts overflowed")?,
+    );
+
+    Ok(count)
 }
 
 /// The result of a transaction build operation, which includes the resulting transaction along
