@@ -436,17 +436,15 @@ fn orchard_action_count(
 
     let count = bundle_type.num_actions(flags, num_spends, num_outputs)?;
 
-    // The ZSA builder pads each asset on its own, so a bundle carrying more than one asset has
-    // more actions than the totals imply.
+    // The builder pairs each asset on its own, so the assets need this many actions between them,
+    // with no minimum of their own. The bundle has whichever of the two bounds is larger.
     #[cfg(zcash_unstable = "nu7")]
     let count = count.max(
         builder
             .spend_output_counts()
             .values()
-            .try_fold(0usize, |acc, (spends, outputs)| {
-                acc.checked_add((*spends).max(*outputs))
-            })
-            .ok_or("the per-asset action counts overflowed")?,
+            .map(|&(spends, outputs)| spends.max(outputs))
+            .sum(),
     );
 
     Ok(count)
