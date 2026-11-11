@@ -1555,8 +1555,7 @@ where
     #[cfg(feature = "orchard")]
     let orchard_bundle_required = orchard_action_count > 0;
 
-    // TODO: take the count from `num_actions_zsa` once the wallet can hold assets, since each
-    // asset is padded on its own.
+    // TODO: when the wallet holds assets, count actions per asset, as `orchard_action_count` does.
     #[cfg(feature = "orchard")]
     let ironwood_action_count = orchard::builder::BundleType::DEFAULT
         .num_actions(

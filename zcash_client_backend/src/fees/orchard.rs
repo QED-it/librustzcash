@@ -19,8 +19,7 @@ pub(crate) fn transactional_action_count(
     num_spends: usize,
     num_outputs: usize,
 ) -> Result<usize, &'static str> {
-    // TODO: take the count from `num_actions_zsa` once the wallet can hold assets, since each
-    // asset is padded on its own.
+    // TODO: when the wallet holds assets, count actions per asset, as `orchard_action_count` does.
     bundle_type.num_actions(bundle_version.default_flags(), num_spends, num_outputs)
 }
 
