@@ -234,7 +234,7 @@ unexpected_cfgs = { level = "warn", check-cfg = [
 ] }
 
 [patch.crates-io]
-orchard = { git = "https://github.com/QED-it/orchard", rev = "77f403fc2413d5d8200434338b53f924c006396e" }
+orchard = { git = "https://github.com/QED-it/orchard", rev = "c129bc3d788f559c49faee1f676ba2e48f7c9d4b" }
 zcash_spec = { git = "https://github.com/QED-it/zcash_spec", rev = "d5e84264d2ad0646b587a837f4e2424ca64d3a05" }
 halo2_gadgets = { git = "https://github.com/zcash/halo2", rev = "828fab66a72116a4a8ea0dc7d8895667d90dacf4" }
 halo2_proofs = { git = "https://github.com/zcash/halo2", rev = "828fab66a72116a4a8ea0dc7d8895667d90dacf4" }
