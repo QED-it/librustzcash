@@ -1,21 +1,35 @@
 //! The Orchard fields of a PCZT.
 
-use alloc::collections::BTreeMap;
-use alloc::string::String;
-use alloc::vec::Vec;
-use core::cmp::Ordering;
-use core::fmt;
+use alloc::{collections::BTreeMap, string::String, vec::Vec};
+use core::{cmp::Ordering, fmt};
 
-#[cfg(feature = "orchard")]
-use ff::PrimeField;
 use getset::Getters;
-#[cfg(feature = "orchard")]
-use orchard::bundle::BundleVersion;
+use serde::{Deserialize, Deserializer, Serialize, Serializer, de};
+
+// `NoteVersion` is re-exported, so it keeps its own statement.
 #[cfg(feature = "orchard")]
 pub(crate) use orchard::note::NoteVersion;
-use serde::{Deserialize, Deserializer, Serialize, Serializer, de};
+
 #[cfg(feature = "orchard")]
-use zcash_note_encryption::{Domain, EphemeralKeyBytes, ShieldedOutput};
+use {
+    ::orchard::{
+        Address, Note, ValuePool,
+        bundle::BundleVersion,
+        note::{AssetBase, ExtractedNoteCommitment, Nullifier, RandomSeed, Rho},
+        note_encryption::{
+            COMPACT_NOTE_SIZE_VANILLA, COMPACT_NOTE_SIZE_ZSA, CompactAction,
+            CompactNoteCiphertextBytes, IronwoodDomain, NoteCiphertextBytes, OrchardDomain,
+            OrchardNoteEncryption,
+        },
+        value::{NoteValue, ValueCommitTrapdoor, ValueCommitment},
+    },
+    ff::PrimeField,
+    zcash_note_encryption::{
+        Domain, EphemeralKeyBytes, ShieldedOutput, note_bytes::NoteBytes,
+        try_output_recovery_with_pkd_esk,
+    },
+    zcash_protocol::consensus::{BranchId, OrchardProtocolRevision},
+};
 
 use crate::{
     common::{Global, Zip32Derivation},
@@ -71,6 +85,7 @@ pub struct Bundle {
     /// The Orchard bundle proof.
     ///
     /// This is `None` until it is set by the Prover.
+    #[getset(get = "pub")]
     pub(crate) zkproof: Option<Vec<u8>>,
 
     /// The Orchard binding signature signing key.
@@ -139,6 +154,111 @@ impl fmt::Display for MemoPlaintextError {
             MemoPlaintextError::NotStripped => {
                 write!(f, "memo plaintext has trailing zero bytes")
             }
+        }
+    }
+}
+
+/// The result of parsing a logical Orchard-protocol bundle (Orchard or Ironwood) via
+/// [`Bundle::into_parsed_with_version`] or one of its siblings.
+///
+/// Carries the bundle's original wire `anchor` alongside the parsed form, so that
+/// [`Parsed::reserialize`] can restore it after an operation that does not itself
+/// change the anchor, even though parsing may have substituted a placeholder for it
+/// (see [ZIP 374: Anchors and pre-authorization](https://zips.z.cash/zip-0374#anchors-and-pre-authorization)).
+#[cfg(feature = "orchard")]
+pub(crate) struct Parsed {
+    pub(crate) bundle: orchard::pczt::Bundle,
+    pub(crate) wire_anchor: Option<[u8; 32]>,
+}
+
+#[cfg(feature = "orchard")]
+impl Parsed {
+    /// Serializes the parsed bundle back into its wire representation, using
+    /// [`Self::wire_anchor`] as the result's `anchor` in place of any placeholder
+    /// substituted while parsing.
+    ///
+    /// Must not be used after an operation that legitimately changes the anchor;
+    /// such operations should set `wire_anchor` to the new value first.
+    pub(crate) fn reserialize(self) -> Bundle {
+        Bundle {
+            anchor: self.wire_anchor,
+            ..Bundle::serialize_from(self.bundle)
+        }
+    }
+}
+
+/// Shared fixtures for hand-crafting Orchard-protocol PCZT test data.
+#[cfg(all(test, feature = "orchard"))]
+pub(crate) mod testing {
+    #[cfg(any(feature = "prover", all(feature = "signer", feature = "io-finalizer")))]
+    use {
+        super::{Action, EncCiphertext, Output, Spend},
+        alloc::collections::BTreeMap,
+        ff::Field,
+        pasta_curves::pallas,
+    };
+
+    /// Derives a valid Orchard value commitment encoding for the given value and
+    /// trapdoor, so that hand-crafted `Action`s pass the structural validity check
+    /// applied when parsing (regardless of anchor consistency, which is unrelated).
+    pub(crate) fn value_commitment(value: u64, rcv: [u8; 32]) -> [u8; 32] {
+        let rcv = orchard::value::ValueCommitTrapdoor::from_bytes(rcv)
+            .into_option()
+            .unwrap();
+        let value_sum =
+            orchard::value::NoteValue::from_raw(value) - orchard::value::NoteValue::from_raw(0);
+        orchard::value::ValueCommitment::derive(value_sum, rcv).to_bytes()
+    }
+
+    /// Derives a valid, randomized `rk` encoding (a curve point, unlike an arbitrary
+    /// byte string) so that hand-crafted `Spend`s pass the structural validity check
+    /// applied when parsing.
+    #[cfg(any(feature = "prover", all(feature = "signer", feature = "io-finalizer")))]
+    pub(crate) fn randomized_verification_key() -> [u8; 32] {
+        let sk = orchard::keys::SpendingKey::from_bytes([7; 32]).unwrap();
+        let ask = orchard::keys::SpendAuthorizingKey::from(&sk);
+        let randomized_signing_key = ask.randomize(&pallas::Scalar::ONE);
+        let rk: orchard::primitives::redpallas::VerificationKey<
+            orchard::primitives::redpallas::SpendAuth,
+        > = (&randomized_signing_key).into();
+        (&rk).into()
+    }
+
+    /// A structurally valid dummy Orchard action with no witness (so it is exempt
+    /// from anchor-consistency checks), for use as a base in hand-crafted test PCZTs.
+    #[cfg(any(feature = "prover", all(feature = "signer", feature = "io-finalizer")))]
+    pub(crate) fn dummy_action() -> Action {
+        Action {
+            cv_net: Some(value_commitment(0, [3; 32])),
+            spend: Spend {
+                nullifier: [2; 32],
+                rk: randomized_verification_key(),
+                spend_auth_sig: None,
+                recipient: None,
+                value: None,
+                rho: None,
+                rseed: None,
+                fvk: None,
+                witness: None,
+                alpha: None,
+                zip32_derivation: None,
+                dummy_sk: None,
+                proprietary: BTreeMap::new(),
+            },
+            output: Output {
+                cmx: Some([4; 32]),
+                ephemeral_key: [5; 32],
+                enc_ciphertext: EncCiphertext::Encrypted(alloc::vec![6; 580]),
+                out_ciphertext: alloc::vec![7; 80],
+                recipient: None,
+                value: None,
+                rseed: None,
+                ock: None,
+                zip32_derivation: None,
+                user_address: None,
+                proprietary: BTreeMap::new(),
+            },
+            rcv: None,
         }
     }
 }
@@ -235,17 +355,6 @@ fn recover_memo_plaintext_from_ciphertext_and_action(
     action: &Action,
     note_version: NoteVersion,
 ) -> Option<MemoPlaintext> {
-    use ::orchard::{
-        Address, Note,
-        note::{AssetBase, ExtractedNoteCommitment, Nullifier, RandomSeed, Rho},
-        note_encryption::{
-            COMPACT_NOTE_SIZE_VANILLA, COMPACT_NOTE_SIZE_ZSA, CompactAction,
-            CompactNoteCiphertextBytes, IronwoodDomain, NoteCiphertextBytes, OrchardDomain,
-        },
-        value::NoteValue,
-    };
-    use zcash_note_encryption::{note_bytes::NoteBytes, try_output_recovery_with_pkd_esk};
-
     struct OutputRecoveryData {
         cmx: ExtractedNoteCommitment,
         ephemeral_key: [u8; 32],
@@ -312,7 +421,10 @@ fn recover_memo_plaintext_from_ciphertext_and_action(
         // we return None here to avoid excess sets or clone operations, as the caller need not do anything in this case.
         EncCiphertext::MemoPlaintext(_) => return None,
     };
-    let cmx = Option::from(ExtractedNoteCommitment::from_bytes(&action.output.cmx))?;
+    // Memo recovery is best-effort and should not resolve redacted fields.
+    // Callers that want redacted `cmx` restored should use `resolve_fields`.
+    let cmx_bytes = action.output.cmx?;
+    let cmx = Option::from(ExtractedNoteCommitment::from_bytes(&cmx_bytes))?;
     let output = OutputRecoveryData {
         cmx,
         ephemeral_key: action.output.ephemeral_key,
@@ -365,6 +477,41 @@ impl Action {
     ) {
         if let Some(memo) = recover_memo_plaintext_from_ciphertext_and_action(self, note_version) {
             self.output.enc_ciphertext = EncCiphertext::MemoPlaintext(memo);
+        }
+    }
+
+    pub(crate) fn compact_resolvable_fields(&mut self, note_version: NoteVersion) {
+        let original_enc_ciphertext = self.output.enc_ciphertext.clone();
+        self.replace_enc_ciphertext_with_decrypted_memo_plaintext(note_version);
+        if self.output.enc_ciphertext != original_enc_ciphertext {
+            let mut resolved = self.output.clone();
+            if resolved
+                .encrypt_ciphertext_from_memo(note_version, self.spend.nullifier)
+                .is_err()
+                || resolved.enc_ciphertext != original_enc_ciphertext
+            {
+                self.output.enc_ciphertext = original_enc_ciphertext;
+            }
+        }
+
+        if let Some(original_cv_net) = self.cv_net {
+            let mut resolved = self.clone();
+            resolved.cv_net = None;
+            if resolved.resolve_cv_net().is_ok() && resolved.cv_net == Some(original_cv_net) {
+                self.cv_net = None;
+            }
+        }
+
+        if let Some(original_cmx) = self.output.cmx {
+            let mut resolved = self.output.clone();
+            resolved.cmx = None;
+            if resolved
+                .resolve_cmx(note_version, self.spend.nullifier)
+                .is_ok()
+                && resolved.cmx == Some(original_cmx)
+            {
+                self.output.cmx = None;
+            }
         }
     }
 }
@@ -458,6 +605,7 @@ pub struct Spend {
     ///
     /// - This is set by the Updater.
     /// - This is required by the Prover.
+    #[getset(get = "pub")]
     pub(crate) witness: Option<(u32, [[u8; 32]; 32])>,
 
     /// The spend authorization randomizer.
@@ -477,6 +625,7 @@ pub struct Spend {
     /// - This is chosen by the Constructor.
     /// - This is required by the IO Finalizer, and is cleared by it once used.
     /// - Signers MUST reject PCZTs that contain `dummy_sk` values.
+    #[getset(get = "pub")]
     pub(crate) dummy_sk: Option<[u8; 32]>,
 
     /// Proprietary fields related to the note being spent.
@@ -494,7 +643,7 @@ pub struct Output {
     // by the Constructor when adding an output.
     //
     #[getset(get = "pub")]
-    pub(crate) cmx: [u8; 32],
+    pub(crate) cmx: Option<[u8; 32]>,
     #[getset(get = "pub")]
     pub(crate) ephemeral_key: [u8; 32],
     /// The encrypted note plaintext for the output, or the memo plaintext
@@ -559,9 +708,7 @@ pub struct Output {
 
 /// Types for the v1 Orchard PCZT encoding.
 pub mod v1 {
-    use alloc::collections::BTreeMap;
-    use alloc::string::String;
-    use alloc::vec::Vec;
+    use alloc::{collections::BTreeMap, string::String, vec::Vec};
 
     use serde::{Deserialize, Serialize};
     use serde_with::serde_as;
@@ -638,6 +785,12 @@ pub mod v1 {
                 return Err(crate::EncodingError::UnsupportedOrchardNoteVersion);
             }
 
+            let anchor = match bundle.anchor {
+                Some(anchor) => anchor,
+                None if bundle.actions.is_empty() => super::DEFAULT_ANCHOR,
+                None => return Err(crate::EncodingError::RequiresV2),
+            };
+
             Ok(Self {
                 actions: bundle
                     .actions
@@ -646,7 +799,7 @@ pub mod v1 {
                     .collect::<Result<Vec<_>, _>>()?,
                 flags: bundle.flags,
                 value_sum: bundle.value_sum,
-                anchor: bundle.anchor.ok_or(crate::EncodingError::RequiresV2)?,
+                anchor,
                 zkproof: bundle.zkproof,
                 bsk: bundle.bsk,
             })
@@ -655,6 +808,18 @@ pub mod v1 {
 
     impl From<Bundle> for super::Bundle {
         fn from(bundle: Bundle) -> Self {
+            // The v1 encoding has no placeholder for a missing anchor, so an empty
+            // bundle's anchor is substituted with `DEFAULT_ANCHOR` on encode (see
+            // `TryFrom<super::Bundle> for Bundle` above). Undo that substitution here
+            // so that decoding an empty bundle reproduces `super::EMPTY_ORCHARD`
+            // exactly, mirroring the `is_default_empty` treatment the v2 encoder
+            // applies for the same case.
+            let anchor = if bundle.actions.is_empty() && bundle.anchor == super::DEFAULT_ANCHOR {
+                None
+            } else {
+                Some(bundle.anchor)
+            };
+
             Self {
                 actions: bundle
                     .actions
@@ -663,7 +828,7 @@ pub mod v1 {
                     .collect(),
                 flags: bundle.flags,
                 value_sum: bundle.value_sum,
-                anchor: Some(bundle.anchor),
+                anchor,
                 note_version: NoteVersion::V2,
                 zkproof: bundle.zkproof,
                 bsk: bundle.bsk,
@@ -745,7 +910,7 @@ pub mod v1 {
                 .ok_or(crate::EncodingError::RequiresV2)?;
 
             Ok(Self {
-                cmx: output.cmx,
+                cmx: output.cmx.ok_or(crate::EncodingError::RequiresV2)?,
                 ephemeral_key: output.ephemeral_key,
                 enc_ciphertext,
                 out_ciphertext: output.out_ciphertext,
@@ -763,7 +928,7 @@ pub mod v1 {
     impl From<Output> for super::Output {
         fn from(output: Output) -> Self {
             Self {
-                cmx: output.cmx,
+                cmx: Some(output.cmx),
                 ephemeral_key: output.ephemeral_key,
                 enc_ciphertext: super::EncCiphertext::Encrypted(output.enc_ciphertext),
                 out_ciphertext: output.out_ciphertext,
@@ -867,7 +1032,7 @@ pub(crate) mod v2 {
     #[serde_as]
     #[derive(Clone, Debug, Serialize, Deserialize)]
     pub(crate) struct Output {
-        cmx: [u8; 32],
+        cmx: Option<[u8; 32]>,
         ephemeral_key: [u8; 32],
         enc_ciphertext: super::EncCiphertext,
         out_ciphertext: Vec<u8>,
@@ -1053,12 +1218,19 @@ pub(crate) mod v2 {
     mod tests {
         use alloc::{collections::BTreeMap, vec::Vec};
 
-        use super::super::{
-            Action as LogicalAction, Bundle as LogicalBundle, EncCiphertext, MEMO_SIZE,
-            MemoPlaintext, NoteVersion, ORCHARD_SPENDS_AND_OUTPUTS_ENABLED, Output, Spend,
+        #[cfg(feature = "orchard")]
+        use {
+            crate::roles::{creator::Creator, redactor::Redactor},
+            zcash_protocol::consensus::BranchId,
         };
 
-        fn logical_action(cv_net: Option<[u8; 32]>) -> LogicalAction {
+        use super::super::{
+            Action as LogicalAction, Bundle as LogicalBundle, EMPTY_ORCHARD, EncCiphertext,
+            MEMO_SIZE, MemoPlaintext, NoteVersion, ORCHARD_SPENDS_AND_OUTPUTS_ENABLED, Output,
+            Spend,
+        };
+
+        fn logical_action(cv_net: Option<[u8; 32]>, cmx: Option<[u8; 32]>) -> LogicalAction {
             LogicalAction {
                 cv_net,
                 spend: Spend {
@@ -1077,7 +1249,7 @@ pub(crate) mod v2 {
                     proprietary: BTreeMap::new(),
                 },
                 output: Output {
-                    cmx: [3; 32],
+                    cmx,
                     ephemeral_key: [4; 32],
                     enc_ciphertext: EncCiphertext::Encrypted(Vec::new()),
                     out_ciphertext: Vec::new(),
@@ -1094,8 +1266,16 @@ pub(crate) mod v2 {
         }
 
         fn logical_bundle(anchor: Option<[u8; 32]>, cv_net: Option<[u8; 32]>) -> LogicalBundle {
+            logical_bundle_with_cmx(anchor, cv_net, Some([3; 32]))
+        }
+
+        fn logical_bundle_with_cmx(
+            anchor: Option<[u8; 32]>,
+            cv_net: Option<[u8; 32]>,
+            cmx: Option<[u8; 32]>,
+        ) -> LogicalBundle {
             LogicalBundle {
-                actions: vec![logical_action(cv_net)],
+                actions: vec![logical_action(cv_net, cmx)],
                 flags: ORCHARD_SPENDS_AND_OUTPUTS_ENABLED,
                 value_sum: (0, false),
                 anchor,
@@ -1106,13 +1286,17 @@ pub(crate) mod v2 {
         }
 
         #[test]
-        fn anchor_and_cv_net_round_trip_optional_encoding() {
-            for (anchor, cv_net) in [(None, None), (Some([5; 32]), Some([6; 32]))] {
-                let bundle = logical_bundle(anchor, cv_net);
+        fn anchor_cv_net_and_cmx_round_trip_optional_encoding() {
+            for (anchor, cv_net, cmx) in [
+                (None, None, None),
+                (Some([5; 32]), Some([6; 32]), Some([7; 32])),
+            ] {
+                let bundle = logical_bundle_with_cmx(anchor, cv_net, cmx);
 
                 let encoded = super::Bundle::try_from(bundle.clone()).unwrap();
                 assert_eq!(encoded.anchor, anchor);
                 assert_eq!(encoded.actions[0].cv_net, cv_net);
+                assert_eq!(encoded.actions[0].output.cmx, cmx);
 
                 let decoded = encoded.into_logical().unwrap();
                 assert_eq!(decoded, bundle);
@@ -1211,7 +1395,7 @@ pub(crate) mod v2 {
                     proprietary: BTreeMap::new(),
                 },
                 output: Output {
-                    cmx: ExtractedNoteCommitment::from(note.commitment()).to_bytes(),
+                    cmx: Some(ExtractedNoteCommitment::from(note.commitment()).to_bytes()),
                     ephemeral_key: OrchardDomain::epk_bytes(encryptor.epk()).0,
                     enc_ciphertext: EncCiphertext::Encrypted(
                         encryptor.encrypt_note_plaintext().as_ref().to_vec(),
@@ -1232,10 +1416,6 @@ pub(crate) mod v2 {
         #[cfg(feature = "orchard")]
         #[test]
         fn v2_round_trips_memo_plaintext_ciphertext_data() {
-            use zcash_protocol::consensus::BranchId;
-
-            use crate::{roles::creator::Creator, roles::redactor::Redactor};
-
             const HELLO_MEMO_PAYLOAD_SIZE_REDUCTION: usize = 575;
             // The serialized reduction is one byte larger because postcard uses
             // a shorter length prefix for the stripped memo plaintext.
@@ -1259,7 +1439,14 @@ pub(crate) mod v2 {
                 .actions
                 .push(decryptable_action_with_memo(memo));
 
-            let encrypted_size = pczt.clone().serialize().unwrap().len();
+            // Pin both sides to the v2 encoding explicitly: `Pczt::serialize` now
+            // picks the minimal encoding capable of representing its content, and
+            // this comparison is measuring the size effect of the memo-plaintext
+            // compaction, not of the encoding version chosen for either PCZT.
+            let encrypted_size = crate::v2::Pczt::try_from(pczt.clone())
+                .unwrap()
+                .serialize()
+                .len();
             let redacted = Redactor::new(pczt)
                 .redact_orchard_with(|mut orchard| {
                     orchard.redact_actions(|mut action| {
@@ -1268,7 +1455,10 @@ pub(crate) mod v2 {
                     });
                 })
                 .finish();
-            let redacted_size = redacted.clone().serialize().unwrap().len();
+            let redacted_size = crate::v2::Pczt::try_from(redacted.clone())
+                .unwrap()
+                .serialize()
+                .len();
 
             assert_eq!(
                 redacted.orchard.actions[0].output.enc_ciphertext,
@@ -1289,7 +1479,28 @@ pub(crate) mod v2 {
 
         #[cfg(feature = "orchard")]
         #[test]
-        fn decrypted_memo_plaintext_redaction_skips_decryption_failure() {
+        fn resolve_fields_recomputes_cmx() {
+            let action = decryptable_action_with_memo([0; MEMO_SIZE]);
+            let expected_cmx = action.output.cmx;
+            let mut bundle = LogicalBundle {
+                actions: vec![action],
+                flags: ORCHARD_SPENDS_AND_OUTPUTS_ENABLED,
+                value_sum: (0, false),
+                anchor: None,
+                note_version: NoteVersion::V2,
+                zkproof: None,
+                bsk: None,
+            };
+            bundle.actions[0].output.cmx = None;
+
+            bundle.resolve_fields().unwrap();
+
+            assert_eq!(bundle.actions[0].output.cmx, expected_cmx);
+        }
+
+        #[cfg(feature = "orchard")]
+        #[test]
+        fn decrypted_memo_plaintext_compaction_skips_decryption_failure() {
             let mut action = decryptable_action_with_memo([0; MEMO_SIZE]);
             let original_enc_ciphertext = match &mut action.output.enc_ciphertext {
                 EncCiphertext::Encrypted(enc_ciphertext) => {
@@ -1305,6 +1516,67 @@ pub(crate) mod v2 {
                 action.output.enc_ciphertext,
                 EncCiphertext::Encrypted(original_enc_ciphertext)
             );
+        }
+
+        #[cfg(feature = "orchard")]
+        #[test]
+        fn resolvable_field_compaction_checks_derived_values() {
+            let mut memo = [0; MEMO_SIZE];
+            memo[..5].copy_from_slice(b"hello");
+            let mut action = decryptable_action_with_memo(memo);
+            action.spend.value = Some(200_000);
+            action.rcv = Some([3; 32]);
+            action.cv_net = Some(super::super::testing::value_commitment(100_000, [3; 32]));
+
+            action.compact_resolvable_fields(NoteVersion::V2);
+
+            assert_eq!(action.cv_net, None);
+            assert_eq!(action.output.cmx, None);
+            assert_eq!(
+                action.output.enc_ciphertext,
+                EncCiphertext::MemoPlaintext(MemoPlaintext::from_memo(memo))
+            );
+        }
+
+        #[cfg(feature = "orchard")]
+        #[test]
+        fn resolvable_field_compaction_retains_unverifiable_values() {
+            let mut memo = [0; MEMO_SIZE];
+            memo[..5].copy_from_slice(b"hello");
+            let mut action = decryptable_action_with_memo(memo);
+            let original_cv_net = action.cv_net;
+            let original_cmx = action.output.cmx;
+            let original_enc_ciphertext = action.output.enc_ciphertext.clone();
+            action.output.recipient = None;
+
+            action.compact_resolvable_fields(NoteVersion::V2);
+
+            assert_eq!(action.cv_net, original_cv_net);
+            assert_eq!(action.output.cmx, original_cmx);
+            assert_eq!(action.output.enc_ciphertext, original_enc_ciphertext);
+        }
+
+        #[cfg(feature = "orchard")]
+        #[test]
+        fn resolvable_field_compaction_retains_mismatched_values() {
+            let mut memo = [0; MEMO_SIZE];
+            memo[..5].copy_from_slice(b"hello");
+            let mut action = decryptable_action_with_memo(memo);
+            action.spend.value = Some(200_000);
+            action.rcv = Some([3; 32]);
+            let mut cv_net = super::super::testing::value_commitment(100_000, [3; 32]);
+            cv_net[0] ^= 1;
+            action.cv_net = Some(cv_net);
+            let mut cmx = action.output.cmx.unwrap();
+            cmx[0] ^= 1;
+            action.output.cmx = Some(cmx);
+            let original_enc_ciphertext = action.output.enc_ciphertext.clone();
+
+            action.compact_resolvable_fields(NoteVersion::V2);
+
+            assert_eq!(action.cv_net, Some(cv_net));
+            assert_eq!(action.output.cmx, Some(cmx));
+            assert_eq!(action.output.enc_ciphertext, original_enc_ciphertext);
         }
 
         #[test]
@@ -1330,11 +1602,74 @@ pub(crate) mod v2 {
                 crate::orchard::v1::Bundle::try_from(logical_bundle(Some([5; 32]), None)),
                 Err(crate::EncodingError::RequiresV2)
             ));
+
+            assert!(matches!(
+                crate::orchard::v1::Bundle::try_from(logical_bundle_with_cmx(
+                    Some([5; 32]),
+                    Some([6; 32]),
+                    None
+                )),
+                Err(crate::EncodingError::RequiresV2)
+            ));
+        }
+
+        #[test]
+        fn v1_empty_bundle_anchor_falls_back_to_default() {
+            // An empty bundle has no anchor to commit to, so the v1 encoding (whose
+            // anchor field is mandatory) falls back to `DEFAULT_ANCHOR`.
+            let bundle = LogicalBundle {
+                actions: Vec::new(),
+                flags: ORCHARD_SPENDS_AND_OUTPUTS_ENABLED,
+                value_sum: (0, false),
+                anchor: None,
+                note_version: NoteVersion::V2,
+                zkproof: None,
+                bsk: None,
+            };
+
+            let encoded = crate::orchard::v1::Bundle::try_from(bundle)
+                .expect("an empty bundle's anchor falls back to DEFAULT_ANCHOR");
+
+            // Decoding must undo the fallback substitution, reproducing the logical
+            // empty bundle exactly rather than materializing the placeholder anchor.
+            let decoded = super::super::Bundle::from(encoded);
+            assert_eq!(decoded, EMPTY_ORCHARD);
         }
     }
 }
 
 impl Bundle {
+    /// This bundle's sole action, or `None` if it does not have exactly one.
+    pub fn sole_action(&self) -> Option<&Action> {
+        match self.actions.as_slice() {
+            [action] => Some(action),
+            _ => None,
+        }
+    }
+
+    /// Whether every output of this bundle that carries value pays `recipient`, given as the [raw
+    /// encoding] of an Orchard payment address, which is what makes the bundle a send-to-self.
+    ///
+    /// Zero-valued padding dummies are excluded: a Constructor fabricates them to bring the bundle
+    /// up to a required action count and they pay nobody in particular, so counting them would make
+    /// every padded bundle fail. Returns `None` if any output has had the value or the recipient it
+    /// would be judged on redacted, since the question cannot then be answered rather than answered
+    /// negatively.
+    ///
+    /// [raw encoding]: https://zips.z.cash/protocol/protocol.pdf#orchardpaymentaddrencoding
+    pub fn value_carrying_outputs_all_pay(&self, recipient: &[u8; 43]) -> Option<bool> {
+        for action in &self.actions {
+            let output = &action.output;
+            if output.value? == 0 {
+                continue;
+            }
+            if &output.recipient? != recipient {
+                return Some(false);
+            }
+        }
+        Some(true)
+    }
+
     /// Merges this bundle with another.
     ///
     /// Returns `None` if the bundles have conflicting data.
@@ -1441,7 +1776,6 @@ impl Bundle {
 
             if lhs.spend.nullifier != nullifier
                 || lhs.spend.rk != rk
-                || lhs.output.cmx != cmx
                 || lhs.output.ephemeral_key != ephemeral_key
                 || lhs.output.enc_ciphertext != enc_ciphertext
                 || lhs.output.out_ciphertext != out_ciphertext
@@ -1461,6 +1795,7 @@ impl Bundle {
                 && merge_optional(&mut lhs.spend.zip32_derivation, spend_zip32_derivation)
                 && merge_optional(&mut lhs.spend.dummy_sk, dummy_sk)
                 && merge_map(&mut lhs.spend.proprietary, spend_proprietary)
+                && merge_optional(&mut lhs.output.cmx, cmx)
                 && merge_optional(&mut lhs.output.recipient, output_recipient)
                 && merge_optional(&mut lhs.output.value, output_value)
                 && merge_optional(&mut lhs.output.rseed, output_rseed)
@@ -1486,9 +1821,6 @@ pub(crate) fn bundle_version_for_revision(
     revision: zcash_protocol::consensus::OrchardProtocolRevision,
     pool: orchard::ValuePool,
 ) -> Option<BundleVersion> {
-    use orchard::ValuePool;
-    use zcash_protocol::consensus::OrchardProtocolRevision;
-
     match pool {
         ValuePool::Orchard => Some(match revision {
             OrchardProtocolRevision::InsecureV1 => BundleVersion::orchard_insecure_v1(),
@@ -1507,16 +1839,152 @@ pub(crate) fn bundle_version_for_revision(
 /// which the Orchard protocol is not supported).
 #[cfg(feature = "orchard")]
 pub(crate) fn orchard_bundle_version(global: &crate::common::Global) -> Option<BundleVersion> {
-    use zcash_protocol::consensus::BranchId;
-
     BranchId::try_from(global.consensus_branch_id)
         .ok()?
         .orchard_protocol_revision()
         .and_then(|revision| bundle_version_for_revision(revision, orchard::ValuePool::Orchard))
 }
 
+/// Errors that can occur while parsing a logical Orchard-protocol bundle (Orchard or
+/// Ironwood) into the form used by the `orchard` crate.
+#[cfg(feature = "orchard")]
+#[derive(Debug)]
+#[non_exhaustive]
+pub enum ParseError {
+    /// The operation requires the bundle's `anchor` to be set, but it was absent.
+    ///
+    /// For a v6 transaction, an Updater can resolve this by setting the anchor; see
+    /// [ZIP 374: Anchors and pre-authorization](https://zips.z.cash/zip-0374#anchors-and-pre-authorization).
+    MissingAnchor,
+    /// The bundle's remaining fields were structurally invalid.
+    Bundle(orchard::pczt::ParseError),
+}
+
+#[cfg(feature = "orchard")]
+impl From<orchard::pczt::ParseError> for ParseError {
+    fn from(e: orchard::pczt::ParseError) -> Self {
+        ParseError::Bundle(e)
+    }
+}
+
+/// Errors that can occur while checking that an Orchard-protocol bundle's spend
+/// witnesses are consistent with its anchor.
+#[cfg(all(feature = "orchard", feature = "prover"))]
+#[derive(Debug)]
+#[non_exhaustive]
+pub enum AnchorConsistencyError {
+    /// A non-zero-valued spend has a `witness` but is missing other note data required
+    /// to compute its Merkle path root.
+    IncompleteSpendData,
+    /// A non-zero-valued spend's `witness` does not root to the given anchor.
+    WitnessDoesNotRootToAnchor,
+}
+
+/// Checks that every non-zero-valued spend in `bundle` whose `witness` is present has a
+/// Merkle path that roots to `anchor` (\[ZIP 374\] "Anchors and pre-authorization").
+///
+/// Zero-valued spends are skipped, as their Merkle paths are not checked by the Orchard
+/// circuit.
+///
+/// [ZIP 374]: https://zips.z.cash/zip-0374#anchors-and-pre-authorization
+#[cfg(all(feature = "orchard", feature = "prover"))]
+pub(crate) fn verify_witnesses_root_to_anchor(
+    bundle: &orchard::pczt::Bundle,
+    anchor: orchard::Anchor,
+) -> Result<(), AnchorConsistencyError> {
+    for action in bundle.actions() {
+        let spend = action.spend();
+
+        let Some(witness) = spend.witness() else {
+            continue;
+        };
+        let Some(value) = spend.value() else {
+            continue;
+        };
+        if value.inner() == 0 {
+            continue;
+        }
+
+        let recipient = spend
+            .recipient()
+            .ok_or(AnchorConsistencyError::IncompleteSpendData)?;
+        let rho = spend
+            .rho()
+            .ok_or(AnchorConsistencyError::IncompleteSpendData)?;
+        let rseed = spend
+            .rseed()
+            .ok_or(AnchorConsistencyError::IncompleteSpendData)?;
+
+        let note = orchard::Note::from_parts(
+            recipient,
+            *value,
+            orchard::note::AssetBase::zatoshi(),
+            rho,
+            rseed,
+            *spend.note_version(),
+        )
+        .into_option()
+        .ok_or(AnchorConsistencyError::IncompleteSpendData)?;
+        let cmx = orchard::note::ExtractedNoteCommitment::from(note.commitment());
+        let computed_anchor = witness.root(cmx);
+
+        if computed_anchor != anchor {
+            return Err(AnchorConsistencyError::WitnessDoesNotRootToAnchor);
+        }
+    }
+
+    Ok(())
+}
+
 #[cfg(feature = "orchard")]
 impl Output {
+    /// Recomputes `cmx`, if this output carries it as an omitted field.
+    fn resolve_cmx(
+        &mut self,
+        note_version: NoteVersion,
+        spend_nullifier: [u8; 32],
+    ) -> Result<(), orchard::pczt::ParseError> {
+        if self.cmx.is_some() {
+            return Ok(());
+        }
+
+        let recipient = Address::from_raw_address_bytes(
+            self.recipient
+                .as_ref()
+                .ok_or(orchard::pczt::ParseError::InvalidExtractedNoteCommitment)?,
+        )
+        .into_option()
+        .ok_or(orchard::pczt::ParseError::InvalidExtractedNoteCommitment)?;
+        let rho = Rho::from_bytes(&spend_nullifier)
+            .into_option()
+            .ok_or(orchard::pczt::ParseError::InvalidExtractedNoteCommitment)?;
+        let rseed = RandomSeed::from_bytes(
+            *self
+                .rseed
+                .as_ref()
+                .ok_or(orchard::pczt::ParseError::InvalidExtractedNoteCommitment)?,
+            &rho,
+        )
+        .into_option()
+        .ok_or(orchard::pczt::ParseError::InvalidExtractedNoteCommitment)?;
+        let note = Note::from_parts(
+            recipient,
+            NoteValue::from_raw(
+                self.value
+                    .ok_or(orchard::pczt::ParseError::InvalidExtractedNoteCommitment)?,
+            ),
+            orchard::note::AssetBase::zatoshi(),
+            rho,
+            rseed,
+            note_version,
+        )
+        .into_option()
+        .ok_or(orchard::pczt::ParseError::InvalidExtractedNoteCommitment)?;
+
+        self.cmx = Some(ExtractedNoteCommitment::from(note.commitment()).to_bytes());
+        Ok(())
+    }
+
     /// Recomputes [`Self::enc_ciphertext`] from memo plaintext, if present.
     ///
     /// If [`Self::enc_ciphertext`] is [`EncCiphertext::MemoPlaintext`], this
@@ -1531,15 +1999,6 @@ impl Output {
         note_version: NoteVersion,
         spend_nullifier: [u8; 32],
     ) -> Result<(), ::orchard::pczt::ParseError> {
-        use ::orchard::{
-            Address, Note,
-            note::{AssetBase, RandomSeed, Rho},
-            note_encryption::{OrchardDomain, OrchardNoteEncryption},
-            pczt::ParseError,
-            value::NoteValue,
-        };
-        use zcash_note_encryption::Domain;
-
         let memo: [u8; 512] = match &self.enc_ciphertext {
             EncCiphertext::Encrypted(_) => return Ok(()),
             EncCiphertext::MemoPlaintext(memo) => memo.to_memo(),
@@ -1548,35 +2007,41 @@ impl Output {
         let recipient = Address::from_raw_address_bytes(
             self.recipient
                 .as_ref()
-                .ok_or(ParseError::InvalidRecipient)?,
+                .ok_or(orchard::pczt::ParseError::InvalidRecipient)?,
         )
         .into_option()
-        .ok_or(ParseError::InvalidRecipient)?;
+        .ok_or(orchard::pczt::ParseError::InvalidRecipient)?;
         let rho = Rho::from_bytes(&spend_nullifier)
             .into_option()
-            .ok_or(ParseError::InvalidNullifier)?;
+            .ok_or(orchard::pczt::ParseError::InvalidNullifier)?;
         let rseed = RandomSeed::from_bytes(
-            *self.rseed.as_ref().ok_or(ParseError::InvalidRandomSeed)?,
+            *self
+                .rseed
+                .as_ref()
+                .ok_or(orchard::pczt::ParseError::InvalidRandomSeed)?,
             &rho,
         )
         .into_option()
-        .ok_or(ParseError::InvalidRandomSeed)?;
+        .ok_or(orchard::pczt::ParseError::InvalidRandomSeed)?;
         let note = Note::from_parts(
             recipient,
-            NoteValue::from_raw(self.value.ok_or(ParseError::InvalidEncCiphertext)?),
+            NoteValue::from_raw(
+                self.value
+                    .ok_or(orchard::pczt::ParseError::InvalidEncCiphertext)?,
+            ),
             AssetBase::zatoshi(),
             rho,
             rseed,
             note_version,
         )
         .into_option()
-        .ok_or(ParseError::InvalidEncCiphertext)?;
+        .ok_or(orchard::pczt::ParseError::InvalidEncCiphertext)?;
         let encryptor = OrchardNoteEncryption::new(None, note, memo);
         let ephemeral_key = OrchardDomain::epk_bytes(encryptor.epk()).0;
         let enc_ciphertext = encryptor.encrypt_note_plaintext().as_ref().to_vec();
 
         if ephemeral_key != self.ephemeral_key {
-            return Err(ParseError::InvalidEncCiphertext);
+            return Err(orchard::pczt::ParseError::InvalidEncCiphertext);
         }
 
         self.enc_ciphertext = EncCiphertext::Encrypted(enc_ciphertext);
@@ -1587,47 +2052,30 @@ impl Output {
 #[cfg(feature = "orchard")]
 impl Action {
     /// Recomputes `cv_net`, if this action carries it as an omitted field.
-    fn resolve_cv_net(&mut self) -> Result<(), ::orchard::pczt::ParseError> {
-        use ::orchard::{
-            pczt::ParseError,
-            value::{NoteValue, ValueCommitTrapdoor, ValueCommitment},
-        };
-
+    fn resolve_cv_net(&mut self) -> Result<(), orchard::pczt::ParseError> {
         if self.cv_net.is_some() {
             return Ok(());
         }
 
-        let spend_value: NoteValue =
-            NoteValue::from_raw(self.spend.value.ok_or(ParseError::InvalidValueCommitment)?);
+        let spend_value: NoteValue = NoteValue::from_raw(
+            self.spend
+                .value
+                .ok_or(orchard::pczt::ParseError::InvalidValueCommitment)?,
+        );
         let output_value = NoteValue::from_raw(
             self.output
                 .value
-                .ok_or(ParseError::InvalidValueCommitment)?,
+                .ok_or(orchard::pczt::ParseError::InvalidValueCommitment)?,
         );
-        let rcv =
-            ValueCommitTrapdoor::from_bytes(self.rcv.ok_or(ParseError::InvalidValueCommitment)?)
-                .into_option()
-                .ok_or(ParseError::InvalidValueCommitment)?;
+        let rcv = ValueCommitTrapdoor::from_bytes(
+            self.rcv
+                .ok_or(orchard::pczt::ParseError::InvalidValueCommitment)?,
+        )
+        .into_option()
+        .ok_or(orchard::pczt::ParseError::InvalidValueCommitment)?;
 
         self.cv_net = Some(ValueCommitment::derive(spend_value - output_value, rcv).to_bytes());
         Ok(())
-    }
-}
-
-#[cfg(feature = "orchard")]
-#[allow(dead_code)]
-#[derive(Clone, Copy)]
-enum AnchorParseMode {
-    Strict,
-    AllowMissing,
-}
-
-#[cfg(feature = "orchard")]
-fn anchor_parse_mode(tx_version: u32, has_actions: bool) -> AnchorParseMode {
-    if tx_version == zcash_protocol::constants::V6_TX_VERSION || !has_actions {
-        AnchorParseMode::AllowMissing
-    } else {
-        AnchorParseMode::Strict
     }
 }
 
@@ -1638,14 +2086,18 @@ impl Bundle {
     ///
     /// This currently recomputes:
     /// - [`Action::cv_net`] if it is redacted.
+    /// - [`Output::cmx`] if it is redacted.
     /// - [`Output::enc_ciphertext`] if it is represented by memo plaintext.
     ///
     /// For improved efficiency, callers that will pass the same bundle through
     /// multiple roles should call this once up front, not in each role. Parsing
     /// also resolves fields defensively.
-    pub fn resolve_fields(&mut self) -> Result<(), ::orchard::pczt::ParseError> {
+    pub fn resolve_fields(&mut self) -> Result<(), orchard::pczt::ParseError> {
         for action in &mut self.actions {
             action.resolve_cv_net()?;
+            action
+                .output
+                .resolve_cmx(self.note_version, action.spend.nullifier)?;
             action
                 .output
                 .encrypt_ciphertext_from_memo(self.note_version, action.spend.nullifier)?;
@@ -1658,25 +2110,22 @@ impl Bundle {
     /// `FullViewingKey` from its wire `fvk` bytes.
     pub(crate) fn into_ironwood_parsed(
         self,
-    ) -> Result<orchard::pczt::Bundle, orchard::pczt::ParseError> {
-        self.into_parsed_inner(
-            BundleVersion::ironwood_v3(),
-            false,
-            AnchorParseMode::AllowMissing,
-        )
+        anchor_requirement: crate::common::AnchorRequirement,
+    ) -> Result<Parsed, ParseError> {
+        self.into_parsed_with_version(BundleVersion::ironwood_v3(), anchor_requirement)
     }
 
     /// Parses this bundle as an Ironwood-pool bundle for a preverified signing
-    /// pass, using a parse-only placeholder if the anchor has been redacted.
-    ///
-    /// [`Bundle::serialize_from`] encodes the placeholder as a redacted anchor.
+    /// pass, skipping each spend's `FullViewingKey` derivation. See
+    /// [`Bundle::into_parsed_with_version_preverified_for_signing`] for the invariant
+    /// callers must uphold.
     pub(crate) fn into_ironwood_parsed_preverified_for_signing(
         self,
-    ) -> Result<orchard::pczt::Bundle, orchard::pczt::ParseError> {
-        self.into_parsed_inner(
+        anchor_requirement: crate::common::AnchorRequirement,
+    ) -> Result<Parsed, ParseError> {
+        self.into_parsed_with_version_preverified_for_signing(
             BundleVersion::ironwood_v3(),
-            true,
-            AnchorParseMode::AllowMissing,
+            anchor_requirement,
         )
     }
 
@@ -1690,10 +2139,9 @@ impl Bundle {
     pub(crate) fn into_parsed_with_version(
         self,
         bundle_version: BundleVersion,
-        tx_version: u32,
-    ) -> Result<orchard::pczt::Bundle, orchard::pczt::ParseError> {
-        let anchor_parse_mode = anchor_parse_mode(tx_version, !self.actions.is_empty());
-        self.into_parsed_inner(bundle_version, false, anchor_parse_mode)
+        anchor_requirement: crate::common::AnchorRequirement,
+    ) -> Result<Parsed, ParseError> {
+        self.into_parsed_inner(bundle_version, anchor_requirement, false)
     }
 
     /// Parses this bundle with the given bundle version for a preverified signing
@@ -1713,10 +2161,9 @@ impl Bundle {
     pub(crate) fn into_parsed_with_version_preverified_for_signing(
         self,
         bundle_version: BundleVersion,
-        tx_version: u32,
-    ) -> Result<orchard::pczt::Bundle, orchard::pczt::ParseError> {
-        let anchor_parse_mode = anchor_parse_mode(tx_version, !self.actions.is_empty());
-        self.into_parsed_inner(bundle_version, true, anchor_parse_mode)
+        anchor_requirement: crate::common::AnchorRequirement,
+    ) -> Result<Parsed, ParseError> {
+        self.into_parsed_inner(bundle_version, anchor_requirement, true)
     }
 
     /// The shared body of [`Bundle::into_parsed_with_version`] and
@@ -1725,10 +2172,14 @@ impl Bundle {
     fn into_parsed_inner(
         mut self,
         bundle_version: BundleVersion,
+        anchor_requirement: crate::common::AnchorRequirement,
         preverified: bool,
-        anchor_parse_mode: AnchorParseMode,
-    ) -> Result<orchard::pczt::Bundle, orchard::pczt::ParseError> {
+    ) -> Result<Parsed, ParseError> {
         self.resolve_fields()?;
+        let wire_anchor = self.anchor;
+        let anchor = anchor_requirement
+            .resolve(wire_anchor, self.actions.is_empty())
+            .ok_or(ParseError::MissingAnchor)?;
 
         // We parse actions through a helper that is specifically `#[inline(never)]`.
         // This is because if this gets inlined in a loop (e.g. `.map(..).collect()`),
@@ -1801,7 +2252,10 @@ impl Bundle {
 
             let output = orchard::pczt::Output::parse(
                 *spend.nullifier(),
-                action.output.cmx,
+                action
+                    .output
+                    .cmx
+                    .ok_or(orchard::pczt::ParseError::InvalidExtractedNoteCommitment)?,
                 action.output.ephemeral_key,
                 enc_ciphertext,
                 action.output.out_ciphertext,
@@ -1829,15 +2283,8 @@ impl Bundle {
         for action in self.actions {
             actions.push(parse_action_inner(action, note_version, preverified)?);
         }
-        let anchor = match (self.anchor, anchor_parse_mode) {
-            (Some(anchor), _) => anchor,
-            (None, AnchorParseMode::Strict) => {
-                return Err(orchard::pczt::ParseError::InvalidAnchor);
-            }
-            (None, AnchorParseMode::AllowMissing) => DEFAULT_ANCHOR,
-        };
 
-        orchard::pczt::Bundle::parse(
+        let bundle = orchard::pczt::Bundle::parse(
             actions,
             self.flags,
             bundle_version,
@@ -1845,7 +2292,12 @@ impl Bundle {
             anchor,
             self.zkproof,
             self.bsk,
-        )
+        )?;
+
+        Ok(Parsed {
+            bundle,
+            wire_anchor,
+        })
     }
 
     #[allow(dead_code)]
@@ -1912,7 +2364,7 @@ impl Bundle {
                         proprietary: spend.proprietary().clone(),
                     },
                     output: Output {
-                        cmx: output.cmx().to_bytes(),
+                        cmx: Some(output.cmx().to_bytes()),
                         ephemeral_key: output.encrypted_note().epk_bytes,
                         enc_ciphertext: EncCiphertext::Encrypted(
                             output.encrypted_note().enc_ciphertext.as_ref().to_vec(),
@@ -1947,19 +2399,236 @@ impl Bundle {
             let (magnitude, sign) = bundle.value_sum().magnitude_sign();
             (magnitude, matches!(sign, orchard::value::Sign::Negative))
         };
-        let anchor = bundle.anchor().to_bytes();
+        // A bundle built with its anchor deferred to proving time (ZIP 374) carries the
+        // empty-tree root purely as a placeholder; emit the anchor as ABSENT, for the
+        // Updater role to install before proving.
+        let anchor = (!bundle.anchor_deferred()).then(|| bundle.anchor().to_bytes());
 
         Self {
             actions,
             flags: bundle.flag_byte(),
             value_sum,
-            anchor: (anchor != DEFAULT_ANCHOR).then_some(anchor),
+            anchor,
             note_version,
             zkproof: bundle
                 .zkproof()
                 .as_ref()
                 .map(|zkproof| zkproof.as_ref().to_vec()),
             bsk: bundle.bsk().as_ref().map(|bsk| bsk.into()),
+        }
+    }
+}
+
+#[cfg(test)]
+mod shape_tests {
+    use alloc::collections::BTreeMap;
+    use alloc::vec::Vec;
+
+    use proptest::prelude::*;
+    use proptest::sample::Index;
+
+    use super::{
+        Action, Bundle, EncCiphertext, NoteVersion, ORCHARD_SPENDS_AND_OUTPUTS_ENABLED, Output,
+        Spend,
+    };
+
+    /// Two distinguishable payment addresses. Only their inequality matters, so any two distinct
+    /// byte strings do; these are never parsed as addresses.
+    const OURS: [u8; 43] = [1; 43];
+    const THEIRS: [u8; 43] = [2; 43];
+
+    fn output(value: Option<u64>, recipient: Option<[u8; 43]>) -> Output {
+        Output {
+            cmx: None,
+            ephemeral_key: [0; 32],
+            enc_ciphertext: EncCiphertext::Encrypted(Vec::new()),
+            out_ciphertext: Vec::new(),
+            recipient,
+            value,
+            rseed: None,
+            ock: None,
+            zip32_derivation: None,
+            user_address: None,
+            proprietary: BTreeMap::new(),
+        }
+    }
+
+    fn spend() -> Spend {
+        Spend {
+            nullifier: [0; 32],
+            rk: [0; 32],
+            spend_auth_sig: None,
+            recipient: None,
+            value: None,
+            rho: None,
+            rseed: None,
+            fvk: None,
+            witness: None,
+            alpha: None,
+            zip32_derivation: None,
+            dummy_sk: None,
+            proprietary: BTreeMap::new(),
+        }
+    }
+
+    /// An action carrying the given output. Neither method under test reads the spend half or any
+    /// bundle-level field, so those stay at fixed values.
+    fn action(value: Option<u64>, recipient: Option<[u8; 43]>) -> Action {
+        Action {
+            cv_net: None,
+            spend: spend(),
+            output: output(value, recipient),
+            rcv: None,
+        }
+    }
+
+    fn bundle(actions: Vec<Action>) -> Bundle {
+        Bundle {
+            actions,
+            flags: ORCHARD_SPENDS_AND_OUTPUTS_ENABLED,
+            value_sum: (0, false),
+            anchor: None,
+            note_version: NoteVersion::V2,
+            zkproof: None,
+            bsk: None,
+        }
+    }
+
+    fn arb_recipient() -> impl Strategy<Value = [u8; 43]> {
+        prop_oneof![Just(OURS), Just(THEIRS)]
+    }
+
+    /// Zero is drawn as often as any other value, because zero is what separates a padding dummy
+    /// from a real output and so is the case the predicate turns on.
+    fn arb_value() -> impl Strategy<Value = u64> {
+        prop_oneof![Just(0u64), 1u64..1_000]
+    }
+
+    /// An action whose judged fields may each have been redacted, which is the state a Redactor
+    /// can leave a PCZT in.
+    fn arb_action() -> impl Strategy<Value = Action> {
+        (
+            prop_oneof![Just(None), arb_value().prop_map(Some)],
+            prop_oneof![Just(None), arb_recipient().prop_map(Some)],
+        )
+            .prop_map(|(value, recipient)| action(value, recipient))
+    }
+
+    fn arb_bundle() -> impl Strategy<Value = Bundle> {
+        prop::collection::vec(arb_action(), 0..6).prop_map(bundle)
+    }
+
+    /// A bundle with nothing redacted, so the predicate is always able to answer.
+    fn arb_specified_bundle() -> impl Strategy<Value = Bundle> {
+        prop::collection::vec((arb_value(), arb_recipient()), 0..6).prop_map(|outputs| {
+            bundle(
+                outputs
+                    .into_iter()
+                    .map(|(value, recipient)| action(Some(value), Some(recipient)))
+                    .collect(),
+            )
+        })
+    }
+
+    /// A bundle whose value-carrying outputs all pay `OURS`, so the predicate answers
+    /// `Some(true)`. Its zero-valued dummies pay anyone: a Constructor fabricates them to reach an
+    /// action count and does not choose who they name.
+    fn arb_send_to_self_bundle() -> impl Strategy<Value = Bundle> {
+        prop::collection::vec((arb_value(), arb_recipient()), 1..6).prop_map(|outputs| {
+            bundle(
+                outputs
+                    .into_iter()
+                    .map(|(value, dummy_recipient)| {
+                        let recipient = if value == 0 { dummy_recipient } else { OURS };
+                        action(Some(value), Some(recipient))
+                    })
+                    .collect(),
+            )
+        })
+    }
+
+    proptest! {
+        /// `sole_action` is about the count and nothing else.
+        #[test]
+        fn sole_action_answers_exactly_when_there_is_one_action(bundle in arb_bundle()) {
+            match bundle.sole_action() {
+                Some(action) => {
+                    prop_assert_eq!(bundle.actions.len(), 1);
+                    prop_assert_eq!(action, &bundle.actions[0]);
+                }
+                None => prop_assert_ne!(bundle.actions.len(), 1),
+            }
+        }
+
+        /// With nothing redacted the predicate is a direct reading of the outputs: every one that
+        /// carries value pays the recipient asked about.
+        #[test]
+        fn all_pay_reads_the_value_carrying_outputs(bundle in arb_specified_bundle()) {
+            let expected = bundle
+                .actions
+                .iter()
+                .all(|a| a.output.value == Some(0) || a.output.recipient == Some(OURS));
+
+            prop_assert_eq!(bundle.value_carrying_outputs_all_pay(&OURS), Some(expected));
+        }
+
+        /// Padding dummies do not participate, whoever they name and even with that name redacted.
+        /// Counting them would make every padded bundle fail, which is the whole point of the
+        /// zero-value skip.
+        #[test]
+        fn zero_valued_dummies_do_not_change_the_answer(
+            bundle in arb_bundle(),
+            dummy_recipient in prop_oneof![Just(None), arb_recipient().prop_map(Some)],
+            at in any::<Index>(),
+        ) {
+            let expected = bundle.value_carrying_outputs_all_pay(&OURS);
+
+            let mut padded = bundle.clone();
+            let at = at.index(padded.actions.len() + 1);
+            padded.actions.insert(at, action(Some(0), dummy_recipient));
+
+            prop_assert_eq!(padded.value_carrying_outputs_all_pay(&OURS), expected);
+        }
+
+        /// A redacted value leaves the question unanswered rather than answered negatively: the
+        /// output cannot even be sorted into dummy or real.
+        #[test]
+        fn a_redacted_value_is_unanswerable(bundle in arb_send_to_self_bundle(), at in any::<Index>()) {
+            prop_assert_eq!(bundle.value_carrying_outputs_all_pay(&OURS), Some(true));
+
+            let mut redacted = bundle.clone();
+            let at = at.index(redacted.actions.len());
+            redacted.actions[at].output.value = None;
+
+            prop_assert_eq!(redacted.value_carrying_outputs_all_pay(&OURS), None);
+        }
+
+        /// A redacted recipient is unanswerable only where it would have been judged: on an output
+        /// that carries value. On a dummy it is skipped before the recipient is ever read.
+        #[test]
+        fn a_redacted_recipient_is_unanswerable_only_where_it_is_judged(
+            bundle in arb_send_to_self_bundle(),
+            at in any::<Index>(),
+        ) {
+            let mut redacted = bundle.clone();
+            let at = at.index(redacted.actions.len());
+            let carries_value = redacted.actions[at].output.value != Some(0);
+            redacted.actions[at].output.recipient = None;
+
+            let expected = if carries_value { None } else { Some(true) };
+            prop_assert_eq!(redacted.value_carrying_outputs_all_pay(&OURS), expected);
+        }
+
+        /// The recipient asked about is a parameter, not a constant: the same bundle answers
+        /// differently for a recipient it does not pay.
+        #[test]
+        fn all_pay_is_asked_about_a_specific_recipient(bundle in arb_send_to_self_bundle()) {
+            let pays_nobody = bundle
+                .actions
+                .iter()
+                .all(|a| a.output.value == Some(0));
+
+            prop_assert_eq!(bundle.value_carrying_outputs_all_pay(&THEIRS), Some(pays_nobody));
         }
     }
 }

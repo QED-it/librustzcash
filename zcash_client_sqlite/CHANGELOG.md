@@ -8,128 +8,201 @@ indicated by the `PLANNED` status in order to make it possible to correctly
 represent the transitive `semver` implications of changes within the enclosing
 workspace.
 
-## Unreleased
+## [Unreleased]
+
+## [0.22.0] - 2026-08-18
 
 ### Added
-- `WalletDb` now implements the new
-  `WalletWrite::reserve_next_n_internal_addresses` method (behind the
-  `transparent-inputs` feature flag), reserving internal-scope (change)
-  transparent addresses subject to the internal-scope gap limit. This is used
-  to allocate recipient addresses for non-ephemeral transparent change
-  outputs when a change strategy is configured with
-  `zcash_client_backend::fees::TransparentChangePolicy::TransparentChangeAllowed`.
-  No new migration is required: internal-scope gap addresses are already
-  generated at account creation, and received transparent change outputs are
-  recorded via the existing `Recipient::InternalTransparent` handling.
-- A new migration adds a `note_version` column to `orchard_received_notes`,
-  recording the note plaintext version from which each received note was
-  obtained. The Orchard note encryption domain accepts only version 2 note
-  plaintexts, so existing rows are backfilled as version 2.
-- A new migration adds the `ironwood_received_notes` and
-  `ironwood_received_note_spends` tables, mirroring the corresponding Orchard
-  tables. Received notes obtained from version 3 (Ironwood) note plaintexts
-  are recorded in `ironwood_received_notes`; Ironwood notes are stored
-  separately from Orchard notes because the two pools have distinct note
-  commitment trees, and because an Orchard action and an Ironwood action in
-  the same transaction may share an action index.
-- A new migration recreates the `v_received_outputs` and
-  `v_received_output_spends` views to include received Ironwood notes and their
-  spends, tagged with the Ironwood pool code (4). Ironwood notes now appear in
-  `v_transactions`, `v_tx_outputs`, and the balances derived from them.
-- The wallet database now persists Ironwood note commitment tree data. A new
-  migration adds the `ironwood_tree_shards`, `ironwood_tree_cap`,
-  `ironwood_tree_checkpoints`, and `ironwood_tree_checkpoint_marks_removed`
-  tables (mirroring the Orchard shard-tree tables), the
-  `ironwood_commitment_tree_size` and `ironwood_action_count` columns on
-  `blocks`, and the `v_ironwood_shard_scan_ranges`,
-  `v_ironwood_shard_unscanned_ranges`, and `v_ironwood_shards_scan_state` views.
-  The `WalletCommitmentTrees::with_ironwood_tree_mut` implementation now provides
-  the persisted Ironwood tree (Ironwood note commitments are Orchard-shaped, so
-  the tree reuses the Orchard shard store under a separate table prefix).
-- Block scan-range planning now extends suggested scan ranges to complete
-  Ironwood note commitment tree subtrees when Ironwood notes are detected,
-  mirroring the existing Sapling and Orchard behavior. The extension activates at
-  NU6.3.
-- A new database migration adds `sapling_tree_retained_checkpoints` and
-  `orchard_tree_retained_checkpoints` tables that back explicit retention of
-  note commitment tree checkpoints as durable "anchors". `SqliteShardStore`
-  now implements the `shardtree` retained-checkpoint store methods, and once
-  the NU6.3 activation height is reached scanning retains roughly four anchors
-  per day (see the `zcash_client_backend` changelog).
-- `zcash_client_sqlite::error::SqliteClientError::PutBlocksCommitmentTree`, a
-  new variant that records the shielded pool and the range of block heights
-  being added to the wallet when a note commitment tree error occurs during a
-  `put_blocks` operation. Previously such errors (for example a `shardtree`
-  `InsertionError::Conflict` raised by `insert_frontier`) surfaced as the
-  generic `CommitmentTree` variant, which only reported the conflicting tree
-  node address and not the affected pool or block range.
-- `zcash_client_sqlite::error::SqliteClientError::TruncateCommitmentTree`, a
-  new variant that records the shielded pool and the block height that the
-  wallet was being truncated to when a note commitment tree error occurs
-  during a truncation operation (`truncate_to_height` or
-  `truncate_to_chain_state`). Previously such errors surfaced as the generic
-  `CommitmentTree` variant without the affected pool or target height.
-- The `InputSource::get_spendable_transparent_outputs` implementation now
-  accepts `CoinbaseFilter::NonCoinbaseOnly`, restricting the SQL query to
-  outputs that are not from coinbase transactions. Outputs with an unknown
-  `tx_index` are treated as non-coinbase.
-- Added an implementation of `InputSource::select_spendable_transparent_outputs`
-  (behind the `transparent-inputs` feature flag). The query orders eligible
-  outputs by descending value (backed by a new
-  `idx_transparent_received_outputs_value_zat` index) and accumulates them,
-  recomputing the cumulative ZIP 317 marginal fee cost of the gathered
-  inputs via the supplied `fee_rule: &StandardFeeRule` at each step, stopping
-  once the post-fee accumulated value meets the requested `TargetValue` or
-  the supplied `max_inputs` cap is reached, whichever happens first. This
-  bounds the work done to the prefix of the table needed to satisfy the
-  request, so a wallet with many small transparent UTXOs does not have to
-  materialize its full UTXO set to build a small transfer. When an
-  `address_allow_list` is supplied, the restriction to the given addresses is
-  applied within the SQL query, so that ineligible outputs do not consume
-  the value bound.
-- `zcash_client_sqlite::error::SqliteClientError::FeeRuleError`, a new variant
-  (behind the `transparent-inputs` feature flag) that wraps an error produced
-  by a `FeeRule` during transparent input selection.
-- `WalletDb::generate_ironwood_witnesses_at_historical_height`, which mirrors
-  the existing Orchard historical witness helper over the wallet's Ironwood
-  commitment tree shard tables.
+- `zcash_client_sqlite`:
+  - `WalletDb::transactionally_with_extension`, which performs wallet
+    operations and writes to application-owned `ext_`-prefixed tables (created
+    via `WalletMigrator::with_external_migrations`) atomically in one database
+    transaction, and `ExtensionTransaction`, the restricted statement executor
+    it provides to the closure. `ExtensionTransaction::{execute, query_row}`
+    run under a SQLite authorizer that permits reads of any table, permits
+    `INSERT`/`UPDATE`/`DELETE` only against `ext_`-prefixed tables, and denies
+    everything else, including DDL, `PRAGMA`, `ATTACH`/`DETACH`, and
+    transaction control.
+  - `WalletDb::{with_anchor_retention_interval, set_anchor_retention_interval}`,
+    which configure the interval on which note commitment tree checkpoints are
+    retained as durable anchors. The setting governs the grid the next pool
+    migration is planned against; the grid an in-flight migration was committed
+    under is recorded with it and keeps being retained.
+  - `WalletDb::{get_unspent_ironwood_notes_at_historical_height,
+    generate_ironwood_witnesses_at_historical_height}`
+  - `WalletDb` implements the storage-trait methods `zcash_client_backend
+    0.24.0` adds, including `WalletRead::get_wallet_recover_until`,
+    `WalletWrite::{prune_scan_queue_below, reserve_next_n_internal_addresses,
+    import_standalone_transparent_pubkeys}`, the `OutputLockStore` methods, and
+    `WalletCommitmentTrees::{get_sapling_subtree_root, get_orchard_subtree_root,
+    get_ironwood_subtree_root, with_ironwood_tree_mut}`.
+- `zcash_client_sqlite::error`:
+  - `SqliteClientError::{PutBlocksCommitmentTree, TruncateCommitmentTree,
+    FeeRuleError, BackendError}` and the `BackendError` the last wraps. The
+    first two record the shielded pool and, respectively, the block range being
+    added or the height being truncated to when a note commitment tree error
+    occurs; both cases previously surfaced as the generic `CommitmentTree`
+    variant.
+- `zcash_client_sqlite::pool_migration`, which implements `zcash_pool_migration`'s
+  `PoolMigrationRead` / `PoolMigrationWrite` store traits over tables in the
+  wallet database, persisting each account's in-progress Orchard -> Ironwood
+  (ZIP 318) migration. Requires the `orchard` feature.
+  - `orchard_ironwood::PoolMigrations`, constructed by
+    `PoolMigrations::for_account(params, clock, conn, account)`, with
+    `migration_lock_owners`, `take_transaction_for_broadcast`,
+    `cancel_migration`, `latest_migration`, `list_migrations`, and
+    `get_migration_by_id`.
+  - `orchard_ironwood::{Error, FinalizeError}`
+  - `{MigrationUuid, MigrationSummary, CancelOutcome}`
+- `zcash_client_sqlite::wallet::init::migrations`:
+  - Release-state constants for every published version whose migration-graph
+    state had none: `V_0_7_0`, `V_0_8_0_RC1`, `V_0_8_0_RC4`, `V_0_8_0_RC5`,
+    `V_0_8_1`, `V_0_20_0`, `V_0_22_0_RC1`, `V_0_22_0_RC2`, `V_0_22_0_RC5`, and
+    `V_0_22_0_RC6`.
+  - `ids` module, behind the `unstable` feature, exposing the identifier of
+    each individual internal migration, so that an external migration can be
+    anchored against unreleased schema. These identifiers are unstable; move
+    the anchor to the release constant that covers it once that release exists.
+- `zcash_client_sqlite::zewif`, behind the new `zewif` feature, for importing
+  wallets from the Zcash Wallet Interchange Format. `import_wallet` ingests a
+  ZeWIF document into an initialized `WalletDb` in a single transaction,
+  delivering encountered spending-key material to a caller-supplied
+  `SecretSink` (`DiscardSecrets` drops it) and returning a `ZewifImportReport`
+  (including `addresses_never_exposed`); failures are reported as
+  `ZewifImportError`. The report is detailed by `ImportedAccount`,
+  `SkippedAccount`, `AccountSkipReason`, `SkippedTransparentKey`,
+  `TransparentKeySkipReason`, and `BirthdayBasis`.
+- Schema and views:
+  - Persistence of the Ironwood value pool, behind the `orchard` feature.
+    Migrations add the `ironwood_received_notes` and
+    `ironwood_received_note_spends` tables, the Ironwood note commitment tree
+    tables and views, the `ironwood_commitment_tree_size` and
+    `ironwood_action_count` columns on `blocks`, and a `note_version` column on
+    `orchard_received_notes` (existing rows backfilled as version 2); the
+    `v_received_outputs` and `v_received_output_spends` views carry Ironwood
+    notes under pool code 4, so they appear in `v_transactions`,
+    `v_tx_outputs`, and the balances derived from them. Scan-range planning
+    extends suggested ranges to complete Ironwood subtrees from NU6.3.
+  - Support for `WalletWrite::import_standalone_transparent_address` (under the
+    `transparent-key-import` feature): a watch-only transparent address is
+    stored as a `key_scope = -1` row of the `addresses` table with neither
+    imported-material column set, admitted by a migration that relaxes the
+    table's constraint. Importing the corresponding pubkey or redeem script
+    with `WalletWrite::import_standalone_transparent_pubkey` /
+    `import_standalone_transparent_script` upgrades such a row in place.
+    Outputs received by an address imported without key material contribute to
+    the account balance but are excluded from spendable-output selection.
+  - A `zip318_kind` column on the `transactions` table and on `v_transactions`,
+    recording how each transaction classifies against ZIP 318 so that a wallet
+    can label a pool-migration transaction without a migration plan. Both the
+    pool-migration store and `WalletWrite::store_transactions_to_be_sent`
+    classify a transaction as they store it, and enhancement classifies it once
+    it has mined. The column defaults to the code for NOT CLASSIFIED, which a
+    client must render as "no label yet" rather than as "not a migration
+    transaction": rows written before the column existed keep the default and
+    need the transaction rescanned.
+  - A `pool_crossing_value` column on `v_transactions`, non-`NULL` exactly for
+    a wholly-shielded wallet-internal transaction that moved the account's own
+    funds into a pool it spent nothing from, carrying the amount that crossed.
+    Use `pool_crossing_value IS NOT NULL` as the classification predicate, and
+    present that value as the migrated amount: `account_balance_delta` for such
+    a transaction is just the negated fee, and `total_spent` / `total_received`
+    overstate the crossing whenever the transaction also returns change to a
+    pool it spent from.
+  - The `v_migration_transactions` view: one row per scheduled pool-migration
+    transaction, with its identity, kind, lifecycle state, scheduled and expiry
+    heights, values, and ZIP 318 classification code.
+  - The `v_transactions_with_pending_migrations` view: `v_transactions` plus
+    the scheduled migration transactions projected into the same column shape.
+    `v_transactions` itself is unchanged.
+  - A migration adding `lock_expiry_height` and `lock_owner` columns to the
+    `sapling_received_notes`, `orchard_received_notes`,
+    `ironwood_received_notes`, and `transparent_received_outputs` tables,
+    backing the note locking that `zcash_client_backend`'s proposal-creation
+    functions perform.
+  - A `UNIQUE` index on `addresses.cached_transparent_receiver_address`, making
+    account-by-transparent-address lookups index-backed and enforcing that each
+    transparent receiver belongs to at most one address record. The migration
+    that adds it resolves pre-existing duplicates in place — within one account
+    by keeping a canonical record and repointing received outputs to it, across
+    accounts by derivation from each account's viewing key — and aborts on a
+    cross-account duplicate that no unique record can be verified for.
+- The additive `ignore-expensive-tests` feature, which compiles expensive tests
+  but marks them ignored for broad `--all-features` runs.
+- `zcash_client_sqlite::testing`:
+  - `db::TestDbFactory::file_backed`, and `db::TestDb::{conn, conn_mut}` for
+    tests that open a sibling store over the wallet database's own connection.
 
 ### Changed
 - MSRV is now 1.88
-- Migrated to `zcash_protocol 0.10.0`, `zcash_address 0.13.0`,
-  `zcash_transparent 0.9.0`, `zcash_keys 0.15.0`,
-  `zcash_primitives 0.29.0`, `zcash_proofs 0.29.0`,
-  `orchard 0.15`, `shardtree 0.7`.
-- (behind the new `spend-index` feature) `WalletRead::transaction_data_requests`
-  emits `TransactionDataRequest::GetSpendingTx` for transparent spend
-  detection instead of `TransactionDataRequest::TransactionsInvolvingAddress`.
-  `TransactionsInvolvingAddress` is still emitted for ephemeral-address discovery,
-  and for spend detection when `spend-index` is disabled.
-- The database schema now includes a `UNIQUE` index on
-  `addresses.cached_transparent_receiver_address`, making account-by-transparent-address
-  lookups index-backed (previously a full table scan) and enforcing that each transparent
-  receiver belongs to at most one address record. If a pre-existing database already contains
-  duplicate cached transparent receiver addresses, the migration that adds the index resolves
-  them in place: within a single account it keeps a canonical record (preferring an HD-derived
-  record over an imported one), repoints the affected received outputs to it, and deletes the
-  redundant records, preserving the earliest recorded `exposed_at_height` among the merged
-  records. A receiver duplicated across more than one account is resolved by derivation:
-  when exactly one of the records reproduces the receiver when derived from its own account's
-  viewing key at its recorded child index, that record is retained and the received outputs of
-  the others are reattributed to it (this can occur for wallets migrated from `zcashd`, where an
-  address may have been both imported standalone into one account and derived by another,
-  including under the ZIP 32 account index 0x7FFFFFFF used for the `zcashd` legacy account).
-  A cross-account duplicate for which no unique record can be verified by derivation causes
-  the migration to abort.
+- Migrated to `zcash_protocol 0.10.5`, `zcash_address 0.13.0`,
+  `zcash_transparent 0.10.0`, `zip321 0.9.0`, `zcash_keys 0.16.1`,
+  `zcash_primitives 0.30.1`, `zcash_proofs 0.30.0`, `orchard 0.15`,
+  `shardtree 0.7`, `zcash_client_backend 0.24.0`, `zcash_pool_migration 0.1.0`.
+- The `orchard` feature is now enabled by default. Consumers that require a
+  smaller feature set should disable default features and enable only the
+  features they need.
+- Every public error enum in this crate is now `#[non_exhaustive]`; a `match`
+  over any of them must include a wildcard arm: `error::SqliteClientError`,
+  `FsBlockDbError`, `pool_migration::orchard_ironwood::Error`,
+  `wallet::commitment_tree::Error`, `wallet::init::WalletMigrationError`, and
+  `zewif::ZewifImportError`.
+- `zcash_client_sqlite`:
+  - `WalletWrite::store_transactions_to_be_sent` upserts each transaction's
+    sent-output records, so storing a transaction the wallet has already
+    recorded replaces that record instead of failing.
+  - `WalletWrite::truncate_to_height` and `rewind_to_chain_state` accept a
+    target that a pool's note commitment tree checkpoints do not cover,
+    whenever the truncation leaves that pool's tree in a consistent state: an
+    empty or lagging tree is left untouched, and a tree whose checkpoints all
+    postdate the target is reset to the roots of subtrees completed at or below
+    it. A rewind that would destroy witness data the rescan will not re-create
+    is refused as `RequestedRewindInvalid`, and a pool with checkpoints both
+    above and below the target but none at it is still reported as corruption.
+    Callers that relied on `RequestedRewindInvalid` for an uncovered height
+    should note that the truncation now succeeds. Truncation additionally rolls
+    every stored pool migration back to the height truncated to, in the same
+    database transaction, so an application calling
+    `MigrationState::truncate_to_height` from a reorg hook should stop.
+  - Behind the `spend-index` feature,
+    `WalletRead::transaction_data_requests` emits
+    `TransactionDataRequest::GetSpendingTx` for transparent spend detection
+    instead of `TransactionsInvolvingAddress`. The latter is still emitted for
+    ephemeral-address discovery, and for spend detection when `spend-index` is
+    disabled.
+  - `testing::db::TestDbFactory::default` and `testing::BlockCache::default`
+    use isolated in-memory SQLite databases.
+- The `zip-233` feature also enables `zcash_client_backend/zip-233`, and the
+  `pczt-tests` feature also enables this crate's `orchard` and
+  `transparent-inputs` features.
 
 ### Fixed
-- Deriving a transparent address that was previously imported as a standalone receiver now
-  upgrades the existing address record in place to its derived form, instead of failing on the
-  transparent-receiver uniqueness invariant added in this release. If the import was recorded
-  under a different account, the record's account attribution — and that of any outputs
-  received at the address — moves to the deriving account, since successful derivation
-  establishes that account's ownership of the address. Funds received at such an address
-  become spendable once the account derives it.
+- `zcash_client_sqlite`:
+  - Note selection draws the oldest eligible notes first, ordering by note
+    commitment tree position. Notes were previously drawn in scan-discovery
+    order, which for a restored wallet prefers its most recently discovered —
+    typically newest — notes.
+  - Transaction status requests are generated from explicit, durable
+    observation intent. A sent transaction is queried by txid only when this
+    wallet cannot observe one of its shielded spends or outputs; intent remains
+    dormant while a transaction is mined and becomes active again after a chain
+    rewind. Redundant requests previously synthesized for wallet-observable
+    shielded transactions are no longer produced.
+  - Value in immature transparent coinbase outputs is reported as pending
+    spendability in wallet-summary account balances, rather than counted as
+    spendable before the output reaches coinbase maturity.
+- `zcash_client_sqlite::wallet::init::migrations`:
+  - `V_0_8_0` held the leaf state of the 0.8.1 release rather than 0.8.0's. The
+    constant now records the true 0.8.0 state, and the 0.8.1 state it
+    previously held is the new `V_0_8_1`. An external migration anchored on
+    `V_0_8_0` now anchors one migration earlier in the graph, which cannot
+    invalidate its ordering.
+- Schema and views:
+  - The `to_address` column of `v_tx_outputs` reports a transparent output
+    received by the wallet at the transparent receiver address itself rather
+    than at a unified address containing that receiver, and for an output the
+    wallet created, the recipient address recorded at construction time takes
+    precedence over the receiving address.
 
 ## [0.21.1] - 2026-06-19
 
@@ -207,8 +280,8 @@ workspace.
   `SqliteClientError::CommitmentTree` variant.
 
 ### Changed
-- Migrated to `sapling-crypto 0.7`, `orchard 0.13`, `zcash_encoding 0.4`, 
-  `zcash_protocol 0.8`, `zcash_address 0.11`, `zip321 0.7`, `zcash_transparent 0.7`, 
+- Migrated to `sapling-crypto 0.7`, `orchard 0.13`, `zcash_encoding 0.4`,
+  `zcash_protocol 0.8`, `zcash_address 0.11`, `zip321 0.7`, `zcash_transparent 0.7`,
   `zcash_primitives 0.27`, `zcash_proofs 0.27`, `zcash_keys 0.13`, `pczt 0.6`,
   `zcash_client_backend 0.22`
 - The `accounts` table now stores IVK item caches instead of FVK item caches for

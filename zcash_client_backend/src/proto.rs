@@ -11,6 +11,11 @@ use std::{
 };
 use zcash_address::unified::{self, Encoding};
 
+use self::proposal::proposed_input;
+// `parse_standard_proposal` matches the input value's variants bare.
+use self::proposal::proposed_input::Value::*;
+use self::proposal::{PriorStepChange, PriorStepOutput, ReceivedOutput};
+
 use sapling::{self, Node, note::ExtractedNoteCommitment, note_encryption::COMPACT_NOTE_SIZE};
 use zcash_note_encryption::EphemeralKeyBytes;
 use zcash_primitives::{
@@ -30,10 +35,13 @@ use crate::{
     data_api::{
         InputSource,
         chain::ChainState,
-        wallet::{ConfirmationsPolicy, TargetHeight},
+        wallet::{ConfirmationsPolicy, TargetHeight, input_selection::LockFilter},
     },
-    fees::{ChangeValue, StandardFeeRule, TransactionBalance},
-    proposal::{Proposal, ProposalError, ShieldedInputs, Step, StepOutput, StepOutputIndex},
+    fees::{ChangeValue, DummyOutputCounts, StandardFeeRule, TransactionBalance},
+    proposal::{
+        Proposal, ProposalError, ShieldedInputs, Step, StepOutput, StepOutputIndex,
+        produces_shielded_bundle,
+    },
 };
 
 #[cfg(feature = "transparent-inputs")]
@@ -128,6 +136,7 @@ impl compact_formats::CompactTx {
 
 /// An error indicating that a field of a compact format structure could not be parsed.
 #[derive(Clone, Debug)]
+#[non_exhaustive]
 pub enum CompactFormatError {
     /// A byte slice had an invalid length for the expected field.
     InvalidLength(TryFromSliceError),
@@ -478,6 +487,7 @@ pub const PROPOSAL_SER_V1: u32 = 1;
 /// Errors that can occur in the process of decoding a [`Proposal`] from its protobuf
 /// representation.
 #[derive(Debug, Clone)]
+#[non_exhaustive]
 pub enum ProposalDecodingError<DbError> {
     /// The encoded proposal contained no steps.
     NoSteps,
@@ -519,6 +529,12 @@ pub enum ProposalDecodingError<DbError> {
     /// height. Once Ironwood is active, Orchard-receiver payments target the Ironwood pool and only
     /// change may return to Orchard, so such a payment cannot appear in a well-formed proposal.
     OrchardPaymentProhibited,
+    /// A proposal step produces a shielded bundle (it spends shielded notes, pays to a shielded
+    /// pool, or returns shielded change) but its encoded anchor height is the zero sentinel. Every
+    /// shielded-tree lookup the step performs — including the dummy spends that pad an output-only
+    /// bundle — must be bound to a real anchor, so this combination cannot appear in a well-formed
+    /// proposal.
+    MissingShieldedAnchor,
     /// The proposal specified an explicit transaction version header that the wallet does not
     /// recognize.
     ProposedVersionInvalid(u32),
@@ -588,6 +604,10 @@ impl<E: Display> Display for ProposalDecodingError<E> {
                 f,
                 "A payment may not be directed to the Orchard pool once Ironwood is active."
             ),
+            ProposalDecodingError::MissingShieldedAnchor => write!(
+                f,
+                "A proposal step that produces a shielded bundle must specify an anchor height."
+            ),
             ProposalDecodingError::ProposedVersionInvalid(header) => write!(
                 f,
                 "The proposal specified an unrecognized transaction version header {header:#x}."
@@ -656,16 +676,13 @@ impl proposal::Proposal {
     /// Serializes a [`Proposal`] based upon a supported [`StandardFeeRule`] to its protobuf
     /// representation.
     pub fn from_standard_proposal<NoteRef>(value: &Proposal<StandardFeeRule, NoteRef>) -> Self {
-        use proposal::proposed_input;
-        use proposal::{PriorStepChange, PriorStepOutput, ReceivedOutput};
         let steps = value
             .steps()
             .iter()
             .map(|step| {
                 let transaction_request = step.transaction_request().to_uri();
 
-                // A step that defers its anchor (no shielded inputs) encodes as the zero sentinel,
-                // matching the `anchorHeight` field's documented "no shielded inputs" meaning.
+                // A decoded legacy step that defers its anchor encodes as the zero sentinel.
                 let anchor_height = step.anchor_height().map_or(0, u32::from);
 
                 let inputs = step
@@ -746,6 +763,28 @@ impl proposal::Proposal {
                         })
                         .collect(),
                     fee_required: step.balance().fee_required().into(),
+                    dummy_outputs: step.balance().dummy_outputs().map(|counts| {
+                        proposal::DummyOutputs {
+                            sapling: counts
+                                .sapling()
+                                .try_into()
+                                .expect("Sapling dummy-output count fits into u32"),
+                            #[cfg(feature = "orchard")]
+                            orchard: counts
+                                .orchard()
+                                .try_into()
+                                .expect("Orchard dummy-output count fits into u32"),
+                            #[cfg(not(feature = "orchard"))]
+                            orchard: 0,
+                            #[cfg(feature = "orchard")]
+                            ironwood: counts
+                                .ironwood()
+                                .try_into()
+                                .expect("Ironwood dummy-output count fits into u32"),
+                            #[cfg(not(feature = "orchard"))]
+                            ironwood: 0,
+                        }
+                    }),
                 });
 
                 proposal::ProposalStep {
@@ -791,7 +830,6 @@ impl proposal::Proposal {
         ParamsT: consensus::Parameters,
         DbT: InputSource<Error = DbError>,
     {
-        use self::proposal::proposed_input::Value::*;
         match self.proto_version {
             PROPOSAL_SER_V1 => {
                 let fee_rule = match self.fee_rule() {
@@ -802,6 +840,14 @@ impl proposal::Proposal {
                 };
 
                 let target_height = TargetHeight::from(self.min_target_height);
+
+                // A proposal created with `lock_for_blocks` locks its own inputs, so
+                // input retrieval during decoding must not filter locked outputs;
+                // otherwise a locked proposal would fail to round-trip through its
+                // serialized form. Double-spend protection is enforced when the
+                // proposal's transactions are created, not here.
+                let lock_filter = LockFilter::Unfiltered;
+
                 // Steps are checked against the Orchard turnstile when Ironwood is
                 // active at the height for which the proposal was constructed.
                 #[cfg(feature = "orchard")]
@@ -892,6 +938,7 @@ impl proposal::Proposal {
                                                 protocol,
                                                 out.index,
                                                 target_height,
+                                                lock_filter,
                                             )
                                             .map_err(ProposalDecodingError::InputRetrieval)
                                             .and_then(|opt| {
@@ -999,6 +1046,40 @@ impl proposal::Proposal {
                             .map_err(|_| ProposalDecodingError::BalanceInvalid)?,
                     )
                     .map_err(|_| ProposalDecodingError::BalanceInvalid)?;
+                    let balance = match proto_balance.dummy_outputs.as_ref() {
+                        Some(counts) => {
+                            #[cfg(feature = "orchard")]
+                            let dummy_outputs = DummyOutputCounts::new(
+                                counts.sapling as usize,
+                                counts.orchard as usize,
+                                counts.ironwood as usize,
+                            );
+                            #[cfg(not(feature = "orchard"))]
+                            let dummy_outputs = DummyOutputCounts::new(counts.sapling as usize);
+                            balance.with_dummy_outputs(dummy_outputs)
+                        }
+                        // Older proposals did not explicitly model their dummy outputs.
+                        None => balance,
+                    };
+
+                    // The `anchorHeight` field's zero value is the wire sentinel for a step that
+                    // carries no anchor. Only a purely transparent step may lack one: any step that
+                    // produces a shielded bundle binds every shielded-tree lookup — including the
+                    // dummy spends that pad an output-only bundle — to a real anchor. Reject the
+                    // invalid combination here at the parse boundary rather than letting it reach
+                    // `Step::from_parts`.
+                    let anchor_height = match step.anchor_height {
+                        0 if produces_shielded_bundle(
+                            shielded_inputs.is_some(),
+                            &payment_pools,
+                            &balance,
+                        ) =>
+                        {
+                            return Err(ProposalDecodingError::MissingShieldedAnchor);
+                        }
+                        0 => None,
+                        h => Some(BlockHeight::from_u32(h)),
+                    };
 
                     let step = Step::from_parts(
                         &steps,
@@ -1006,7 +1087,7 @@ impl proposal::Proposal {
                         payment_pools,
                         transparent_inputs,
                         shielded_inputs,
-                        step.anchor_height.into(),
+                        anchor_height,
                         prior_step_inputs,
                         balance,
                         step.is_shielding,
