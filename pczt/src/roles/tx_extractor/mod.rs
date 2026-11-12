@@ -5,6 +5,8 @@
 use core::marker::PhantomData;
 use rand_core::OsRng;
 
+use crate::rand_compat::Rng010;
+
 use zcash_primitives::transaction::{
     Authorization, Transaction,
     sighash::{SignableInput, signature_hash},
@@ -105,7 +107,7 @@ impl<'a> TransactionExtractor<'a> {
             |t| Ok(t.map(|t| t.map_authorization(transparent::RemoveInputInfo))),
             |s| {
                 s.map(|s| {
-                    s.apply_binding_signature(*shielded_sighash.as_ref(), OsRng)
+                    s.apply_binding_signature(*shielded_sighash.as_ref(), Rng010(OsRng))
                         .ok_or(Error::SighashMismatch)
                 })
                 .transpose()

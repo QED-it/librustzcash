@@ -29,6 +29,7 @@ use zcash_keys::{
     keys::{UnifiedAddressRequest, UnifiedFullViewingKey, UnifiedSpendingKey},
 };
 use zcash_note_encryption::Domain;
+use zcash_primitives::rand_compat::Rng010;
 use zcash_primitives::{
     block::BlockHash,
     transaction::{Transaction, TxId, components::sapling::zip212_enforcement, fees::FeeRule},
@@ -87,12 +88,20 @@ use {
 
 #[cfg(feature = "orchard")]
 use {
-    super::ORCHARD_SHARD_HEIGHT, crate::proto::compact_formats::CompactOrchardAction,
-    ::orchard::tree::MerkleHashOrchard, group::ff::PrimeField, pasta_curves::pallas,
+    super::ORCHARD_SHARD_HEIGHT,
+    crate::proto::compact_formats::CompactOrchardAction,
+    ::orchard::tree::MerkleHashOrchard,
+    // TODO: Import `ff` directly again once orchard 0.16 puts both pools on `ff` 0.14.
+    pasta_curves::{group::ff::Field as _, group::ff::PrimeField, pallas},
 };
 
 pub mod pool;
+// Test support shared with `zcash_client_sqlite`, like the rest of this module, but not part
+// of the public API: it exists only while the workspace carries two `rand` majors.
 pub mod sapling;
+// TODO: Remove this declaration along with the module when orchard 0.16 lands.
+#[doc(hidden)]
+pub mod sapling_rand;
 
 #[cfg(feature = "orchard")]
 pub mod orchard;
@@ -709,7 +718,7 @@ where
                     prior_cached_block.chain_state.final_sapling_tree().clone(),
                     |mut acc, _| {
                         acc.append(::sapling::Node::from_scalar(bls12_381::Scalar::random(
-                            &mut self.rng,
+                            &mut Rng010(&mut self.rng),
                         )));
                         acc
                     },
@@ -1743,6 +1752,7 @@ impl<Cache, DsFactory> TestBuilder<Cache, DsFactory> {
     /// use std::num::NonZeroU8;
     ///
     /// use incrementalmerkletree::frontier::Frontier;
+    /// use zcash_client_backend::data_api::testing::sapling_rand::random_sapling_frontier_with_prior_subtree_roots;
     /// use zcash_primitives::block::BlockHash;
     /// use zcash_protocol::consensus::{NetworkUpgrade, Parameters};
     /// use zcash_client_backend::data_api::{
@@ -1768,7 +1778,7 @@ impl<Cache, DsFactory> TestBuilder<Cache, DsFactory> {
     ///
     ///         // Construct a fake chain state for the end of block 300
     ///         let (prior_sapling_roots, sapling_initial_tree) =
-    ///             Frontier::random_with_prior_subtree_roots(
+    ///             random_sapling_frontier_with_prior_subtree_roots(
     ///                 rng,
     ///                 initial_sapling_tree_size.into(),
     ///                 NonZeroU8::new(16).unwrap(),
@@ -2152,11 +2162,11 @@ impl TestFvk for DiversifiableFullViewingKey {
     type OutgoingViewingKey = ::sapling::keys::OutgoingViewingKey;
 
     fn to_ovk(&self, scope: zip32::Scope) -> Self::OutgoingViewingKey {
-        self.to_ovk(scope)
+        self.to_ovk(crate::zip32_compat::scope_03(scope))
     }
 
     fn ovk_bytes(&self, scope: zip32::Scope) -> [u8; 32] {
-        self.to_ovk(scope).0
+        self.to_ovk(crate::zip32_compat::scope_03(scope)).0
     }
 
     fn add_spend<R: RngCore + CryptoRng>(
@@ -2182,7 +2192,11 @@ impl TestFvk for DiversifiableFullViewingKey {
     ) -> Self::Nullifier {
         let recipient = match recipient_address_type {
             AddressType::DefaultExternal => self.default_address().1,
-            AddressType::DiversifiedExternal(idx) => self.find_address(idx).unwrap().1,
+            AddressType::DiversifiedExternal(idx) => {
+                self.find_address(crate::zip32_compat::diversifier_index_03(idx))
+                    .unwrap()
+                    .1
+            }
             AddressType::Internal => self.change_address().1,
         };
 
@@ -2192,7 +2206,7 @@ impl TestFvk for DiversifiableFullViewingKey {
             compact_sapling_output(params, height, recipient, value, sender_ovk.copied(), rng);
         ctx.outputs.push(cout);
 
-        note.nf(&self.fvk().vk.nk, u64::from(position))
+        note.nf(self.fvk().vk.nk(), u64::from(position))
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -2463,7 +2477,7 @@ fn compact_sapling_output<P: consensus::Parameters, R: RngCore + CryptoRng>(
     sender_ovk: Option<::sapling::keys::OutgoingViewingKey>,
     rng: &mut R,
 ) -> (CompactSaplingOutput, ::sapling::Note) {
-    let rseed = generate_random_rseed(zip212_enforcement(params, height), rng);
+    let rseed = generate_random_rseed(zip212_enforcement(params, height), &mut Rng010(&mut *rng));
     let note = ::sapling::Note::from_parts(
         recipient,
         ::sapling::value::NoteValue::from_raw(value.into_u64()),
@@ -2473,7 +2487,7 @@ fn compact_sapling_output<P: consensus::Parameters, R: RngCore + CryptoRng>(
         sender_ovk,
         note.clone(),
         MemoBytes::empty().into_bytes(),
-        rng,
+        &mut Rng010(&mut *rng),
     );
     let cmu = note.cmu().to_bytes().to_vec();
     let ephemeral_key = SaplingDomain::epk_bytes(encryptor.epk()).0.to_vec();

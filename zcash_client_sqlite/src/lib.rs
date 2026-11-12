@@ -159,6 +159,8 @@ pub mod util;
 pub mod wallet;
 #[cfg(feature = "zewif")]
 pub mod zewif;
+// TODO: Remove this declaration along with the module when orchard 0.16 lands.
+mod zip32_compat;
 
 #[cfg(test)]
 mod testing;
@@ -3907,7 +3909,8 @@ mod tests {
         // Generate some fake CompactBlocks.
         let seed = [0u8; 32];
         let hd_account_index = zip32::AccountId::ZERO;
-        let extsk = sapling::spending_key(&seed, st.network().coin_type(), hd_account_index);
+        let extsk = sapling::spending_key(&seed, st.network().coin_type(), hd_account_index)
+            .expect("the derivation path yields a valid key");
         let dfvk = extsk.to_diversifiable_full_viewing_key();
         let (h1, meta1, _) = st.generate_next_block(
             &dfvk,

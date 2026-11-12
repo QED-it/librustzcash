@@ -34,6 +34,8 @@ zcash_primitives.workspace = true
 zcash_protocol.workspace = true
 zcash_script.workspace = true
 zip32.workspace = true
+# TODO: Drop this renamed dependency and its feature wiring when orchard 0.16 lands.
+zip32_03.workspace = true
 transparent.workspace = true
 
 # Dependencies exposed in a public API:

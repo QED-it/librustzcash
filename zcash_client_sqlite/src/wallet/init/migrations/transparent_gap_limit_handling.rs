@@ -581,6 +581,7 @@ impl<P: consensus::Parameters, C: Clock, R: RngCore> RusqliteMigration for Migra
                             &ivk.address(diversifier)
                                 .expect("previously generated an address"),
                         )
+                        .map(crate::zip32_compat::diversifier_index_02)
                         .expect("roundtrip");
                     let ua = uivk.address(di, UnifiedAddressRequest::ALLOW_ALL)?;
                     let address_id = wallet::upsert_address(

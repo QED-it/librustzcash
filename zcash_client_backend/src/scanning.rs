@@ -384,8 +384,8 @@ impl<AccountId: Copy + Eq + Hash + Send + Sync + 'static>
                     sapling.insert(
                         (account_id, scope),
                         Box::new(ScanningKey {
-                            ivk: dfvk.to_ivk(scope),
-                            nk: Some(dfvk.to_nk(scope)),
+                            ivk: dfvk.to_ivk(crate::zip32_compat::scope_03(scope)),
+                            nk: Some(dfvk.to_nk(crate::zip32_compat::scope_03(scope))),
                             account_id,
                             key_scope: Some(scope),
                         }),
@@ -1008,6 +1008,7 @@ pub mod testing {
         zip32::DiversifiableFullViewingKey,
     };
     use zcash_note_encryption::Domain;
+    use zcash_primitives::rand_compat::Rng010;
     use zcash_primitives::{
         block::BlockHash, transaction::components::sapling::zip212_enforcement,
     };
@@ -1028,7 +1029,7 @@ pub mod testing {
             nf
         };
         let fake_cmu = {
-            let fake_cmu = bls12_381::Scalar::random(&mut rng);
+            let fake_cmu = bls12_381::Scalar::random(&mut Rng010(&mut rng));
             fake_cmu.to_repr().to_vec()
         };
         let fake_epk = {
@@ -1073,13 +1074,13 @@ pub mod testing {
 
         // Create a fake Note for the account
         let mut rng = OsRng;
-        let rseed = generate_random_rseed(zip212_enforcement, &mut rng);
+        let rseed = generate_random_rseed(zip212_enforcement, &mut Rng010(&mut rng));
         let note = sapling::Note::from_parts(to, NoteValue::from_raw(value.into()), rseed);
         let encryptor = sapling_note_encryption(
             Some(dfvk.fvk().ovk),
             note.clone(),
             MemoBytes::empty().into_bytes(),
-            &mut rng,
+            &mut Rng010(&mut rng),
         );
         let cmu = note.cmu().to_bytes().to_vec();
         let ephemeral_key = SaplingDomain::epk_bytes(encryptor.epk()).0.to_vec();

@@ -23,12 +23,15 @@ zcash_address.workspace = true
 zcash_encoding.workspace = true
 zcash_protocol.workspace = true
 zip32.workspace = true
+# TODO: Drop this renamed dependency and its feature wiring when orchard 0.16 lands.
+zip32_03.workspace = true
 
 # Dependencies exposed in a public API:
 nonempty.workspace = true
 
 # - CSPRNG
 rand_core.workspace = true
+rand_core_010.workspace = true
 
 # - Encodings
 bech32.workspace = true

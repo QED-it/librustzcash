@@ -2143,7 +2143,11 @@ where
     }
     let sapling_extsks = &[
         spending_keys.usk.sapling().clone(),
-        spending_keys.usk.sapling().derive_internal(),
+        spending_keys
+            .usk
+            .sapling()
+            .derive_internal()
+            .expect("the derivation path yields a valid key"),
     ];
     #[cfg(feature = "orchard")]
     let orchard_saks = &[spending_keys.usk.orchard().into()];
@@ -2249,7 +2253,7 @@ where
         .sapling()
         .to_diversifiable_full_viewing_key();
     let sapling_internal_ivk =
-        PreparedIncomingViewingKey::new(&sapling_dfvk.to_ivk(Scope::Internal));
+        PreparedIncomingViewingKey::new(&sapling_dfvk.to_ivk(zip32_03::Scope::Internal));
     let sapling_outputs = build_state.sapling_output_meta.into_iter().enumerate().map(
         |(i, (recipient, value, memo))| {
             let output_index = build_result

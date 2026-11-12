@@ -306,6 +306,8 @@ pub(crate) fn ensure_address<
         let to = output.note().recipient();
         let diversifier_index = ivk
             .decrypt_diversifier(&to)
+            // TODO: Drop this conversion once orchard 0.16 puts both pools on zip32 0.3.
+            .map(crate::zip32_compat::diversifier_index_02)
             .expect("address corresponds to account");
 
         let ua = account

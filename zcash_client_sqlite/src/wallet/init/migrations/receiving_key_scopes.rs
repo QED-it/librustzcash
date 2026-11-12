@@ -196,7 +196,7 @@ impl<P: consensus::Parameters> RusqliteMigration for Migration<P> {
                         panic!("A Sapling output must exist at index {output_index}")
                     });
 
-                let pivk = PreparedIncomingViewingKey::new(&dfvk.to_ivk(Scope::Internal));
+                let pivk = PreparedIncomingViewingKey::new(&dfvk.to_ivk(zip32_03::Scope::Internal));
                 if try_sapling_note_decryption(&pivk, output, zip212_enforcement).is_some() {
                     transaction.execute(
                         "UPDATE sapling_received_notes SET recipient_key_scope = :scope
@@ -311,7 +311,6 @@ mod tests {
         memo::MemoBytes,
         value::Zatoshis,
     };
-    use zip32::Scope;
 
     use crate::{
         AccountRef, TxRef, WalletDb,
@@ -351,7 +350,7 @@ mod tests {
             )
             .unwrap();
         let sapling_dfvk = ufvk0.sapling().unwrap();
-        let ovk = sapling_dfvk.to_ovk(Scope::External);
+        let ovk = sapling_dfvk.to_ovk(zip32_03::Scope::External);
         let (_, external_addr) = sapling_dfvk.default_address();
         let (_, internal_addr) = sapling_dfvk.change_address();
 

@@ -1,4 +1,6 @@
 use rand_core::OsRng;
+
+use crate::rand_compat::Rng010;
 use sapling::prover::{OutputProver, SpendProver};
 
 use crate::Pczt;
@@ -24,7 +26,7 @@ impl super::Prover {
         let mut bundle = sapling.into_parsed().map_err(SaplingError::Parser)?;
 
         bundle
-            .create_proofs(spend_prover, output_prover, OsRng)
+            .create_proofs(spend_prover, output_prover, Rng010(OsRng))
             .map_err(SaplingError::Prover)?;
 
         Ok(Self {

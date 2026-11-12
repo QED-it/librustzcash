@@ -48,7 +48,9 @@ pub mod sapling {
     pub use sapling::zip32::{
         DiversifiableFullViewingKey, ExtendedFullViewingKey, ExtendedSpendingKey,
     };
-    use zip32::{AccountId, ChildIndex};
+    use zip32::AccountId;
+    // `sapling-crypto` 0.8 derives over `zip32` 0.3; this crate's own `zip32` is still 0.2.
+    use zip32_03::ChildIndex;
 
     /// Derives the ZIP 32 [`ExtendedSpendingKey`] for a given coin type and account from the
     /// given seed.
@@ -64,20 +66,24 @@ pub mod sapling {
     /// use zcash_keys::keys::sapling;
     /// use zip32::AccountId;
     ///
-    /// let extsk = sapling::spending_key(&[0; 32][..], COIN_TYPE, AccountId::ZERO);
+    /// let extsk = sapling::spending_key(&[0; 32][..], COIN_TYPE, AccountId::ZERO).expect("the derivation path yields a valid key");
     /// ```
     /// [`ExtendedSpendingKey`]: sapling::zip32::ExtendedSpendingKey
-    pub fn spending_key(seed: &[u8], coin_type: u32, account: AccountId) -> ExtendedSpendingKey {
+    pub fn spending_key(
+        seed: &[u8],
+        coin_type: u32,
+        account: AccountId,
+    ) -> Option<ExtendedSpendingKey> {
         if seed.len() < 32 {
             panic!("ZIP 32 seeds MUST be at least 32 bytes");
         }
 
         ExtendedSpendingKey::from_path(
-            &ExtendedSpendingKey::master(seed),
+            &ExtendedSpendingKey::master(seed)?,
             &[
                 ChildIndex::hardened(32),
                 ChildIndex::hardened(coin_type),
-                account.into(),
+                ChildIndex::hardened(account.into()),
             ],
         )
     }
@@ -102,6 +108,9 @@ fn to_transparent_child_index(j: DiversifierIndex) -> Option<NonHardenedChildInd
 
 #[derive(Debug)]
 pub enum DerivationError {
+    /// Sapling key derivation produced an invalid spending key.
+    #[cfg(feature = "sapling")]
+    Sapling,
     #[cfg(feature = "orchard")]
     Orchard(orchard::zip32::Error),
     #[cfg(feature = "transparent-inputs")]
@@ -111,11 +120,19 @@ pub enum DerivationError {
 impl Display for DerivationError {
     fn fmt(&self, _f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
+            #[cfg(feature = "sapling")]
+            DerivationError::Sapling => {
+                write!(_f, "Sapling error: derived an invalid spending key")
+            }
             #[cfg(feature = "orchard")]
             DerivationError::Orchard(e) => write!(_f, "Orchard error: {e}"),
             #[cfg(feature = "transparent-inputs")]
             DerivationError::Transparent(e) => write!(_f, "Transparent error: {e}"),
-            #[cfg(not(any(feature = "orchard", feature = "transparent-inputs")))]
+            #[cfg(not(any(
+                feature = "sapling",
+                feature = "orchard",
+                feature = "transparent-inputs"
+            )))]
             other => {
                 unreachable!("Unhandled DerivationError variant {:?}", other)
             }
@@ -248,7 +265,8 @@ impl UnifiedSpendingKey {
             ::transparent::keys::AccountPrivKey::from_seed(_params, seed, _account)
                 .map_err(DerivationError::Transparent)?,
             #[cfg(feature = "sapling")]
-            sapling::spending_key(seed, _params.coin_type(), _account),
+            sapling::spending_key(seed, _params.coin_type(), _account)
+                .ok_or(DerivationError::Sapling)?,
             #[cfg(feature = "orchard")]
             orchard::keys::SpendingKey::from_zip32_seed(seed, _params.coin_type(), _account)
                 .map_err(DerivationError::Orchard)?,
@@ -1272,8 +1290,9 @@ impl UnifiedFullViewingKey {
         if let Some(ovk) = input_sources
             .contains(&PoolType::SAPLING)
             .then(|| {
-                self.sapling()
-                    .map(|k| OutgoingViewingKey::from(k.to_ovk(scope)))
+                self.sapling().map(|k| {
+                    OutgoingViewingKey::from(k.to_ovk(crate::zip32_compat::scope_03(scope)))
+                })
             })
             .flatten()
         {
@@ -1644,7 +1663,10 @@ impl UnifiedIncomingViewingKey {
                 // If a Sapling receiver type is requested, we must be able to construct an
                 // address; if we're unable to do so, then no Unified Address exists at this
                 // diversifier and we use `?` to early-return from this method.
-                sapling = match (request.sapling, divk.address_at(_j)) {
+                sapling = match (
+                    request.sapling,
+                    divk.address_at(crate::zip32_compat::diversifier_index_03(_j)),
+                ) {
                     (Require | Allow, Some(addr)) => Ok(Some(addr)),
                     (Require, None) => {
                         Err(AddressGenerationError::InvalidSaplingDiversifierIndex(_j))
@@ -1761,7 +1783,8 @@ impl UnifiedIncomingViewingKey {
         let sapling_di = ua
             .sapling()
             .zip(self.sapling().as_ref())
-            .and_then(|(receiver, ivk)| ivk.decrypt_diversifier(receiver));
+            .and_then(|(receiver, ivk)| ivk.decrypt_diversifier(receiver))
+            .map(crate::zip32_compat::diversifier_index_02);
 
         #[cfg(not(feature = "orchard"))]
         let orchard_di: Option<DiversifierIndex> = None;
@@ -1932,7 +1955,8 @@ mod tests {
     #[should_panic]
     #[cfg(feature = "sapling")]
     fn spending_key_panics_on_short_seed() {
-        let _ = sapling::spending_key(&[0; 31][..], 0, AccountId::ZERO);
+        let _ = sapling::spending_key(&[0; 31][..], 0, AccountId::ZERO)
+            .expect("the derivation path yields a valid key");
     }
 
     #[cfg(feature = "transparent-inputs")]
@@ -1963,7 +1987,8 @@ mod tests {
 
         #[cfg(feature = "sapling")]
         let sapling = {
-            let extsk = sapling::spending_key(&[0; 32], 0, AccountId::ZERO);
+            let extsk = sapling::spending_key(&[0; 32], 0, AccountId::ZERO)
+                .expect("the derivation path yields a valid key");
             Some(extsk.to_diversifiable_full_viewing_key())
         };
 
@@ -2096,7 +2121,12 @@ mod tests {
             // The test vectors contain some diversifier indices that do not generate
             // valid Sapling addresses, so skip those.
             #[cfg(feature = "sapling")]
-            if ufvk.sapling().unwrap().address(d_idx).is_none() {
+            if ufvk
+                .sapling()
+                .unwrap()
+                .address(crate::zip32_compat::diversifier_index_03(d_idx))
+                .is_none()
+            {
                 continue;
             }
 
@@ -2148,7 +2178,8 @@ mod tests {
 
         #[cfg(feature = "sapling")]
         let sapling = {
-            let extsk = sapling::spending_key(&[0; 32], 0, AccountId::ZERO);
+            let extsk = sapling::spending_key(&[0; 32], 0, AccountId::ZERO)
+                .expect("the derivation path yields a valid key");
             Some(extsk.to_diversifiable_full_viewing_key().to_external_ivk())
         };
 
@@ -2283,7 +2314,13 @@ mod tests {
             // The test vectors contain some diversifier indices that do not generate
             // valid Sapling addresses, so skip those.
             #[cfg(feature = "sapling")]
-            if uivk.sapling().as_ref().unwrap().address_at(d_idx).is_none() {
+            if uivk
+                .sapling()
+                .as_ref()
+                .unwrap()
+                .address_at(crate::zip32_compat::diversifier_index_03(d_idx))
+                .is_none()
+            {
                 continue;
             }
 
@@ -2445,7 +2482,8 @@ mod tests {
 
         #[cfg(feature = "sapling")]
         let sapling = {
-            let extsk = sapling::spending_key(&[0; 32], 0, AccountId::ZERO);
+            let extsk = sapling::spending_key(&[0; 32], 0, AccountId::ZERO)
+                .expect("the derivation path yields a valid key");
             Some(extsk.to_diversifiable_full_viewing_key())
         };
 
@@ -2487,7 +2525,8 @@ mod tests {
 
         #[cfg(feature = "sapling")]
         let sapling = {
-            let extsk = sapling::spending_key(&[0; 32], 0, AccountId::ZERO);
+            let extsk = sapling::spending_key(&[0; 32], 0, AccountId::ZERO)
+                .expect("the derivation path yields a valid key");
             Some(extsk.to_diversifiable_full_viewing_key().to_external_ivk())
         };
 
