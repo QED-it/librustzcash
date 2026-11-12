@@ -2366,26 +2366,23 @@ mod tests {
     }
 
     /// An empty builder taken through any pair of proposals must keep an Ironwood slot whose
-    /// bundle version matches the final transaction version. v5 and v6 imply the same bundle
-    /// version and v7 another one, so each case records the version it expects, which is
-    /// compared as soon as orchard's builder reports it.
+    /// bundle version matches the final transaction version. Orchard's builder doesn't report
+    /// its bundle version, so the test tells them apart with a burn, which only the v7 ZSA
+    /// bundle accepts.
     #[test]
     #[cfg(all(feature = "circuits", zcash_unstable = "nu7"))]
     fn propose_version_rebuilds_the_ironwood_slot_for_every_pair() {
+        let ik = IssueValidatingKey::from(&IssueAuthKey::from_zip32_seed(&[9; 32], 1, 0).unwrap());
+        let asset_desc = compute_asset_desc_hash(&NonEmpty::from_slice(b"asset").unwrap());
+        let asset = AssetBase::custom(&AssetId::new_v0(&ik, &asset_desc));
         let cases = [
-            (
-                TxVersion::V5,
-                Some(orchard::bundle::BundleVersion::ironwood_v3()),
-            ),
-            (
-                TxVersion::V6,
-                Some(orchard::bundle::BundleVersion::ironwood_v3()),
-            ),
-            (TxVersion::V7, Some(orchard::bundle::BundleVersion::zsa())),
+            (TxVersion::V5, false),
+            (TxVersion::V6, false),
+            (TxVersion::V7, true),
         ];
 
         for (from, _) in cases {
-            for (to, expected) in cases {
+            for (to, zsa) in cases {
                 let mut builder = Builder::new(
                     nu7_test_network(),
                     11u32.into(),
@@ -2400,11 +2397,12 @@ mod tests {
                 builder.propose_version::<Infallible>(to).unwrap();
 
                 assert_eq!(builder.tx_version, to, "{from:?} then {to:?}");
-                assert_eq!(
-                    builder.ironwood_builder.is_some(),
-                    expected.is_some(),
-                    "{from:?} then {to:?}"
-                );
+                let burn = builder
+                    .ironwood_builder
+                    .as_mut()
+                    .expect("the Ironwood slot is kept")
+                    .add_burn(asset, NoteValue::from_raw(1));
+                assert_eq!(burn.is_ok(), zsa, "{from:?} then {to:?}");
             }
         }
     }
