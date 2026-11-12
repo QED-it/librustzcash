@@ -2812,7 +2812,8 @@ mod tests {
                         sapling_anchor: None,
                         orchard_anchor: None,
                         ironwood_anchor: Some(orchard::Anchor::empty_tree()),
-                        orchard_pool_bundle_type: orchard::builder::BundleType::DEFAULT,
+                        orchard_padding: BundlePadding::DEFAULT,
+                        ironwood_padding: BundlePadding::DEFAULT,
                     },
                 );
                 builder.propose_version::<Infallible>(from).unwrap();
