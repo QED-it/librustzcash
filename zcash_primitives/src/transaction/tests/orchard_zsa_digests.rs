@@ -1,7 +1,11 @@
-//! Test vectors for ZIP 246 Digests for the Version 6 Transaction Format, including the ZIP 233
-//! changes to the transaction format.
+//! The fork's ZIP 246 digest vectors for ZSA transactions, including the ZIP 233 changes to the
+//! transaction format. They are checked by the `zsa_zip_0244` test.
 
-use std::vec::Vec;
+// FIXME: these vectors were generated while ZSA was transaction v6, so they no longer parse now
+// that ZSA is v7. Regenerating them from QED-it/zcash-test-vectors waits for the decision on which
+// transaction format and version ZSA targets, so `zsa_zip_0244` is ignored for now.
+
+use alloc::vec::Vec;
 
 use crate::transaction::tests::data::zip_0244::TestVector;
 
