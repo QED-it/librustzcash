@@ -88,7 +88,7 @@ pub enum TxVersion {
     V5,
     /// Transaction version 6, specified in [ZIP 229](https://zips.z.cash/zip-0229).
     V6,
-    /// Transaction version 7, specified in [ZIP 230](https://zips.z.cash/zip-0230).
+    /// Transaction version 7, specified in the [ZSA transaction format draft](https://github.com/QED-it/zips/blob/zsa1/zips/draft-qedit-zsa-transaction-format-and-digests.rst).
     #[cfg(zcash_unstable = "nu7")]
     V7,
 }
@@ -275,13 +275,13 @@ impl TxVersion {
                 | Nu6_1 | Nu6_2 => false,
                 Nu6_3 => true, // Ironwood / NU6.3
                 #[cfg(zcash_unstable = "nu7")]
-                Nu7 => true, // ZIP 230 or ZIP 248, whichever is chosen for activation
+                Nu7 => true, // the ZSA draft keeps version 6 valid
             },
             #[cfg(zcash_unstable = "nu7")]
             TxVersion::V7 => match consensus_branch_id {
                 Sprout | Overwinter | Sapling | Blossom | Heartwood | Canopy | Nu5 | Nu6
                 | Nu6_1 | Nu6_2 | Nu6_3 => false,
-                Nu7 => true, // ZIP 230
+                Nu7 => true, // the ZSA transaction format
             },
         }
     }
