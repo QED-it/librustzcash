@@ -670,11 +670,11 @@ impl<P, U> Builder<P, U> {
     pub fn propose_version<FE>(&mut self, version: TxVersion) -> Result<(), Error<FE>> {
         self.check_version_compatibility(version)?;
 
-        // The Ironwood builder is created for the bundle version that the transaction version
-        // implies, so another version needs another builder. A version without the slot keeps the
-        // builder it has, because such a version is refused only when the slot is in use, and the
-        // build repeats that check. The slot is unused here, because the check above refuses such
-        // a version over a slot in use.
+        // The Ironwood builder is built for the bundle version that the transaction version
+        // implies, so moving to a version that implies another one replaces it. v5 and v6 imply
+        // the same one, so moving between them leaves it alone, even though v5 has no slot: an
+        // unused builder is harmless, because the check above, which the build repeats, refuses a
+        // version without the slot while the slot is in use.
         #[cfg(zcash_unstable = "nu7")]
         {
             let bundle_version = ironwood_bundle_version(version);
