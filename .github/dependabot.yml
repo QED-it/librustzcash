@@ -5,6 +5,8 @@ updates:
   schedule:
     interval: daily
     timezone: Etc/UTC
+  cooldown:
+    default-days: 7
   # TODO: temporarily stops Dependabot from opening PRs. Return this to the upstream value when creating a PR to upstream.
   open-pull-requests-limit: 0
   reviewers:

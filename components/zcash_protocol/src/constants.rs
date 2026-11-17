@@ -51,3 +51,12 @@ pub const V7_TX_VERSION: u32 = 7;
 // that encode it must be regenerated once the real value is known.
 #[cfg(zcash_unstable = "nu7")]
 pub const V7_VERSION_GROUP_ID: u32 = 0x7777_7777;
+
+/// The maximum size in bytes of a Zcash block, and therefore the maximum size of any single
+/// transaction within one.
+///
+/// It is specified as `MAX_BLOCK_SIZE` in
+/// [§ 7.6 Block Header Encoding and Consensus](https://zips.z.cash/protocol/protocol.pdf#blockheader).
+///
+/// This constant is called `MAX_BLOCK_SIZE` in the zcashd source.
+pub const MAX_BLOCK_BYTES: usize = 2_000_000;

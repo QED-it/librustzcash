@@ -209,7 +209,7 @@ impl MapIssueAuth<Signed, Signed> for () {
     }
 }
 
-#[cfg(any(test, feature = "test-dependencies"))]
+#[cfg(all(any(test, feature = "test-dependencies"), zcash_unstable = "nu7"))]
 pub mod testing {
     use proptest::prelude::*;
 
