@@ -53,13 +53,7 @@ fn main() {
         return;
     };
 
-    // TODO: Drop both conversions once orchard 0.16 puts this crate on zip32 0.3.
-    let (diversifier_index, address) = extfvk
-        .find_address(zip32_03::DiversifierIndex::from(
-            *opts.diversifier_index.as_bytes(),
-        ))
-        .unwrap();
-    let diversifier_index = DiversifierIndex::from(*diversifier_index.as_bytes());
+    let (diversifier_index, address) = extfvk.find_address(opts.diversifier_index).unwrap();
     println!(
         "# Diversifier index: {}",
         encode_diversifier_index(&diversifier_index)

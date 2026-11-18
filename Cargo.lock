@@ -3147,7 +3147,7 @@ checksum = "04744f49eae99ab78e0d5c0b603ab218f515ea8cfe5a456d7629ad883a3b6e7d"
 [[package]]
 name = "orchard"
 version = "0.15.5"
-source = "git+https://github.com/QED-it/orchard?rev=c129bc3d788f559c49faee1f676ba2e48f7c9d4b#c129bc3d788f559c49faee1f676ba2e48f7c9d4b"
+source = "git+https://github.com/QED-it/orchard?rev=f0d86091e20e32b85f8421f64165ac90324227bc#f0d86091e20e32b85f8421f64165ac90324227bc"
 dependencies = [
  "aes",
  "bitvec",
@@ -3179,7 +3179,7 @@ dependencies = [
  "visibility",
  "zcash_note_encryption",
  "zcash_spec",
- "zip32 0.2.0",
+ "zip32",
 ]
 
 [[package]]
@@ -3364,8 +3364,7 @@ dependencies = [
  "zcash_protocol",
  "zcash_script",
  "zcash_transparent",
- "zip32 0.2.0",
- "zip32 0.3.0",
+ "zip32",
 ]
 
 [[package]]
@@ -4372,7 +4371,7 @@ dependencies = [
  "tracing",
  "zcash_note_encryption",
  "zcash_spec",
- "zip32 0.3.0",
+ "zip32",
 ]
 
 [[package]]
@@ -7319,8 +7318,7 @@ dependencies = [
  "zcash_protocol",
  "zcash_script",
  "zcash_transparent",
- "zip32 0.2.0",
- "zip32 0.3.0",
+ "zip32",
  "zip321",
 ]
 
@@ -7379,8 +7377,7 @@ dependencies = [
  "zcash_script",
  "zcash_transparent",
  "zewif",
- "zip32 0.2.0",
- "zip32 0.3.0",
+ "zip32",
  "zip321",
 ]
 
@@ -7442,8 +7439,7 @@ dependencies = [
  "zcash_script",
  "zcash_transparent",
  "zeroize",
- "zip32 0.2.0",
- "zip32 0.3.0",
+ "zip32",
 ]
 
 [[package]]
@@ -7495,7 +7491,7 @@ dependencies = [
  "zcash_protocol",
  "zcash_script",
  "zcash_transparent",
- "zip32 0.2.0",
+ "zip32",
 ]
 
 [[package]]
@@ -7583,7 +7579,7 @@ dependencies = [
  "zcash_protocol",
  "zcash_script",
  "zcash_spec",
- "zip32 0.2.0",
+ "zip32",
 ]
 
 [[package]]
@@ -7650,18 +7646,6 @@ dependencies = [
  "hex",
  "minicbor",
  "thiserror 2.0.12",
-]
-
-[[package]]
-name = "zip32"
-version = "0.2.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "13ff9ea444cdbce820211f91e6aa3d3a56bde7202d3c0961b7c38f793abf5637"
-dependencies = [
- "blake2b_simd",
- "memuse",
- "subtle",
- "zcash_spec",
 ]
 
 [[package]]

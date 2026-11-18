@@ -159,8 +159,6 @@ pub mod util;
 pub mod wallet;
 #[cfg(feature = "zewif")]
 pub mod zewif;
-// TODO: Remove this declaration along with the module when orchard 0.16 lands.
-mod zip32_compat;
 
 #[cfg(test)]
 mod testing;

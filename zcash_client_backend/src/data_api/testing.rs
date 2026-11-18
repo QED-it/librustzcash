@@ -2162,11 +2162,11 @@ impl TestFvk for DiversifiableFullViewingKey {
     type OutgoingViewingKey = ::sapling::keys::OutgoingViewingKey;
 
     fn to_ovk(&self, scope: zip32::Scope) -> Self::OutgoingViewingKey {
-        self.to_ovk(crate::zip32_compat::scope_03(scope))
+        self.to_ovk(scope)
     }
 
     fn ovk_bytes(&self, scope: zip32::Scope) -> [u8; 32] {
-        self.to_ovk(crate::zip32_compat::scope_03(scope)).0
+        self.to_ovk(scope).0
     }
 
     fn add_spend<R: RngCore + CryptoRng>(
@@ -2192,11 +2192,7 @@ impl TestFvk for DiversifiableFullViewingKey {
     ) -> Self::Nullifier {
         let recipient = match recipient_address_type {
             AddressType::DefaultExternal => self.default_address().1,
-            AddressType::DiversifiedExternal(idx) => {
-                self.find_address(crate::zip32_compat::diversifier_index_03(idx))
-                    .unwrap()
-                    .1
-            }
+            AddressType::DiversifiedExternal(idx) => self.find_address(idx).unwrap().1,
             AddressType::Internal => self.change_address().1,
         };
 

@@ -69,7 +69,6 @@ zcash_primitives = { workspace = true, features = [
 zcash_proofs = { workspace = true, features = ["bundled-prover"] }
 zcash_protocol = { workspace = true, features = ["local-consensus"] }
 zip32.workspace = true
-zip32_03.workspace = true
 
 [features]
 default = ["std"]

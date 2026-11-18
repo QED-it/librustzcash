@@ -14,6 +14,7 @@ use zcash_protocol::{
     memo::MemoBytes,
     value::Zatoshis,
 };
+use zip32::Scope;
 
 use crate::{
     data_api::{
@@ -158,7 +159,7 @@ impl ShieldedPoolTester for SaplingPoolTester {
         for output in tx.sapling_bundle().unwrap().shielded_outputs() {
             // Find the output that decrypts with the external OVK
             let result = try_sapling_output_recovery(
-                &fvk.to_ovk(zip32_03::Scope::External),
+                &fvk.to_ovk(Scope::External),
                 output,
                 zip212_enforcement(params, height),
             );
