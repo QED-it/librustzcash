@@ -7,7 +7,9 @@ use std::{
 };
 
 use assert_matches::assert_matches;
-use incrementalmerkletree::{Level, Position, frontier::Frontier};
+#[cfg(feature = "orchard")]
+use incrementalmerkletree::frontier::Frontier;
+use incrementalmerkletree::{Level, Position};
 
 use super::sapling_rand::random_sapling_frontier_with_prior_subtree_roots;
 use rand::{Rng, RngCore};

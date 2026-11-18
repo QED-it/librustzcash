@@ -663,7 +663,9 @@ pub(crate) fn update_chain_tip<P: consensus::Parameters>(
 pub(crate) mod tests {
     use std::num::NonZeroU8;
 
-    use incrementalmerkletree::{Hashable, Position, frontier::Frontier};
+    #[cfg(feature = "orchard")]
+    use incrementalmerkletree::frontier::Frontier;
+    use incrementalmerkletree::{Hashable, Position};
 
     use secrecy::SecretVec;
     use zcash_client_backend::data_api::{

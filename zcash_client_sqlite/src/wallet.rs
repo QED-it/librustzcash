@@ -5508,6 +5508,7 @@ mod tests {
     fn rewound_birthday_does_not_falsely_report_complete_recovery() {
         use std::num::NonZeroU8;
 
+        #[cfg(feature = "orchard")]
         use incrementalmerkletree::frontier::Frontier;
         use zcash_client_backend::data_api::{
             chain::{ChainState, CommitmentTreeRoot},
@@ -5664,6 +5665,7 @@ mod tests {
     fn rewound_birthday_recovery_denominator_includes_imported_subtrees() {
         use std::num::NonZeroU8;
 
+        #[cfg(feature = "orchard")]
         use incrementalmerkletree::frontier::Frontier;
         use zcash_client_backend::data_api::{
             chain::{ChainState, CommitmentTreeRoot},
@@ -5836,6 +5838,7 @@ mod tests {
     fn recover_until_above_chain_tip_does_not_overshoot_tip_size() {
         use std::num::NonZeroU8;
 
+        #[cfg(feature = "orchard")]
         use incrementalmerkletree::frontier::Frontier;
         use zcash_client_backend::data_api::{
             chain::{ChainState, CommitmentTreeRoot},
