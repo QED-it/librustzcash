@@ -4,8 +4,8 @@
 //! - Updates the various bsk values using the rcv information from spends and outputs.
 
 use rand_core::OsRng;
+use zcash_primitives::rand_compat::Rng010;
 
-use crate::rand_compat::Rng010;
 use zcash_primitives::transaction::{sighash::SignableInput, txid::TxIdDigester};
 
 use crate::{

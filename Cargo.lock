@@ -3348,7 +3348,6 @@ dependencies = [
  "pasta_curves 0.5.2",
  "postcard",
  "rand_chacha 0.3.1",
- "rand_core 0.10.1",
  "rand_core 0.6.4",
  "redjubjub",
  "ripemd 0.1.3",

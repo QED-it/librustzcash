@@ -1,6 +1,6 @@
 use rand_core::OsRng;
+use zcash_primitives::rand_compat::Rng010;
 
-use crate::rand_compat::Rng010;
 use sapling::prover::{OutputProver, SpendProver};
 
 use crate::Pczt;

@@ -53,15 +53,6 @@ use {
     },
 };
 
-#[cfg(any(
-    feature = "io-finalizer",
-    feature = "prover",
-    feature = "signer",
-    feature = "tx-extractor"
-))]
-// TODO: Remove this declaration along with the module when orchard 0.16 lands.
-mod rand_compat;
-
 pub mod roles;
 
 pub mod common;

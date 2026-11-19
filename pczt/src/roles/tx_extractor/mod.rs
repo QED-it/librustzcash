@@ -4,8 +4,7 @@
 
 use core::marker::PhantomData;
 use rand_core::OsRng;
-
-use crate::rand_compat::Rng010;
+use zcash_primitives::rand_compat::Rng010;
 
 use zcash_primitives::transaction::{
     Authorization, Transaction,

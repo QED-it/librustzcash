@@ -16,8 +16,7 @@
 use blake2b_simd::Hash as Blake2bHash;
 use orchard::primitives::redpallas;
 use rand_core::OsRng;
-
-use crate::rand_compat::Rng010;
+use zcash_primitives::rand_compat::Rng010;
 
 use ::transparent::sighash::{SIGHASH_ANYONECANPAY, SIGHASH_NONE, SIGHASH_SINGLE};
 use zcash_primitives::transaction::{

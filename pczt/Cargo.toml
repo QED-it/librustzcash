@@ -21,8 +21,6 @@ zcash_protocol = { workspace = true, default-features = false }
 
 blake2b_simd = { workspace = true, optional = true }
 rand_core = { workspace = true, optional = true }
-# TODO: Drop this renamed dependency and its feature wiring when orchard 0.16 lands.
-rand_core_010 = { workspace = true, optional = true }
 
 # Encoding
 postcard.workspace = true
@@ -115,7 +113,6 @@ io-finalizer = [
     "dep:blake2b_simd",
     "dep:rand_core",
     "rand_core/getrandom",
-    "dep:rand_core_010",
     "dep:zcash_primitives",
     "orchard",
     "sapling",
@@ -126,7 +123,7 @@ io-finalizer = [
 prover = [
     "dep:rand_core",
     "rand_core/getrandom",
-    "dep:rand_core_010",
+    "dep:zcash_primitives",
     "orchard?/circuit",
     "sapling?/circuit",
     "sapling?/temporary-zcashd",
@@ -137,7 +134,6 @@ signer = [
     "dep:blake2b_simd",
     "dep:rand_core",
     "rand_core/getrandom",
-    "dep:rand_core_010",
     "dep:zcash_primitives",
     "orchard",
     "sapling",
@@ -152,7 +148,6 @@ tx-extractor = [
     "dep:blake2b_simd",
     "dep:rand_core",
     "rand_core/getrandom",
-    "dep:rand_core_010",
     "dep:zcash_primitives",
     "orchard",
     "orchard/circuit",
