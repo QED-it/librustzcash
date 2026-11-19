@@ -2147,7 +2147,7 @@ where
             .usk
             .sapling()
             .derive_internal()
-            .expect("the derivation path yields a valid key"),
+            .ok_or(Error::KeyNotAvailable(PoolType::SAPLING))?,
     ];
     #[cfg(feature = "orchard")]
     let orchard_saks = &[spending_keys.usk.orchard().into()];
