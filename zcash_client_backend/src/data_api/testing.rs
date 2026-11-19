@@ -96,11 +96,7 @@ use {
 };
 
 pub mod pool;
-// Test support shared with `zcash_client_sqlite`, like the rest of this module, but not part
-// of the public API: it exists only while the workspace carries two `rand` majors.
 pub mod sapling;
-// TODO: Remove this declaration along with the module when orchard 0.16 lands.
-#[doc(hidden)]
 pub mod sapling_rand;
 
 #[cfg(feature = "orchard")]
