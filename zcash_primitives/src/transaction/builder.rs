@@ -1867,7 +1867,7 @@ mod tests {
         },
     };
 
-    #[cfg(zcash_unstable = "nu7")]
+    #[cfg(all(feature = "circuits", zcash_unstable = "nu7"))]
     #[cfg(not(feature = "transparent-inputs"))]
     use zip32::AccountId;
 
@@ -1879,7 +1879,7 @@ mod tests {
         zip32::AccountId,
     };
 
-    #[cfg(zcash_unstable = "nu7")]
+    #[cfg(all(feature = "circuits", zcash_unstable = "nu7"))]
     use {
         crate::transaction::fees::zip317,
         nonempty::NonEmpty,
@@ -1899,8 +1899,11 @@ mod tests {
     };
 
     /// This is a helper function for testing that indicates no assets are newly created.
-    #[cfg(zcash_unstable = "nu7")]
-    fn no_new_assets(_: &AssetBase) -> bool {
+    #[cfg(all(
+        zcash_unstable = "nu7",
+        any(feature = "circuits", feature = "transparent-inputs")
+    ))]
+    fn no_new_assets(_: &orchard::note::AssetBase) -> bool {
         false
     }
 
@@ -3116,7 +3119,7 @@ mod tests {
         }
     }
 
-    #[cfg(zcash_unstable = "nu7")]
+    #[cfg(all(feature = "circuits", zcash_unstable = "nu7"))]
     #[test]
     fn check_zsa_issuance_fees() {
         const OLD_NOTE_VALUE: u64 = 10_000_000;
@@ -3264,7 +3267,7 @@ mod tests {
 
     /// A v7 transaction can move a custom asset: the ZSA note is spent from and paid back into
     /// the Ironwood slot, while a separate ZEC note covers the fee.
-    #[cfg(zcash_unstable = "nu7")]
+    #[cfg(all(feature = "circuits", zcash_unstable = "nu7"))]
     #[test]
     fn transfer_custom_asset_in_v7() {
         use rand_core::RngCore;
@@ -3417,7 +3420,7 @@ mod tests {
 
     /// Burning is a ZSA feature, so it must reach the Ironwood slot: the burned asset is spent
     /// from that slot and recorded in the bundle's burn list, while a ZEC note covers the fee.
-    #[cfg(zcash_unstable = "nu7")]
+    #[cfg(all(feature = "circuits", zcash_unstable = "nu7"))]
     #[test]
     fn burn_custom_asset_in_v7() {
         use rand_core::RngCore;
