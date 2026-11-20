@@ -88,7 +88,7 @@ pub enum TxVersion {
     V5,
     /// Transaction version 6, specified in [ZIP 229](https://zips.z.cash/zip-0229).
     V6,
-    /// Transaction version 7, specified in [ZIP 230](https://zips.z.cash/zip-0230).
+    /// Transaction version 7, specified in the [ZSA transaction format draft](https://github.com/QED-it/zips/blob/zsa1/zips/draft-qedit-zsa-transaction-format-and-digests.rst).
     #[cfg(zcash_unstable = "nu7")]
     V7,
 }
@@ -225,7 +225,9 @@ impl TxVersion {
         match self {
             TxVersion::Sprout(_) | TxVersion::V3 | TxVersion::V4 | TxVersion::V5 => false,
             TxVersion::V6 => true,
-            TxVersion::V7 => true,
+            // FIXME: v7 has no `zip233Amount` field. Upstream has since removed it from v6 too,
+            // so this method, the field and `Builder::set_zip233_amount` go at the next sync.
+            TxVersion::V7 => false,
         }
     }
 
@@ -275,13 +277,13 @@ impl TxVersion {
                 | Nu6_1 | Nu6_2 => false,
                 Nu6_3 => true, // Ironwood / NU6.3
                 #[cfg(zcash_unstable = "nu7")]
-                Nu7 => true, // ZIP 230 or ZIP 248, whichever is chosen for activation
+                Nu7 => true, // the ZSA draft keeps version 6 valid
             },
             #[cfg(zcash_unstable = "nu7")]
             TxVersion::V7 => match consensus_branch_id {
                 Sprout | Overwinter | Sapling | Blossom | Heartwood | Canopy | Nu5 | Nu6
                 | Nu6_1 | Nu6_2 | Nu6_3 => false,
-                Nu7 => true, // ZIP 230
+                Nu7 => true, // the ZSA transaction format
             },
         }
     }
@@ -1096,13 +1098,14 @@ impl Transaction {
     // FIXME: Decide if Ironwood ZSA should be a separate slot and fix the code here if so.
     #[cfg(zcash_unstable = "nu7")]
     fn read_v7<R: Read>(mut reader: R, version: TxVersion) -> io::Result<Self> {
-        let header_fragment = Self::read_v6_header_fragment(&mut reader)?;
+        let (consensus_branch_id, lock_time, expiry_height) =
+            Self::read_header_fragment(&mut reader)?;
 
         let transparent_bundle = Self::read_transparent_v7(&mut reader)?;
         let sapling_bundle = sapling_serialization::read_v7_bundle(&mut reader)?;
         let orchard_bundle = orchard_serialization::read_v6_bundle(
             &mut reader,
-            header_fragment.consensus_branch_id,
+            consensus_branch_id,
             orchard::ValuePool::Orchard,
         )?;
         let ironwood_bundle = orchard_serialization::read_v7_bundle(&mut reader)?;
@@ -1110,11 +1113,11 @@ impl Transaction {
 
         let data = TransactionData {
             version,
-            consensus_branch_id: header_fragment.consensus_branch_id,
-            lock_time: header_fragment.lock_time,
-            expiry_height: header_fragment.expiry_height,
+            consensus_branch_id,
+            lock_time,
+            expiry_height,
             #[cfg(all(zcash_unstable = "nu7", feature = "zip-233"))]
-            zip233_amount: header_fragment.zip233_amount,
+            zip233_amount: Zatoshis::ZERO,
             transparent_bundle,
             sprout_bundle: None,
             sapling_bundle,
@@ -1296,7 +1299,7 @@ impl Transaction {
                 "Sprout components cannot be present when serializing to the V7 transaction format.",
             ));
         }
-        self.write_v6_header(&mut writer)?;
+        self.write_v7_header(&mut writer)?;
 
         self.write_transparent_v7(&mut writer)?;
         sapling_serialization::write_v7_bundle(&mut writer, self.sapling_bundle.as_ref())?;
@@ -1324,6 +1327,13 @@ impl Transaction {
         #[cfg(all(zcash_unstable = "nu7", feature = "zip-233"))]
         writer.write_u64_le(self.zip233_amount.into())?;
         Ok(())
+    }
+
+    /// Writes the v7 header, which has the fields of the v5 header: v7 does not carry the
+    /// `zip233Amount` field that follows them in v6.
+    #[cfg(zcash_unstable = "nu7")]
+    pub fn write_v7_header<W: Write>(&self, writer: W) -> io::Result<()> {
+        self.write_v5_header(writer)
     }
 
     #[cfg(feature = "temporary-zcashd")]
@@ -1531,7 +1541,11 @@ pub mod testing {
                 consensus_branch_id,
                 lock_time,
                 expiry_height: expiry_height.into(),
-                zip233_amount: Zatoshis::from_u64(zip233_amount).unwrap(),
+                zip233_amount: if version.has_zip233() {
+                    Zatoshis::from_u64(zip233_amount).unwrap()
+                } else {
+                    Zatoshis::ZERO
+                },
                 transparent_bundle,
                 sprout_bundle: None,
                 sapling_bundle,

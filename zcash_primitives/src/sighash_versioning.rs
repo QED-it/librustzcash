@@ -1,6 +1,6 @@
-//! Sighash versioning as specified in [ZIP-246].
+//! Sighash versioning as specified in [ZIP 248].
 //!
-//! [ZIP-246]: https://zips.z.cash/zip-0246
+//! [ZIP 248]: https://zips.z.cash/zip-0248
 
 use alloc::vec::Vec;
 

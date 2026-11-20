@@ -87,8 +87,16 @@ fn read_action<R: Read>(
     let asset = AssetBase::custom(&AssetId::new_v0(ik, &asset_desc_hash));
     let notes = Vector::read(&mut reader, |r| read_note(r, asset))?;
     let flags = reader.read_u8()?;
-    IssueAction::new_with_flags(asset_desc_hash, notes, flags)
-        .ok_or(Error::new(ErrorKind::InvalidData, "Invalid action"))
+    let action = IssueAction::new_with_flags(asset_desc_hash, notes, flags)
+        .ok_or(Error::new(ErrorKind::InvalidData, "Invalid action"))?;
+    // An action carries no notes only to finalize an asset that was issued earlier.
+    if action.notes().is_empty() && !action.is_finalized() {
+        return Err(Error::new(
+            ErrorKind::InvalidData,
+            "An IssueAction without notes must finalize the asset",
+        ));
+    }
+    Ok(action)
 }
 
 #[cfg(zcash_unstable = "nu7")]
@@ -206,6 +214,32 @@ pub trait MapIssueAuth<A: IssueAuth, B: IssueAuth> {
 impl MapIssueAuth<Signed, Signed> for () {
     fn map_issue_authorization(&self, a: Signed) -> Signed {
         a
+    }
+}
+
+#[cfg(all(test, zcash_unstable = "nu7"))]
+mod tests {
+    use {
+        super::read_action,
+        alloc::vec::Vec,
+        orchard::issuance::auth::{IssueAuthKey, IssueValidatingKey},
+    };
+
+    /// An issuance action without notes finalizes an asset, so the reader takes it with the
+    /// finalize flag and refuses it without.
+    #[test]
+    fn read_action_without_notes_requires_finalize() {
+        let ik = IssueValidatingKey::from(&IssueAuthKey::from_zip32_seed(&[9; 32], 1, 0).unwrap());
+
+        let action = |flags: u8| {
+            let mut bytes = Vec::new();
+            bytes.extend_from_slice(&[0u8; 32]); // the asset description hash
+            bytes.extend_from_slice(&[0, flags]); // no notes, then the flags byte
+            read_action(&bytes[..], &ik)
+        };
+
+        assert!(action(1).is_ok());
+        assert!(action(0).is_err());
     }
 }
 
