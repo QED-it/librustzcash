@@ -23,11 +23,14 @@ zcash_primitives = { workspace = true, features = ["circuits"] }
 # Dependencies exposed in a public API:
 # (Breaking upgrades to these require a breaking upgrade to this crate.)
 bellman.workspace = true
+groth16.workspace = true
 bls12_381.workspace = true
 group.workspace = true
 jubjub.workspace = true
 minreq = { version = "2", features = ["https"], optional = true }
 rand_core.workspace = true
+# TODO: Drop this renamed dependency and its feature wiring when orchard 0.16 lands.
+rand_core_010.workspace = true
 sapling.workspace = true
 tracing.workspace = true
 
@@ -64,7 +67,7 @@ download-params = ["dep:minreq", "directories"]
 local-prover = ["directories"]
 
 ## Enables multithreading support for creating proofs.
-multicore = ["bellman/multicore", "zcash_primitives/multicore"]
+multicore = ["bellman/multicore", "groth16/multicore", "zcash_primitives/multicore"]
 
 ## A feature used to isolate tests that are expensive to run. Test-only.
 expensive-tests = []
