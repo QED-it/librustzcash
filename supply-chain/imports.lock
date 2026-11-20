@@ -624,13 +624,6 @@ user-login = "nuttycom"
 user-name = "Kris Nuttycombe"
 
 [[publisher.zip32]]
-version = "0.2.0"
-when = "2025-02-20"
-user-id = 169181
-user-login = "nuttycom"
-user-name = "Kris Nuttycombe"
-
-[[publisher.zip32]]
 version = "0.3.0"
 when = "2026-09-29"
 user-id = 169181
@@ -3772,6 +3765,13 @@ who = "Daira-Emma Hopwood <daira@jacaranda.org>"
 criteria = "safe-to-deploy"
 delta = "0.3.69 -> 0.3.71"
 notes = "This crate inherently requires a lot of `unsafe` code, but the changes look plausible."
+aggregated-from = "https://raw.githubusercontent.com/zcash/zcash/master/qa/supply-chain/audits.toml"
+
+[[audits.zcash.audits.blake2b_simd]]
+who = "Jack Grigg <jack@electriccoin.co>"
+criteria = "safe-to-deploy"
+delta = "1.0.1 -> 1.0.2"
+notes = "Switches to `constant_time_eq 0.3.0`, which bumps its MSRV to 1.66."
 aggregated-from = "https://raw.githubusercontent.com/zcash/zcash/master/qa/supply-chain/audits.toml"
 
 [[audits.zcash.audits.blake2s_simd]]
