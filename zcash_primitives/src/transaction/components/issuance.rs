@@ -223,7 +223,6 @@ mod tests {
         super::read_action,
         alloc::vec::Vec,
         orchard::issuance::auth::{IssueAuthKey, IssueValidatingKey},
-        std::io::Cursor,
     };
 
     /// An issuance action without notes finalizes an asset, so the reader takes it with the
@@ -236,7 +235,7 @@ mod tests {
             let mut bytes = Vec::new();
             bytes.extend_from_slice(&[0u8; 32]); // the asset description hash
             bytes.extend_from_slice(&[0, flags]); // no notes, then the flags byte
-            read_action(Cursor::new(bytes), &ik)
+            read_action(&bytes[..], &ik)
         };
 
         assert!(action(1).is_ok());
