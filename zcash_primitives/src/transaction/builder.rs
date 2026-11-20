@@ -53,10 +53,10 @@ use core::convert::Infallible;
 #[cfg(zcash_unstable = "nu7")]
 use {
     orchard::{
-        Address, bundle, issuance,
+        Address, issuance,
         issuance::auth::{IssueAuthKey, IssueValidatingKey, ZSASchnorr},
         issuance::{IssueBundle, IssueInfo},
-        note::{AssetId, Nullifier},
+        note::AssetId,
     },
     rand_core::OsRng,
 };
@@ -1763,10 +1763,10 @@ impl<P: consensus::Parameters, U> Builder<P, U> {
 
 /// The nullifier that seeds issuance note randomness: the first action of the ZSA bundle, which
 /// a v7 transaction carries in its Ironwood slot.
-#[cfg(zcash_unstable = "nu7")]
-fn first_nullifier<A: bundle::Authorization>(
+#[cfg(all(feature = "circuits", zcash_unstable = "nu7"))]
+fn first_nullifier<A: orchard::bundle::Authorization>(
     ironwood_bundle: &Option<orchard::Bundle<A, ZatBalance>>,
-) -> Option<&Nullifier> {
+) -> Option<&orchard::note::Nullifier> {
     ironwood_bundle
         .as_ref()
         .filter(|b| b.bundle_version() == orchard::bundle::BundleVersion::zsa())
