@@ -604,7 +604,6 @@ mod tests {
         orchard::primitives::redpallas,
         orchard::sighash_kind::{OrchardSig, OrchardSighashKind},
         rand_core::{OsRng, RngCore},
-        std::io::Cursor,
     };
 
     #[test]
@@ -619,9 +618,8 @@ mod tests {
         write_versioned_signature(&mut buf, &versioned_sig).unwrap();
 
         // Read the versioned signature back from the buffer
-        let mut reader = Cursor::new(buf);
         let read_versioned_sig =
-            read_versioned_signature::<_, redpallas::SpendAuth>(&mut reader).unwrap();
+            read_versioned_signature::<_, redpallas::SpendAuth>(&buf[..]).unwrap();
 
         assert_eq!(versioned_sig, read_versioned_sig);
     }
