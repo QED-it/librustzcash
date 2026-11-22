@@ -656,6 +656,16 @@ impl<P, U> Builder<P, U> {
             ));
         }
 
+        // FIXME: temporary, v7 would lose this amount. Drop at the sync, see `has_zip233`.
+        #[cfg(all(zcash_unstable = "nu7", feature = "zip-233"))]
+        if version == TxVersion::V7 && self.zip233_amount != Zatoshis::ZERO {
+            return Err(Error::TargetIncompatible(
+                self.consensus_branch_id,
+                version,
+                None,
+            ));
+        }
+
         Ok(())
     }
 
