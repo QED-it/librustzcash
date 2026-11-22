@@ -217,7 +217,7 @@ impl MapIssueAuth<Signed, Signed> for () {
     }
 }
 
-#[cfg(all(test, zcash_unstable = "nu7"))]
+#[cfg(test)]
 mod tests {
     use {
         super::read_action,
