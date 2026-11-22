@@ -87,7 +87,6 @@ nonempty = { version = "0.11", default-features = false }
 # CSPRNG
 rand = { version = "0.8", default-features = false }
 rand_core = { version = "0.6", default-features = false }
-# TODO: Drop this renamed dependency once orchard 0.16 puts both pools on rand_core 0.10.
 rand_core_010 = { package = "rand_core", version = "0.10", default-features = false }
 rand_distr = { version = "0.4", default-features = false }
 

@@ -91,7 +91,6 @@ use {
     super::ORCHARD_SHARD_HEIGHT,
     crate::proto::compact_formats::CompactOrchardAction,
     ::orchard::tree::MerkleHashOrchard,
-    // TODO: Import `ff` directly again once orchard 0.16 puts both pools on `ff` 0.14.
     pasta_curves::{group::ff::Field as _, group::ff::PrimeField, pallas},
 };
 

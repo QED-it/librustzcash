@@ -1770,6 +1770,9 @@ impl UnifiedIncomingViewingKey {
     /// Transparent receivers are not considered here, as recovering a diversifier index from a
     /// transparent receiver alone is not possible without additional context.
     pub fn decrypt_diversifiers(&self, ua: &UnifiedAddress) -> BTreeSet<DiversifierIndex> {
+        #[cfg(not(any(feature = "sapling", feature = "orchard")))]
+        let _ = ua;
+
         #[cfg(not(feature = "sapling"))]
         let sapling_di: Option<DiversifierIndex> = None;
 

@@ -12,7 +12,6 @@ use orchard::bundle::BundleVersion;
 #[cfg(feature = "orchard")]
 pub(crate) use orchard::note::NoteVersion;
 #[cfg(feature = "orchard")]
-// TODO: Import `ff` directly again once orchard 0.16 puts both pools on `ff` 0.14.
 use pasta_curves::group::ff::PrimeField;
 use serde::{Deserialize, Deserializer, Serialize, Serializer, de};
 #[cfg(feature = "orchard")]
