@@ -1899,10 +1899,7 @@ mod tests {
     };
 
     /// This is a helper function for testing that indicates no assets are newly created.
-    #[cfg(all(
-        zcash_unstable = "nu7",
-        any(feature = "circuits", feature = "transparent-inputs")
-    ))]
+    #[cfg(all(feature = "circuits", zcash_unstable = "nu7"))]
     fn no_new_assets(_: &orchard::note::AssetBase) -> bool {
         false
     }
