@@ -1,4 +1,5 @@
 //! Structs representing the components within Zcash transactions.
+#[cfg(zcash_unstable = "nu7")]
 pub mod issuance;
 pub mod orchard;
 pub mod sapling;

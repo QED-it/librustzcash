@@ -7625,6 +7625,17 @@ where
         .expect("the serialized proposal decodes");
     assert_eq!(decoded.proposed_version(), Some(TxVersion::V5));
 
+    // A version 7 request survives the same round-trip.
+    #[cfg(zcash_unstable = "nu7")]
+    {
+        let mut v7_proto = crate::proto::proposal::Proposal::from_standard_proposal(&proposal);
+        v7_proto.proposed_version = Some(TxVersion::V7.header());
+        let decoded_v7 = v7_proto
+            .try_into_standard_proposal(&network, st.wallet())
+            .expect("a proposal that requests version 7 decodes");
+        assert_eq!(decoded_v7.proposed_version(), Some(TxVersion::V7));
+    }
+
     // A proposal serialized without the field (as an older serializer produced) decodes with no
     // requested version.
     let mut legacy_proto = crate::proto::proposal::Proposal::from_standard_proposal(&proposal);

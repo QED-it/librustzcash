@@ -34,9 +34,9 @@ pub const P2PKH_STANDARD_INPUT_SIZE: usize = 150;
 pub const P2PKH_STANDARD_OUTPUT_SIZE: usize = 34;
 
 /// The creation cost for issuance of a Zcash Shielded Asset (ZSA), in equivalent logical actions,
-/// as defined in [ZIP 317].
+/// as defined in [ZIP 227].
 ///
-/// [ZIP 317]: https//zips.z.cash/zip-0317
+/// [ZIP 227]: https://zips.z.cash/zip-0227
 #[cfg(zcash_unstable = "nu7")]
 pub const CREATION_COST: usize = 100;
 
