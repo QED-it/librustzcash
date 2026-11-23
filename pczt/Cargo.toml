@@ -125,6 +125,7 @@ io-finalizer = [
 prover = [
     "dep:rand_core",
     "rand_core/getrandom",
+    "dep:zcash_primitives",
     "orchard?/circuit",
     "sapling?/circuit",
     "sapling?/temporary-zcashd",

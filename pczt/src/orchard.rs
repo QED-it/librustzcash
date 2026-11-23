@@ -23,7 +23,7 @@ use {
         },
         value::{NoteValue, ValueCommitTrapdoor, ValueCommitment},
     },
-    ff::PrimeField,
+    pasta_curves::group::ff::PrimeField,
     zcash_note_encryption::{
         Domain, EphemeralKeyBytes, ShieldedOutput, note_bytes::NoteBytes,
         try_output_recovery_with_pkd_esk,
@@ -194,8 +194,7 @@ pub(crate) mod testing {
     use {
         super::{Action, EncCiphertext, Output, Spend},
         alloc::collections::BTreeMap,
-        ff::Field,
-        pasta_curves::pallas,
+        pasta_curves::{group::ff::Field, pallas},
     };
 
     /// Derives a valid Orchard value commitment encoding for the given value and

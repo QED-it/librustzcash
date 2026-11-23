@@ -28,6 +28,7 @@ zcash_script.workspace = true
 # (Breaking upgrades to these require a breaking upgrade to this crate.)
 # - CSPRNG
 rand_core.workspace = true
+rand_core_010.workspace = true
 
 # - Digests (output types exposed)
 blake2b_simd.workspace = true

@@ -6108,6 +6108,7 @@ mod tests {
         queue_tx_retrieval, select_truncation_height,
     };
 
+    #[cfg(feature = "orchard")]
     use incrementalmerkletree::frontier::Frontier;
     #[cfg(feature = "orchard")]
     use {
@@ -6296,7 +6297,9 @@ mod tests {
             .with_account_from_sapling_activation(BlockHash([0; 32]))
             .build();
 
-        let dfvk = ExtendedSpendingKey::master(&[]).to_diversifiable_full_viewing_key();
+        let dfvk = ExtendedSpendingKey::master(&[])
+            .expect("the derivation path yields a valid key")
+            .to_diversifiable_full_viewing_key();
         let tip = st.sapling_activation_height();
         st.generate_block_at(
             tip,
@@ -6421,7 +6424,9 @@ mod tests {
         assert_eq!(block_fully_scanned(&st), None);
 
         // Scan a block above the wallet's birthday height.
-        let not_our_key = ExtendedSpendingKey::master(&[]).to_diversifiable_full_viewing_key();
+        let not_our_key = ExtendedSpendingKey::master(&[])
+            .expect("the derivation path yields a valid key")
+            .to_diversifiable_full_viewing_key();
         let not_our_value = Zatoshis::const_from_u64(10000);
         let start_height = st.sapling_activation_height();
         let _ = st.generate_block_at(
@@ -6497,7 +6502,7 @@ mod tests {
                 let sapling_activation_height =
                     network.activation_height(NetworkUpgrade::Sapling).unwrap();
                 let (prior_sapling_roots, sapling_initial_tree) =
-                    Frontier::random_with_prior_subtree_roots(
+                    zcash_client_backend::data_api::testing::sapling_rand::random_sapling_frontier_with_prior_subtree_roots(
                         rng,
                         initial_sapling_tree_size.into(),
                         NonZeroU8::new(16).unwrap(),
@@ -6642,7 +6647,7 @@ mod tests {
                 let sapling_activation_height =
                     network.activation_height(NetworkUpgrade::Sapling).unwrap();
                 let (prior_sapling_roots, sapling_initial_tree) =
-                    Frontier::random_with_prior_subtree_roots(
+                    zcash_client_backend::data_api::testing::sapling_rand::random_sapling_frontier_with_prior_subtree_roots(
                         rng,
                         initial_sapling_tree_size.into(),
                         NonZeroU8::new(16).unwrap(),
@@ -6804,7 +6809,7 @@ mod tests {
                 let sapling_activation_height =
                     network.activation_height(NetworkUpgrade::Sapling).unwrap();
                 let (prior_sapling_roots, sapling_initial_tree) =
-                    Frontier::random_with_prior_subtree_roots(
+                    zcash_client_backend::data_api::testing::sapling_rand::random_sapling_frontier_with_prior_subtree_roots(
                         rng,
                         initial_sapling_tree_size.into(),
                         NonZeroU8::new(16).unwrap(),
@@ -7027,7 +7032,9 @@ mod tests {
             .with_account_from_sapling_activation(BlockHash([0; 32]))
             .build();
 
-        let dfvk = ExtendedSpendingKey::master(&[]).to_diversifiable_full_viewing_key();
+        let dfvk = ExtendedSpendingKey::master(&[])
+            .expect("the derivation path yields a valid key")
+            .to_diversifiable_full_viewing_key();
         let value = Zatoshis::const_from_u64(10000);
         let start_height = st.sapling_activation_height();
 

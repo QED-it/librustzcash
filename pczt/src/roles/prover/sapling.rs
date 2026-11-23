@@ -1,4 +1,6 @@
 use rand_core::OsRng;
+use zcash_primitives::rand_compat::Rng010;
+
 use sapling::prover::{OutputProver, SpendProver};
 
 use crate::{Pczt, common::AnchorRequirement};
@@ -30,7 +32,7 @@ impl super::Prover {
 
         parsed
             .bundle
-            .create_proofs(spend_prover, output_prover, OsRng)
+            .create_proofs(spend_prover, output_prover, Rng010(OsRng))
             .map_err(SaplingError::Prover)?;
 
         Ok(Self {

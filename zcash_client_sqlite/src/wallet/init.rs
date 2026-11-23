@@ -1163,7 +1163,8 @@ mod tests {
 
         let seed = [0xab; 32];
         let account = AccountId::ZERO;
-        let secret_key = sapling::spending_key(&seed, db_data.params.coin_type(), account);
+        let secret_key = sapling::spending_key(&seed, db_data.params.coin_type(), account)
+            .expect("the derivation path yields a valid key");
         #[allow(deprecated)]
         let extfvk = secret_key.to_extended_full_viewing_key();
 
@@ -1344,7 +1345,8 @@ mod tests {
 
         let seed = [0xab; 32];
         let account = AccountId::ZERO;
-        let secret_key = sapling::spending_key(&seed, db_data.params.coin_type(), account);
+        let secret_key = sapling::spending_key(&seed, db_data.params.coin_type(), account)
+            .expect("the derivation path yields a valid key");
         #[allow(deprecated)]
         let extfvk = secret_key.to_extended_full_viewing_key();
 

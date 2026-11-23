@@ -4,6 +4,8 @@
 //! - Updates the various bsk values using the rcv information from spends and outputs.
 
 use rand_core::OsRng;
+use zcash_primitives::rand_compat::Rng010;
+
 use zcash_primitives::transaction::{sighash::SignableInput, txid::TxIdDigester};
 
 use crate::{
@@ -81,7 +83,7 @@ impl IoFinalizer {
         // the bundle is empty.
         sapling
             .bundle
-            .finalize_io(shielded_sighash, OsRng)
+            .finalize_io(shielded_sighash, Rng010(OsRng))
             .map_err(Error::SaplingFinalize)?;
         // An empty Orchard-protocol bundle carries no value commitment information
         // and contributes nothing to the transaction; leave its `bsk` unset so that

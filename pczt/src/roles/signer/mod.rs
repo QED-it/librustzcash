@@ -18,6 +18,7 @@ use alloc::vec::Vec;
 use blake2b_simd::Hash as Blake2bHash;
 use orchard::primitives::redpallas;
 use rand_core::OsRng;
+use zcash_primitives::rand_compat::Rng010;
 
 use ::transparent::sighash::{SIGHASH_ANYONECANPAY, SIGHASH_NONE, SIGHASH_SINGLE};
 use zcash_primitives::transaction::{
@@ -309,7 +310,7 @@ impl Signer {
         ask: &sapling::keys::SpendAuthorizingKey,
     ) -> Result<(), Error> {
         self.generate_or_apply_sapling_signature(index, |spend, shielded_sighash| {
-            spend.sign(shielded_sighash, ask, OsRng)
+            spend.sign(shielded_sighash, ask, Rng010(OsRng))
         })
     }
 
@@ -567,8 +568,10 @@ impl From<crate::ExtractError> for Error {
 
 #[cfg(all(test, feature = "io-finalizer", feature = "orchard"))]
 mod tests {
-    use ff::{Field, PrimeField};
-    use pasta_curves::pallas;
+    use pasta_curves::{
+        group::ff::{Field, PrimeField},
+        pallas,
+    };
     use zcash_protocol::consensus::BranchId;
 
     use super::Signer;

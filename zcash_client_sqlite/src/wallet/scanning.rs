@@ -764,7 +764,9 @@ pub(crate) fn update_chain_tip<P: consensus::Parameters>(
 pub(crate) mod tests {
     use std::num::NonZeroU8;
 
-    use incrementalmerkletree::{Hashable, Position, frontier::Frontier};
+    #[cfg(feature = "orchard")]
+    use incrementalmerkletree::frontier::Frontier;
+    use incrementalmerkletree::{Hashable, Position};
 
     use secrecy::SecretVec;
     use zcash_client_backend::data_api::{
@@ -882,7 +884,7 @@ pub(crate) mod tests {
                     network.activation_height(NetworkUpgrade::Sapling).unwrap();
                 // Construct a fake chain state for the end of block 300
                 let (prior_sapling_roots, sapling_initial_tree) =
-                    Frontier::random_with_prior_subtree_roots(
+                    zcash_client_backend::data_api::testing::sapling_rand::random_sapling_frontier_with_prior_subtree_roots(
                         rng,
                         initial_sapling_tree_size.into(),
                         NonZeroU8::new(16).unwrap(),
@@ -1064,7 +1066,7 @@ pub(crate) mod tests {
                 // Construct a fake chain state for the end of the block with the given
                 // birthday_offset from the end of the last shard.
                 let (prior_sapling_roots, sapling_initial_tree) =
-                    Frontier::random_with_prior_subtree_roots(
+                    zcash_client_backend::data_api::testing::sapling_rand::random_sapling_frontier_with_prior_subtree_roots(
                         rng,
                         (frontier_position + 1).into(),
                         NonZeroU8::new(16).unwrap(),
@@ -1309,7 +1311,7 @@ pub(crate) mod tests {
                 // Construct a fake chain state for the end of the block with the given
                 // birthday_offset from the Nu5 birthday.
                 let (prior_sapling_roots, sapling_initial_tree) =
-                    Frontier::random_with_prior_subtree_roots(
+                    zcash_client_backend::data_api::testing::sapling_rand::random_sapling_frontier_with_prior_subtree_roots(
                         rng,
                         frontier_tree_size.into(),
                         NonZeroU8::new(16).unwrap(),
@@ -1509,7 +1511,7 @@ pub(crate) mod tests {
                 // Construct a fake chain state for the end of the block with the given
                 // birthday_offset from the Nu5 birthday.
                 let (prior_sapling_roots, sapling_initial_tree) =
-                    Frontier::random_with_prior_subtree_roots(
+                    zcash_client_backend::data_api::testing::sapling_rand::random_sapling_frontier_with_prior_subtree_roots(
                         rng,
                         frontier_tree_size.into(),
                         NonZeroU8::new(16).unwrap(),
