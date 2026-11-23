@@ -243,7 +243,7 @@ mod tests {
     }
 }
 
-#[cfg(all(any(test, feature = "test-dependencies"), zcash_unstable = "nu7"))]
+#[cfg(any(test, feature = "test-dependencies"))]
 pub mod testing {
     use proptest::prelude::*;
 
