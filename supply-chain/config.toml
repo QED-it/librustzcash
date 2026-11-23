@@ -49,9 +49,6 @@ audit-as-crates-io = false
 [policy.pczt]
 audit-as-crates-io = true
 
-[policy.sapling-crypto]
-audit-as-crates-io = false
-
 [policy.sinsemilla]
 audit-as-crates-io = false
 
@@ -75,9 +72,6 @@ audit-as-crates-io = true
 
 [policy.zcash_keys]
 audit-as-crates-io = true
-
-[policy.zcash_note_encryption]
-audit-as-crates-io = false
 
 [policy.zcash_pool_migration]
 audit-as-crates-io = true
