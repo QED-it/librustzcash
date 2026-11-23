@@ -1,5 +1,6 @@
 use std::num::NonZeroU8;
 use std::sync::OnceLock;
+use zcash_primitives::rand_compat::Rng010;
 
 use ::transparent::{
     address::{Script, TransparentAddress},
@@ -467,10 +468,12 @@ fn sapling_to_orchard() {
     let mut rng = OsRng;
 
     // Create a Sapling account to send funds from.
-    let sapling_extsk = sapling::zip32::ExtendedSpendingKey::master(&[1; 32]);
+    let sapling_extsk = sapling::zip32::ExtendedSpendingKey::master(&[1; 32])
+        .expect("the derivation path yields a valid key");
     let sapling_dfvk = sapling_extsk.to_diversifiable_full_viewing_key();
     let sapling_internal_dfvk = sapling_extsk
         .derive_internal()
+        .expect("the derivation path yields a valid key")
         .to_diversifiable_full_viewing_key();
     let sapling_recipient = sapling_dfvk.default_address().1;
 
@@ -496,7 +499,7 @@ fn sapling_to_orchard() {
             )
             .unwrap();
         let (bundle, meta) = sapling_builder
-            .build::<LocalTxProver, LocalTxProver, _, i64>(&[], &mut rng)
+            .build::<LocalTxProver, LocalTxProver, _, i64>(&[], &mut Rng010(&mut rng))
             .unwrap()
             .unwrap();
         let output = bundle
@@ -586,7 +589,7 @@ fn sapling_to_orchard() {
     let pczt = Updater::new(pczt)
         .update_sapling_with(|mut updater| {
             updater.update_spend_with(index, |mut spend_updater| {
-                spend_updater.set_proof_generation_key(sapling_extsk.expsk.proof_generation_key())
+                spend_updater.set_proof_generation_key(sapling_extsk.expsk().proof_generation_key())
             })
         })
         .unwrap()
@@ -617,7 +620,7 @@ fn sapling_to_orchard() {
     // Apply signatures.
     let mut signer = Signer::new(pczt).unwrap();
     signer
-        .sign_sapling(index, &sapling_extsk.expsk.ask)
+        .sign_sapling(index, sapling_extsk.expsk().ask())
         .unwrap();
     let pczt_with_sapling_signatures = signer.finish();
     check_round_trip(&pczt_with_sapling_signatures);
@@ -1199,10 +1202,12 @@ fn redacted_sapling_anchor_round_trips_v2() {
 fn redacted_sapling_anchor_can_be_restored_after_signing() {
     let mut rng = OsRng;
 
-    let sapling_extsk = sapling::zip32::ExtendedSpendingKey::master(&[1; 32]);
+    let sapling_extsk = sapling::zip32::ExtendedSpendingKey::master(&[1; 32])
+        .expect("the derivation path yields a valid key");
     let sapling_dfvk = sapling_extsk.to_diversifiable_full_viewing_key();
     let sapling_internal_dfvk = sapling_extsk
         .derive_internal()
+        .expect("the derivation path yields a valid key")
         .to_diversifiable_full_viewing_key();
     let sapling_recipient = sapling_dfvk.default_address().1;
 
@@ -1222,7 +1227,7 @@ fn redacted_sapling_anchor_can_be_restored_after_signing() {
             )
             .unwrap();
         let (bundle, meta) = sapling_builder
-            .build::<LocalTxProver, LocalTxProver, _, i64>(&[], &mut rng)
+            .build::<LocalTxProver, LocalTxProver, _, i64>(&[], &mut Rng010(&mut rng))
             .unwrap()
             .unwrap();
         let output = bundle
@@ -1296,7 +1301,7 @@ fn redacted_sapling_anchor_can_be_restored_after_signing() {
     let pczt = Updater::new(pczt)
         .update_sapling_with(|mut updater| {
             updater.update_spend_with(index, |mut spend_updater| {
-                spend_updater.set_proof_generation_key(sapling_extsk.expsk.proof_generation_key())
+                spend_updater.set_proof_generation_key(sapling_extsk.expsk().proof_generation_key())
             })
         })
         .unwrap()
@@ -1311,7 +1316,7 @@ fn redacted_sapling_anchor_can_be_restored_after_signing() {
     let mut signer = Signer::new(pczt).unwrap();
     let sighash = signer.shielded_sighash();
     signer
-        .sign_sapling(index, &sapling_extsk.expsk.ask)
+        .sign_sapling(index, sapling_extsk.expsk().ask())
         .unwrap();
     let signed = signer.finish();
 
@@ -1358,10 +1363,12 @@ fn wallet_can_set_sapling_witness_after_signing() {
     let mut rng = OsRng;
 
     // Create a Sapling account to spend from and send back to.
-    let sapling_extsk = sapling::zip32::ExtendedSpendingKey::master(&[1; 32]);
+    let sapling_extsk = sapling::zip32::ExtendedSpendingKey::master(&[1; 32])
+        .expect("the derivation path yields a valid key");
     let sapling_dfvk = sapling_extsk.to_diversifiable_full_viewing_key();
     let sapling_internal_dfvk = sapling_extsk
         .derive_internal()
+        .expect("the derivation path yields a valid key")
         .to_diversifiable_full_viewing_key();
     let sapling_recipient = sapling_dfvk.default_address().1;
 
@@ -1382,7 +1389,7 @@ fn wallet_can_set_sapling_witness_after_signing() {
             )
             .unwrap();
         let (bundle, meta) = sapling_builder
-            .build::<LocalTxProver, LocalTxProver, _, i64>(&[], &mut rng)
+            .build::<LocalTxProver, LocalTxProver, _, i64>(&[], &mut Rng010(&mut rng))
             .unwrap()
             .unwrap();
         let output = bundle
@@ -1461,7 +1468,7 @@ fn wallet_can_set_sapling_witness_after_signing() {
     let pczt = Updater::new(pczt)
         .update_sapling_with(|mut updater| {
             updater.update_spend_with(index, |mut spend_updater| {
-                spend_updater.set_proof_generation_key(sapling_extsk.expsk.proof_generation_key())
+                spend_updater.set_proof_generation_key(sapling_extsk.expsk().proof_generation_key())
             })
         })
         .unwrap()
@@ -1471,7 +1478,7 @@ fn wallet_can_set_sapling_witness_after_signing() {
     let mut signer = Signer::new(pczt).unwrap();
     let sighash = signer.shielded_sighash();
     signer
-        .sign_sapling(index, &sapling_extsk.expsk.ask)
+        .sign_sapling(index, sapling_extsk.expsk().ask())
         .unwrap();
     let signed = signer.finish();
 
