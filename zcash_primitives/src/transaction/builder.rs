@@ -5,6 +5,8 @@ use core::fmt;
 
 use rand_core::{CryptoRng, RngCore};
 
+use crate::rand_compat::Rng010;
+
 use ::sapling::{Note, PaymentAddress, builder::SaplingMetadata};
 use ::transparent::{
     address::TransparentAddress, builder::TransparentBuilder, bundle::TxOut, coinbase,
@@ -432,9 +434,20 @@ fn orchard_action_count(
         bundle_version.default_flags()
     };
 
-    // FIXME: under NU7 this counts the whole bundle with one `max`, while the ZSA builder pads
-    // each asset on its own, so the fee of a bundle with several assets is too low. Fixed in #381.
-    bundle_type.num_actions(flags, num_spends, num_outputs)
+    let count = bundle_type.num_actions(flags, num_spends, num_outputs)?;
+
+    // The builder pairs each asset on its own, so the assets need this many actions between them,
+    // with no minimum of their own. The bundle has whichever of the two bounds is larger.
+    #[cfg(zcash_unstable = "nu7")]
+    let count = count.max(
+        builder
+            .spend_output_counts()
+            .values()
+            .map(|&(spends, outputs)| spends.max(outputs))
+            .sum(),
+    );
+
+    Ok(count)
 }
 
 /// The result of a transaction build operation, which includes the resulting transaction along
@@ -1463,7 +1476,7 @@ impl<P: consensus::Parameters, U: sapling::builder::ProverProgress> Builder<P, U
             .sapling_builder
             .and_then(|builder| {
                 builder
-                    .build::<SP, OP, _, _>(sapling_extsks, &mut rng)
+                    .build::<SP, OP, _, _>(sapling_extsks, Rng010(&mut rng))
                     .map_err(Error::SaplingBuild)
                     .transpose()
                     .map(|res| {
@@ -1475,7 +1488,7 @@ impl<P: consensus::Parameters, U: sapling::builder::ProverProgress> Builder<P, U
                                 bundle.create_proofs(
                                     spend_prover,
                                     output_prover,
-                                    &mut rng,
+                                    Rng010(&mut rng),
                                     self._progress_notifier,
                                 ),
                                 sapling_meta,
@@ -1574,11 +1587,17 @@ impl<P: consensus::Parameters, U: sapling::builder::ProverProgress> Builder<P, U
 
         let sapling_asks = sapling_extsks
             .iter()
-            .map(|extsk| extsk.expsk.ask.clone())
+            .map(|extsk| extsk.expsk().ask().clone())
             .collect::<Vec<_>>();
         let sapling_bundle = unauthed_tx
             .sapling_bundle
-            .map(|b| b.apply_signatures(&mut rng, *shielded_sig_commitment.as_ref(), &sapling_asks))
+            .map(|b| {
+                b.apply_signatures(
+                    Rng010(&mut rng),
+                    *shielded_sig_commitment.as_ref(),
+                    &sapling_asks,
+                )
+            })
             .transpose()
             .map_err(Error::SaplingBuild)?;
 
@@ -1700,7 +1719,7 @@ impl<P: consensus::Parameters, U> Builder<P, U> {
             .sapling_builder
             .map(|builder| {
                 builder
-                    .build_for_pczt(&mut rng)
+                    .build_for_pczt(Rng010(&mut rng))
                     .map_err(Error::SaplingBuild)
             })
             .transpose()?
@@ -1852,6 +1871,7 @@ mod tests {
     #[cfg(feature = "circuits")]
     use {
         super::{Builder, Error},
+        crate::rand_compat::Rng010,
         crate::transaction::builder::BuildConfig,
         ::sapling::{Node, Rseed, zip32::ExtendedSpendingKey},
         ::transparent::{address::TransparentAddress, builder::TransparentSigningSet},
@@ -2453,6 +2473,87 @@ mod tests {
         );
     }
 
+    /// The ZSA builder pads each asset on its own, so a bundle carrying two assets has more
+    /// actions than the totals of its spends and outputs imply.
+    #[test]
+    #[cfg(all(feature = "circuits", zcash_unstable = "nu7"))]
+    fn orchard_action_count_counts_each_asset() {
+        let sk = orchard::keys::SpendingKey::from_bytes([7; 32]).unwrap();
+        let fvk = orchard::keys::FullViewingKey::from(&sk);
+        let recipient = fvk.address_at(0u32, orchard::keys::Scope::External);
+
+        let note_of = |asset: AssetBase, rho_seed: u8| {
+            let rho = orchard::note::Rho::from_bytes(&[rho_seed; 32]).unwrap();
+            let rseed = (0u8..=255)
+                .find_map(|b| orchard::note::RandomSeed::from_bytes([b; 32], &rho).into_option())
+                .expect("at least one test rseed is valid");
+            orchard::Note::from_parts(
+                recipient,
+                orchard::value::NoteValue::from_raw(10_000),
+                asset,
+                rho,
+                rseed,
+                orchard::note::NoteVersion::ZSA,
+            )
+            .unwrap()
+        };
+        let leaf_of = |note: &orchard::Note| {
+            orchard::tree::MerkleHashOrchard::from_cmx(&note.commitment().into())
+        };
+
+        let asset = (0u8..=255)
+            .find_map(|b| AssetBase::from_bytes(&[b; 32]).into_option())
+            .expect("at least one test asset base is valid");
+        let zec_note = note_of(AssetBase::zatoshi(), 1);
+        let asset_note = note_of(asset, 2);
+
+        // Both spends must root to the same anchor, so the first witness is carried forward over
+        // the second leaf.
+        let mut tree = CommitmentTree::<orchard::tree::MerkleHashOrchard, 32>::empty();
+        tree.append(leaf_of(&zec_note)).unwrap();
+        let mut zec_witness = IncrementalWitness::from_tree(tree.clone()).unwrap();
+        tree.append(leaf_of(&asset_note)).unwrap();
+        zec_witness.append(leaf_of(&asset_note)).unwrap();
+        let asset_witness = IncrementalWitness::from_tree(tree).unwrap();
+
+        let bundle_version = orchard::bundle::BundleVersion::zsa();
+        let mut builder = orchard::builder::Builder::new(
+            orchard::builder::BundleType::DEFAULT,
+            bundle_version,
+            bundle_version.default_flags(),
+            asset_witness.root().into(),
+        )
+        .unwrap();
+        builder
+            .add_spend(fvk.clone(), zec_note, zec_witness.path().unwrap().into())
+            .unwrap();
+        builder
+            .add_spend(fvk, asset_note, asset_witness.path().unwrap().into())
+            .unwrap();
+        for _ in 0..2 {
+            builder
+                .add_output(
+                    None,
+                    recipient,
+                    orchard::value::NoteValue::from_raw(1_000),
+                    AssetBase::zatoshi(),
+                    [0u8; 512],
+                )
+                .unwrap();
+        }
+
+        // The totals are two spends and two outputs, which the old count reads as two actions,
+        // while ZEC needs two actions and the custom asset one more.
+        assert_eq!(
+            orchard::builder::BundleType::DEFAULT.num_actions(bundle_version.default_flags(), 2, 2),
+            Ok(2)
+        );
+        assert_eq!(
+            super::orchard_action_count(&builder, false, bundle_version).unwrap(),
+            3
+        );
+    }
+
     /// `BuildConfig::Standard`'s `orchard_pool_bundle_type` controls padding: the
     /// padded default counts a single-output bundle as 2 actions, while
     /// `UNPADDED` counts exactly the requested single action.
@@ -2709,7 +2810,8 @@ mod tests {
     #[test]
     #[cfg(feature = "circuits")]
     fn binding_sig_present_if_shielded_spend() {
-        let extsk = ExtendedSpendingKey::master(&[]);
+        let extsk =
+            ExtendedSpendingKey::master(&[]).expect("the derivation path yields a valid key");
         let dfvk = extsk.to_diversifiable_full_viewing_key();
         let to = dfvk.default_address().1;
 
@@ -2717,7 +2819,7 @@ mod tests {
 
         let note1 = to.create_note(
             sapling::value::NoteValue::from_raw(50000),
-            Rseed::BeforeZip212(jubjub::Fr::random(&mut rng)),
+            Rseed::BeforeZip212(jubjub::Fr::random(&mut Rng010(&mut rng))),
         );
         let cmu1 = Node::from_cmu(&note1.cmu());
         let mut tree = CommitmentTree::<Node, 32>::empty();
@@ -2770,7 +2872,8 @@ mod tests {
         let mut rng = OsRng;
 
         // Just use the master key as the ExtendedSpendingKey for this test
-        let extsk = ExtendedSpendingKey::master(&[]);
+        let extsk =
+            ExtendedSpendingKey::master(&[]).expect("the derivation path yields a valid key");
         let tx_height = TEST_NETWORK
             .activation_height(NetworkUpgrade::Sapling)
             .unwrap();
@@ -2895,7 +2998,7 @@ mod tests {
 
         let note1 = to.create_note(
             sapling::value::NoteValue::from_raw(59999),
-            Rseed::BeforeZip212(jubjub::Fr::random(&mut rng)),
+            Rseed::BeforeZip212(jubjub::Fr::random(&mut Rng010(&mut rng))),
         );
         let cmu1 = Node::from_cmu(&note1.cmu());
         let mut tree = CommitmentTree::<Node, 32>::empty();
@@ -2994,7 +3097,7 @@ mod tests {
 
         let note2 = to.create_note(
             sapling::value::NoteValue::from_raw(1),
-            Rseed::BeforeZip212(jubjub::Fr::random(&mut rng)),
+            Rseed::BeforeZip212(jubjub::Fr::random(&mut Rng010(&mut rng))),
         );
         let cmu2 = Node::from_cmu(&note2.cmu());
         tree.append(cmu2).unwrap();

@@ -136,7 +136,7 @@ pub fn read_base<R: Read>(mut reader: R, _field: &str) -> io::Result<jubjub::Bas
 /// Consensus rules (§4.4) & (§4.5):
 /// - Canonical encoding is enforced by the API of SaplingVerificationContext::check_spend()
 ///   and SaplingVerificationContext::check_output() due to the need to parse this into a
-///   bellman::groth16::Proof.
+///   groth16::Proof.
 /// - Proof validity is enforced in SaplingVerificationContext::check_spend()
 ///   and SaplingVerificationContext::check_output()
 pub fn read_zkproof<R: Read>(mut reader: R) -> io::Result<GrothProofBytes> {
