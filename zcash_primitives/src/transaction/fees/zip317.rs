@@ -49,9 +49,9 @@ pub const TRANSPARENT_BUNDLE_OVERHEAD: usize = 18;
 pub const TX_HEADER_SIZE: usize = 32;
 
 /// The creation cost for issuance of a Zcash Shielded Asset (ZSA), in equivalent logical actions,
-/// as defined in [ZIP 317].
+/// as defined in [ZIP 227].
 ///
-/// [ZIP 317]: https//zips.z.cash/zip-0317
+/// [ZIP 227]: https://zips.z.cash/zip-0227
 #[cfg(zcash_unstable = "nu7")]
 pub const CREATION_COST: usize = 100;
 

@@ -41,14 +41,14 @@ pub const V6_TX_VERSION: u32 = 6;
 /// The version group ID for Zcash v6 transactions.
 pub const V6_VERSION_GROUP_ID: u32 = 0xD884B698;
 
-/// Transaction version 7, specified in [ZIP 230](https://zips.z.cash/zip-0230).
-// FIXME: ZIP 230 is still a draft; this follows the current version and must be revisited when the
-// ZIP is updated.
+/// Transaction version 7, specified in the [ZSA transaction format draft](https://github.com/QED-it/zips/blob/zsa1/zips/draft-qedit-zsa-transaction-format-and-digests.rst).
+// FIXME: the draft leaves the version number unassigned, and upstream has taken 7 for NuTachyon,
+// so this value is provisional.
 #[cfg(zcash_unstable = "nu7")]
 pub const V7_TX_VERSION: u32 = 7;
 /// The version group ID for Zcash v7 transactions.
-// FIXME: ZIP 230 has not assigned a version group ID yet, so this is a placeholder. Test vectors
-// that encode it must be regenerated once the real value is known.
+// FIXME: the draft requires this value but calls it provisional, so test vectors that encode it
+// must be regenerated if it changes.
 #[cfg(zcash_unstable = "nu7")]
 pub const V7_VERSION_GROUP_ID: u32 = 0x7777_7777;
 

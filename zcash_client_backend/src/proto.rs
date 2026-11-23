@@ -1122,6 +1122,11 @@ impl proposal::Proposal {
                 let proposed_version = self
                     .proposed_version
                     .map(|header| {
+                        #[cfg(zcash_unstable = "nu7")]
+                        if header == TxVersion::V7.header() {
+                            return Ok(TxVersion::V7);
+                        }
+
                         if header == TxVersion::V5.header() {
                             Ok(TxVersion::V5)
                         } else if header == TxVersion::V6.header() {

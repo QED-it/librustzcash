@@ -500,8 +500,8 @@ impl Parameters for MainNetwork {
             NetworkUpgrade::Nu6_1 => Some(BlockHeight(3_146_400)),
             NetworkUpgrade::Nu6_2 => Some(BlockHeight(3_364_600)),
             NetworkUpgrade::Nu6_3 => Some(BlockHeight(3_428_143)),
-            // FIXME: a fork placeholder, needed so that NU7 activates at all. Upstream has no
-            // mainnet height for it yet.
+            // FIXME: a fork placeholder, needed so that NU7 activates at all. The ZSA ZIPs
+            // deploy in an upgrade of their own, called NuZSA, whose height is not assigned.
             #[cfg(zcash_unstable = "nu7")]
             NetworkUpgrade::Nu7 => Some(BlockHeight(4_500_000)),
         }
@@ -535,7 +535,7 @@ impl Parameters for TestNetwork {
             NetworkUpgrade::Nu6_1 => Some(BlockHeight(3_536_500)),
             NetworkUpgrade::Nu6_2 => Some(BlockHeight(4_052_000)),
             NetworkUpgrade::Nu6_3 => Some(BlockHeight(4_134_000)),
-            // FIXME: a fork placeholder. Upstream now has the assigned testnet height 4_465_026.
+            // FIXME: a fork placeholder for NuZSA. Upstream's own NU7 testnet height is 4_465_026.
             #[cfg(zcash_unstable = "nu7")]
             NetworkUpgrade::Nu7 => Some(BlockHeight(4_500_000)),
         }
@@ -817,8 +817,9 @@ impl From<BranchId> for u32 {
             BranchId::Nu6_1 => 0x4dec_4df0,
             BranchId::Nu6_2 => 0x5437_f330,
             BranchId::Nu6_3 => 0x37a5_165b,
-            // FIXME: placeholder until NU7 is assigned a branch ID. It enters every v7
-            // transaction header and its sighash, so test vectors must be regenerated when it changes.
+            // FIXME: a placeholder for the NuZSA branch ID, which is not assigned yet. It enters
+            // every v7 transaction header and its sighash, so test vectors must be regenerated
+            // when it changes.
             #[cfg(zcash_unstable = "nu7")]
             BranchId::Nu7 => 0x7719_0ad8,
         }
