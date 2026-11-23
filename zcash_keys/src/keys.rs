@@ -1930,8 +1930,16 @@ mod tests {
     #[cfg(feature = "sapling")]
     use super::sapling;
 
+    #[cfg(any(
+        feature = "unstable",
+        all(
+            feature = "transparent-inputs",
+            any(feature = "orchard", feature = "sapling")
+        )
+    ))]
+    use super::UnifiedSpendingKey;
     #[cfg(feature = "unstable")]
-    use super::{Era, UnifiedSpendingKey, testing::arb_unified_spending_key};
+    use super::{Era, testing::arb_unified_spending_key};
 
     #[cfg(all(feature = "orchard", feature = "unstable"))]
     use subtle::ConstantTimeEq;
