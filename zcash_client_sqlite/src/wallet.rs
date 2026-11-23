@@ -5445,7 +5445,9 @@ mod tests {
         assert_eq!(block_fully_scanned(&st), None);
 
         // Scan a block above the wallet's birthday height.
-        let not_our_key = ExtendedSpendingKey::master(&[]).to_diversifiable_full_viewing_key();
+        let not_our_key = ExtendedSpendingKey::master(&[])
+            .expect("the derivation path yields a valid key")
+            .to_diversifiable_full_viewing_key();
         let not_our_value = Zatoshis::const_from_u64(10000);
         let start_height = st.sapling_activation_height();
         let _ = st.generate_block_at(
@@ -5506,6 +5508,7 @@ mod tests {
     fn rewound_birthday_does_not_falsely_report_complete_recovery() {
         use std::num::NonZeroU8;
 
+        #[cfg(feature = "orchard")]
         use incrementalmerkletree::frontier::Frontier;
         use zcash_client_backend::data_api::{
             chain::{ChainState, CommitmentTreeRoot},
@@ -5533,7 +5536,7 @@ mod tests {
                 let sapling_activation_height =
                     network.activation_height(NetworkUpgrade::Sapling).unwrap();
                 let (prior_sapling_roots, sapling_initial_tree) =
-                    Frontier::random_with_prior_subtree_roots(
+                    zcash_client_backend::data_api::testing::sapling_rand::random_sapling_frontier_with_prior_subtree_roots(
                         rng,
                         initial_sapling_tree_size.into(),
                         NonZeroU8::new(16).unwrap(),
@@ -5662,6 +5665,7 @@ mod tests {
     fn rewound_birthday_recovery_denominator_includes_imported_subtrees() {
         use std::num::NonZeroU8;
 
+        #[cfg(feature = "orchard")]
         use incrementalmerkletree::frontier::Frontier;
         use zcash_client_backend::data_api::{
             chain::{ChainState, CommitmentTreeRoot},
@@ -5690,7 +5694,7 @@ mod tests {
                 let sapling_activation_height =
                     network.activation_height(NetworkUpgrade::Sapling).unwrap();
                 let (prior_sapling_roots, sapling_initial_tree) =
-                    Frontier::random_with_prior_subtree_roots(
+                    zcash_client_backend::data_api::testing::sapling_rand::random_sapling_frontier_with_prior_subtree_roots(
                         rng,
                         initial_sapling_tree_size.into(),
                         NonZeroU8::new(16).unwrap(),
@@ -5834,6 +5838,7 @@ mod tests {
     fn recover_until_above_chain_tip_does_not_overshoot_tip_size() {
         use std::num::NonZeroU8;
 
+        #[cfg(feature = "orchard")]
         use incrementalmerkletree::frontier::Frontier;
         use zcash_client_backend::data_api::{
             chain::{ChainState, CommitmentTreeRoot},
@@ -5864,7 +5869,7 @@ mod tests {
                 let sapling_activation_height =
                     network.activation_height(NetworkUpgrade::Sapling).unwrap();
                 let (prior_sapling_roots, sapling_initial_tree) =
-                    Frontier::random_with_prior_subtree_roots(
+                    zcash_client_backend::data_api::testing::sapling_rand::random_sapling_frontier_with_prior_subtree_roots(
                         rng,
                         initial_sapling_tree_size.into(),
                         NonZeroU8::new(16).unwrap(),
