@@ -52,14 +52,11 @@ use {::transparent::builder::TransparentInputInfo, zcash_script::script};
 use core::convert::Infallible;
 
 #[cfg(zcash_unstable = "nu7")]
-use {
-    orchard::{
-        Address, issuance,
-        issuance::auth::{IssueAuthKey, IssueValidatingKey, ZSASchnorr},
-        issuance::{IssueBundle, IssueInfo},
-        note::AssetId,
-    },
-    rand_core::OsRng,
+use orchard::{
+    Address, issuance,
+    issuance::auth::{IssueAuthKey, IssueValidatingKey, ZSASchnorr},
+    issuance::{IssueBundle, IssueInfo},
+    note::AssetId,
 };
 
 use super::components::sapling::zip212_enforcement;
@@ -1180,6 +1177,7 @@ impl<P: consensus::Parameters> Builder<P, ()> {
         asset_desc_hash: [u8; 32],
         issue_info: Option<IssueInfo>,
         first_issuance: bool,
+        rng: impl RngCore + CryptoRng,
     ) -> Result<(), Error<FE>> {
         if !self.tx_version.has_orchard_zsa() {
             return Err(Error::IronwoodBuild(BundleTypeNotSatisfiable));
@@ -1194,7 +1192,7 @@ impl<P: consensus::Parameters> Builder<P, ()> {
             asset_desc_hash,
             issue_info,
             first_issuance,
-            OsRng,
+            rng,
         )
         .map_err(Error::IssuanceBundle)?;
 
@@ -1212,6 +1210,7 @@ impl<P: consensus::Parameters> Builder<P, ()> {
         recipient: Address,
         value: orchard::value::NoteValue,
         first_issuance: bool,
+        rng: impl RngCore + CryptoRng,
     ) -> Result<(), Error<FE>> {
         if !self.tx_version.has_orchard_zsa() {
             return Err(Error::IronwoodBuild(BundleTypeNotSatisfiable));
@@ -1220,7 +1219,7 @@ impl<P: consensus::Parameters> Builder<P, ()> {
         self.issuance_builder
             .as_mut()
             .ok_or(Error::IssuanceBuilderNotAvailable)?
-            .add_recipient(asset_desc_hash, recipient, value, first_issuance, OsRng)
+            .add_recipient(asset_desc_hash, recipient, value, first_issuance, rng)
             .map_err(Error::IssuanceBundle)?;
 
         Ok(())
@@ -3909,10 +3908,17 @@ mod tests {
                     value: NoteValue::from_raw(1),
                 }),
                 false,
+                OsRng,
             )
             .unwrap();
         builder
-            .add_recipient::<zip317::FeeRule>(asset_2, recipient, NoteValue::from_raw(1), true)
+            .add_recipient::<zip317::FeeRule>(
+                asset_2,
+                recipient,
+                NoteValue::from_raw(1),
+                true,
+                OsRng,
+            )
             .unwrap();
 
         let build_result = builder
