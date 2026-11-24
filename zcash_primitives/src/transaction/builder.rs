@@ -52,14 +52,11 @@ use {::transparent::builder::TransparentInputInfo, zcash_script::script};
 use core::convert::Infallible;
 
 #[cfg(zcash_unstable = "nu7")]
-use {
-    orchard::{
-        Address, bundle, issuance,
-        issuance::auth::{IssueAuthKey, IssueValidatingKey, ZSASchnorr},
-        issuance::{IssueBundle, IssueInfo},
-        note::{AssetId, Nullifier},
-    },
-    rand_core::OsRng,
+use orchard::{
+    Address, issuance,
+    issuance::auth::{IssueAuthKey, IssueValidatingKey, ZSASchnorr},
+    issuance::{IssueBundle, IssueInfo},
+    note::AssetId,
 };
 
 use super::components::sapling::zip212_enforcement;
@@ -1180,6 +1177,7 @@ impl<P: consensus::Parameters> Builder<P, ()> {
         asset_desc_hash: [u8; 32],
         issue_info: Option<IssueInfo>,
         first_issuance: bool,
+        rng: impl RngCore + CryptoRng,
     ) -> Result<(), Error<FE>> {
         if !self.tx_version.has_orchard_zsa() {
             return Err(Error::IronwoodBuild(BundleTypeNotSatisfiable));
@@ -1194,7 +1192,7 @@ impl<P: consensus::Parameters> Builder<P, ()> {
             asset_desc_hash,
             issue_info,
             first_issuance,
-            OsRng,
+            rng,
         )
         .map_err(Error::IssuanceBundle)?;
 
@@ -1212,6 +1210,7 @@ impl<P: consensus::Parameters> Builder<P, ()> {
         recipient: Address,
         value: orchard::value::NoteValue,
         first_issuance: bool,
+        rng: impl RngCore + CryptoRng,
     ) -> Result<(), Error<FE>> {
         if !self.tx_version.has_orchard_zsa() {
             return Err(Error::IronwoodBuild(BundleTypeNotSatisfiable));
@@ -1220,7 +1219,7 @@ impl<P: consensus::Parameters> Builder<P, ()> {
         self.issuance_builder
             .as_mut()
             .ok_or(Error::IssuanceBuilderNotAvailable)?
-            .add_recipient(asset_desc_hash, recipient, value, first_issuance, OsRng)
+            .add_recipient(asset_desc_hash, recipient, value, first_issuance, rng)
             .map_err(Error::IssuanceBundle)?;
 
         Ok(())
@@ -2185,10 +2184,10 @@ impl<P: consensus::Parameters, U> Builder<P, U> {
 
 /// The nullifier that seeds issuance note randomness: the first action of the ZSA bundle, which
 /// a v7 transaction carries in its Ironwood slot.
-#[cfg(zcash_unstable = "nu7")]
-fn first_nullifier<A: bundle::Authorization>(
+#[cfg(all(feature = "circuits", zcash_unstable = "nu7"))]
+fn first_nullifier<A: orchard::bundle::Authorization>(
     ironwood_bundle: &Option<orchard::Bundle<A, ZatBalance>>,
-) -> Option<&Nullifier> {
+) -> Option<&orchard::note::Nullifier> {
     ironwood_bundle
         .as_ref()
         .filter(|b| b.bundle_version() == orchard::bundle::BundleVersion::zsa())
@@ -2335,7 +2334,7 @@ mod tests {
         },
     };
 
-    #[cfg(zcash_unstable = "nu7")]
+    #[cfg(all(feature = "circuits", zcash_unstable = "nu7"))]
     #[cfg(not(feature = "transparent-inputs"))]
     use zip32::AccountId;
 
@@ -2350,7 +2349,7 @@ mod tests {
         zip32::AccountId,
     };
 
-    #[cfg(zcash_unstable = "nu7")]
+    #[cfg(all(feature = "circuits", zcash_unstable = "nu7"))]
     use {
         crate::transaction::fees::zip317,
         nonempty::NonEmpty,
@@ -2370,8 +2369,8 @@ mod tests {
     };
 
     /// This is a helper function for testing that indicates no assets are newly created.
-    #[cfg(zcash_unstable = "nu7")]
-    fn no_new_assets(_: &AssetBase) -> bool {
+    #[cfg(all(feature = "circuits", zcash_unstable = "nu7"))]
+    fn no_new_assets(_: &orchard::note::AssetBase) -> bool {
         false
     }
 
@@ -3790,7 +3789,7 @@ mod tests {
         }
     }
 
-    #[cfg(zcash_unstable = "nu7")]
+    #[cfg(all(feature = "circuits", zcash_unstable = "nu7"))]
     #[test]
     fn check_zsa_issuance_fees() {
         const OLD_NOTE_VALUE: u64 = 10_000_000;
@@ -3909,10 +3908,17 @@ mod tests {
                     value: NoteValue::from_raw(1),
                 }),
                 false,
+                OsRng,
             )
             .unwrap();
         builder
-            .add_recipient::<zip317::FeeRule>(asset_2, recipient, NoteValue::from_raw(1), true)
+            .add_recipient::<zip317::FeeRule>(
+                asset_2,
+                recipient,
+                NoteValue::from_raw(1),
+                true,
+                OsRng,
+            )
             .unwrap();
 
         let build_result = builder
@@ -3939,7 +3945,7 @@ mod tests {
 
     /// A v7 transaction can move a custom asset: the ZSA note is spent from and paid back into
     /// the Ironwood slot, while a separate ZEC note covers the fee.
-    #[cfg(zcash_unstable = "nu7")]
+    #[cfg(all(feature = "circuits", zcash_unstable = "nu7"))]
     #[test]
     fn transfer_custom_asset_in_v7() {
         use rand_core::RngCore;
@@ -4093,7 +4099,7 @@ mod tests {
 
     /// Burning is a ZSA feature, so it must reach the Ironwood slot: the burned asset is spent
     /// from that slot and recorded in the bundle's burn list, while a ZEC note covers the fee.
-    #[cfg(zcash_unstable = "nu7")]
+    #[cfg(all(feature = "circuits", zcash_unstable = "nu7"))]
     #[test]
     fn burn_custom_asset_in_v7() {
         use rand_core::RngCore;

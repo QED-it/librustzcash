@@ -573,13 +573,21 @@ jobs:
             | sed 's/^/crates=/' >> "$GITHUB_OUTPUT"
 
   clippy-feature-combos:
-    name: Clippy (${{ matrix.crate }}, each feature)
+    name: Clippy (${{ matrix.crate }}, each feature${{ matrix.state == 'NU7' && ', NU7' || '' }})
     needs: clippy-features-discover
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
         crate: ${{ fromJSON(needs.clippy-features-discover.outputs.crates) }}
+        state:
+          - default
+          - NU7
+        include:
+          - state: NU7
+            rustflags: '--cfg zcash_unstable="nu7"'
+    env:
+      RUSTFLAGS: ${{ matrix.rustflags }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
